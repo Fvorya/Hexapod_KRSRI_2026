@@ -59,7 +59,7 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
 
 calibBlob gCalib;
 
-uint16_t calib::crc16(const uint8_t* p, uint32_t n) {
+uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
     uint16_t crc = 0xFFFF;                        // CRC16-CCITT
     for (uint32_t i = 0; i < n; i++) {
         crc ^= (uint16_t)p[i] << 8;
