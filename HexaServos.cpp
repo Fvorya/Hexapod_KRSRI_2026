@@ -36,5 +36,5 @@ bool HexaServos::commit() {
 
 void HexaServos::writeRaw(uint8_t driver, uint8_t channel, uint16_t pulseUs) {
     if (driver == 0) _kit0.writeMicroseconds(channel, pulseUs);
-    else             _kit1.writeMicroseconds(channel, pulseUs);
+    // (Abai) -> else             _kit1.writeMicroseconds(channel, pulseUs);
 }

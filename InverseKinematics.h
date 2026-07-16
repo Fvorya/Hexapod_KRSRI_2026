@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include <math.h>
+#include "types.h"
 
 class InverseKinematics {
 public:

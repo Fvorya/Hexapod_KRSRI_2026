@@ -50,25 +50,25 @@ inline float angleDiffDeg(float target, float current) {
 // Urutan: Rz * Ry * Rx (intrinsic). Dipakai untuk body kinematics.
 // ponytail: rotasi titik langsung, bukan bangun matriks 4x4 + CMSIS-DSP.
 // Untuk 6 titik/loop ini lebih sederhana & cukup cepat di FPU Teensy.
-// inline Vec3 rotatePoint(const Vec3& p, float roll, float pitch, float yaw) {
-//     float cr = cosf(roll),  sr = sinf(roll);
-//     float cp = cosf(pitch), sp = sinf(pitch);
-//     float cy = cosf(yaw),   sy = sinf(yaw);
+inline Vec3 rotatePoint(const Vec3& p, float roll, float pitch, float yaw) {
+    float cr = cosf(roll),  sr = sinf(roll);
+    float cp = cosf(pitch), sp = sinf(pitch);
+    float cy = cosf(yaw),   sy = sinf(yaw);
 
-//     // Rx
-//     float y1 = cr * p.y - sr * p.z;
-//     float z1 = sr * p.y + cr * p.z;
-//     float x1 = p.x;
-//     // Ry
-//     float x2 = cp * x1 + sp * z1;
-//     float z2 = -sp * x1 + cp * z1;
-//     float y2 = y1;
-//     // Rz
-//     float x3 = cy * x2 - sy * y2;
-//     float y3 = sy * x2 + cy * y2;
-//     float z3 = z2;
+    // Rx
+    float y1 = cr * p.y - sr * p.z;
+    float z1 = sr * p.y + cr * p.z;
+    float x1 = p.x;
+    // Ry
+    float x2 = cp * x1 + sp * z1;
+    float z2 = -sp * x1 + cp * z1;
+    float y2 = y1;
+    // Rz
+    float x3 = cy * x2 - sy * y2;
+    float y3 = sy * x2 + cy * y2;
+    float z3 = z2;
 
-//     return { x3, y3, z3 };
-// }
+    return { x3, y3, z3 };
+}
 
 #endif

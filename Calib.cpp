@@ -18,15 +18,15 @@
 #define CALIB_ADDR    0
 
 const ParamDef PARAM_DEFS[N_PARAMS] = {
-    { "pulse.min",        500.0f,  500.0f, 1200.0f },
-    { "pulse.max",       2500.0f, 2500.0f, 2600.0f }
-    // { "gait.step_height",  40.0f,    0.0f,  120.0f },
-    // { "gait.step_length",  60.0f,    0.0f,  150.0f },
-    // { "gait.cycle_time",  900.0f,  300.0f, 2000.0f },
-    // { "gait.duty",          0.5f,    0.3f,    0.7f },
-    // { "gait.slew_rate",     3.0f,    0.5f,   10.0f },
-    // { "gait.profile_tau",   0.25f,   0.05f,   1.0f },
-    // { "gait.settle_tau",    0.10f,   0.02f,   0.5f },
+    { "pulse.min",        500.0f,  400.0f, 1200.0f },
+    { "pulse.max",       2500.0f, 1800.0f, 2600.0f },
+    { "gait.step_height",  40.0f,    0.0f,  120.0f },
+    { "gait.step_length",  60.0f,    0.0f,  150.0f },
+    { "gait.cycle_time",  900.0f,  300.0f, 2000.0f },
+    { "gait.duty",          0.5f,    0.3f,    0.7f },
+    { "gait.slew_rate",     3.0f,    0.5f,   10.0f },
+    { "gait.profile_tau",   0.25f,   0.05f,   1.0f },
+    { "gait.settle_tau",    0.10f,   0.02f,   0.5f },
     // { "stab.tau",           0.08f,   0.02f,   0.5f },
     // { "stab.sign_roll",    -1.0f,   -1.0f,    1.0f },
     // { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f },
@@ -57,7 +57,7 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     // { "arm.drop.grip",     70.0f,    0.0f,  180.0f },
 };
 
-calibBlob gCalib;
+CalibBlob gCalib;
 
 uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
     uint16_t crc = 0xFFFF;                        // CRC16-CCITT
