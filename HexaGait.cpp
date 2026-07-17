@@ -77,13 +77,17 @@ void HexaGait::update() {
         return;
     }
 
-    unsigned long el = millis() - _cycleStart;
-    float phase = fmodf((float)el, _prof.cycleTime) / _prof.cycleTime;  // 0..1
+    unsigned long elapsed = millis() - _cycleStart;
+    float phase = fmodf((float)elapsed, _prof.cycleTime) / _prof.cycleTime;  // 0..1
 
     for (int leg = 0; leg < 6; leg++) {
         // Tripod: grup {0,2,4} fase 0, grup {1,3,5} geser 0.5.
         float legPhase = phase + ((leg % 2 == 0) ? 0.0f : 0.5f);
         if (legPhase >= 1.0f) legPhase -= 1.0f;
+
+        float jumlahTitik = 10.0f; // Ini buat ngebagi kurva sikloid jadi beberapa titik
+
+        float stepPhase = floor(legPhase * jumlahTitik) / jumlahTitik;
 
         // Vektor langkah per kaki (mm) = translasi + rotasi(yaw).
         // Rotasi: v = omega x r  -> (-yaw*ry, yaw*rx).
@@ -92,14 +96,14 @@ void HexaGait::update() {
         float sy = (_curY + ( _curYaw * rx / 100.0f)) * _prof.stepLength;
 
         float dx, dy, dz;
-        if (legPhase < GAIT_DUTY) {
+        if (stepPhase < GAIT_DUTY) {
             // STANCE: geser lurus +1/2 -> -1/2 (dorong badan maju), kecepatan konstan.
-            float s = legPhase / GAIT_DUTY;          // 0..1
+            float s = stepPhase / GAIT_DUTY;          // 0..1
             float k = 0.5f - s;
             dx = sx * k; dy = sy * k; dz = 0.0f;
         } else {
             // SWING SIKLOID: kecepatan nol di liftoff & touchdown -> mendarat lembut.
-            float s = (legPhase - GAIT_DUTY) / (1.0f - GAIT_DUTY); // 0..1
+            float s = (stepPhase - GAIT_DUTY) / (1.0f - GAIT_DUTY); // 0..1
             float twoPiS = 2.0f * (float)M_PI * s;
             float k = -0.5f + (s - sinf(twoPiS) / (2.0f * (float)M_PI)); // -0.5 -> +0.5
             dx = sx * k; dy = sy * k;
