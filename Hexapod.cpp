@@ -39,7 +39,7 @@ void Hexapod::stop() { _gait.setMoveVector(0, 0, 0); }
 //     pitchDeg = clampf(pitchDeg, -STAB_MAX_DEG, STAB_MAX_DEG);
 //     // low-pass berbasis dt (konstan tau -> kehalusan tak tergantung kecepatan loop)
 //     uint32_t now = millis();
-//     float dt = _lastStabT ? (now - _lastStabT) / 1000.0f : 0.02f;
+//     float dt = _lastStabT ? (znow - _lastStabT) / 1000.0f : 0.02f;
 //     _lastStabT = now;
 //     dt = clampf(dt, 0.0f, 0.05f);
 //     float a = dt / (STAB_TAU + dt);
@@ -100,7 +100,7 @@ void Hexapod::solvePose() {
 
         // 4) IK.
         float coxa, femur, tibia;
-        InverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
+        LegInverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
 
         // 5) Ke pulse (baseline 90 untuk coxa/femur; tibia dipusatkan di 90).
         uint8_t c = leg * 3 + 0, f = leg * 3 + 1, t = leg * 3 + 2;

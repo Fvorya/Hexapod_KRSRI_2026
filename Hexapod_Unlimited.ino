@@ -56,7 +56,7 @@ void loop() {
 // #include <Arduino.h>
 // #include "Calib.h"
 // #include "HexaServos.h"
-// #include "InverseKinematics.h"
+// #include "LegInverseKinematics.h"
 
 // HexaServos servos;
 
@@ -91,7 +91,7 @@ void loop() {
 //         while(Serial.read() != -1); 
 
 //         float coxaDeg, femurDeg, tibiaDeg;
-//         bool inRange = InverseKinematics::solve(x, y, z, coxaDeg, femurDeg, tibiaDeg);
+//         bool inRange = LegInverseKinematics::solve(x, y, z, coxaDeg, femurDeg, tibiaDeg);
 
 //         Serial.print("Target X:"); Serial.print(x);
 //         Serial.print(" Y:"); Serial.print(y);

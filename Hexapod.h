@@ -8,7 +8,7 @@
 #include "HexaServos.h"
 #include "HexaGait.h"
 // #include "HexaArm.h"
-#include "InverseKinematics.h"
+#include "LegInverseKinematics.h"
 
 class Hexapod {
 public:

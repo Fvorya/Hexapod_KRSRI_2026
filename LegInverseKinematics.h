@@ -1,11 +1,11 @@
-#ifndef INVERSEKINEMATICS_H
-#define INVERSEKINEMATICS_H
+#ifndef LEGINVERSEKINEMATICS_H
+#define LEGINVERSEKINEMATICS_H
 
 #include "config.h"
 #include <math.h>
 #include "types.h"
 
-class InverseKinematics {
+class LegInverseKinematics {
 public:
   static bool solve(float x, float y, float z, float& coxaDeg, float& femurDeg, float& tibiaDeg);
 };

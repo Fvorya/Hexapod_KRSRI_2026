@@ -61,9 +61,9 @@ const uint8_t TUNE_PIN_MAP[NUM_TUNE_SERVOS][2] = {
 
 // BUS I2C (Wire SDA 18 / SCL 19 Teensy 4.1)
 #define SERVO_I2C_BUS    Wire
-#define SERVO_I2C_CLOCK  100000 // 400000 kHz
+#define SERVO_I2C_CLOCK  400000 // 400000 kHz
 #define LIDAR_I2C_BUS    Wire
-#define LIDAR_I2C_CLOCK  100000 // 400000 kHz
+#define LIDAR_I2C_CLOCK  400000 // 400000 kHz
 
 // --- LiDAR --- //
 // #define NUM_LIDAR        6
