@@ -1,6 +1,6 @@
-#include "InverseKinematics.h"
+#include "LegInverseKinematics.h"
 
-bool InverseKinematics::solve(float x, float y, float z,
+bool LegInverseKinematics::solve(float x, float y, float z,
                   float& coxaDeg, float& femurDeg, float& tibiaDeg) {
     bool inRange = true;
 

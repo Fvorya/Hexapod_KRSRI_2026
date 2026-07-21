@@ -15,11 +15,11 @@ Buat setup servonya batas aman dan ngatur saat awal robot nyala servonya ada di 
 •	HexaGait.cpp / .h
 Ini nentuin cara tiap kaki ngelangkah. Kayak tingginya, jauhnya, berapa lama buat nyelesain satu langkah, posisi kaki.
 
-•	InverseKinematics.cpp / .h
+•	LegInverseKinematics.cpp / .h
 Buat ngesolve inverse kinematik pakai nilai-nilai yang sudah di-define di config.h
 
 •	Hexapod.cpp / .h
-Semuanya bakal masuk ke sini. Bakal nerima perintah buat jalan/stop/pose robot terus nanti dikasih tiap kelas bawahnya (HexaServos, HexaGait, InverseKinematics.h).
+Semuanya bakal masuk ke sini. Bakal nerima perintah buat jalan/stop/pose robot terus nanti dikasih tiap kelas bawahnya (HexaServos, HexaGait, LegInverseKinematics.h).
 
 # Hexapod KRSRI 2026 🕷️ <- Versi Lebih Jelas
 
@@ -40,9 +40,9 @@ Sistem diprogram menggunakan C++ berorientasi objek (OOP) dan dirancang untuk mi
 
 Kode dipecah menjadi beberapa "spesialis" untuk memudahkan *debugging* dan *unit testing*:
 
-* **`Hexapod.cpp / .h`** : Dirigen orkestra (CEO). Dia yang menerima perintah 'Jalan', lalu membagi tugas ke HexaGait (buat pola), InverseKinematics (buat sudut), dan HexaServos (eksekusi motor).
+* **`Hexapod.cpp / .h`** : Dirigen orkestra (CEO). Dia yang menerima perintah 'Jalan', lalu membagi tugas ke HexaGait (buat pola), LegInverseKinematics (buat sudut), dan HexaServos (eksekusi motor).
 * **`HexaGait.cpp / .h`** : Otak koreografer. Dia yang merancang pola langkah Tripod Gait. Dia yang menentukan kapan kaki harus melayang (fase Swing) dan kapan harus menapak (fase Stance) supaya robot jalan mulus, bukan loncat-loncat.
-* **`InverseKinematics.cpp / .h`** : Mesin kalkulator 3D. Mengubah keinginan kita (misal: 'kaki harus di titik X') menjadi sudut derajat yang dimengerti oleh servo.
+* **`LegInverseKinematics.cpp / .h`** : Mesin kalkulator 3D. Mengubah keinginan kita (misal: 'kaki harus di titik X') menjadi sudut derajat yang dimengerti oleh servo.
 * **`HexaServos.cpp / .h`** : Driver otot. Ini jembatan antara kode matematika dan motor fisik. Tugasnya memastikan servo bergerak dengan halus dan tidak menyentak saat diperintah.
 * **`types.h` & `config.h`** : Fondasi tipe data (Vektor 3D), rumus rotasi matriks. Tempat menyimpan ukuran tulang kaki (Coxa, Femur, Tibia) dan peta pin PCA9685 supaya robot tahu anggota tubuhnya sendiri.
 

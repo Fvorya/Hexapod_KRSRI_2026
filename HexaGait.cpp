@@ -85,7 +85,7 @@ void HexaGait::update() {
         float legPhase = phase + ((leg % 2 == 0) ? 0.0f : 0.5f);
         if (legPhase >= 1.0f) legPhase -= 1.0f;
 
-        float jumlahTitik = 10.0f; // Ini buat ngebagi kurva sikloid jadi beberapa titik
+        float jumlahTitik = 100.0f; // Ini buat ngebagi kurva sikloid jadi beberapa titik
 
         float stepPhase = floor(legPhase * jumlahTitik) / jumlahTitik;
 
