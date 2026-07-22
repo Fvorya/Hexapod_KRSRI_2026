@@ -9,6 +9,7 @@
 #include "HexaGait.h"
 // #include "HexaArm.h"
 #include "LegInverseKinematics.h"
+#include "BodyKinematics.h"
 
 class Hexapod {
 public:
