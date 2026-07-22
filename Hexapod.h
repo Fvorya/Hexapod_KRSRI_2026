@@ -26,6 +26,7 @@ public:
 
     // Pose badan manual (derajat & mm) -- untuk menunduk/menjinjit dsb.
     void setBodyTranslation(float x, float y, float z);
+    void setBodyRotation(float rollDeg, float pitchDeg, float yawDeg);
 
     // Profil gait medan.
     void profileFlat();

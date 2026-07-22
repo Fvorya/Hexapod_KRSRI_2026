@@ -49,6 +49,12 @@ void Hexapod::stop() { _gait.setMoveVector(0, 0, 0); }
 
 void Hexapod::setBodyTranslation(float x, float y, float z) { _trans = {x, y, z}; }
 
+void Hexapod::setBodyRotation(float rollDeg, float pitchDeg, float yawDeg) {
+    _roll  = deg2rad(rollDeg);
+    _pitch = deg2rad(pitchDeg);
+    _yaw   = deg2rad(yawDeg);
+}
+
 void Hexapod::jog(uint8_t tuneId, uint16_t pulseUs) {
     if (tuneId >= NUM_TUNE_SERVOS) return;
     _servos.writeRaw(TUNE_PIN_MAP[tuneId][0], TUNE_PIN_MAP[tuneId][1], pulseUs);

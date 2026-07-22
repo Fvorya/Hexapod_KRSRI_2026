@@ -1,116 +1,130 @@
 #include <Arduino.h>
-#include "Calib.h"
 #include "Hexapod.h"
+#include "Calib.h"
 
+// Membuat objek utama robot
 Hexapod robot;
 
 void setup() {
+    // 1. Inisialisasi Komunikasi PC
     Serial.begin(115200);
-    delay(2000);
     
-    // 1. Inisialisasi kalibrasi dan sistem robot
-    Calib::begin();
-    robot.begin();
+    // 2. Tunggu sebentar agar Serial Monitor siap (opsional, berguna untuk Teensy)
+    delay(2000); 
+    
+    // 3. Mulai sistem memori dan sistem utama robot
+    Calib::begin(); 
+    robot.begin();  
 
-    // 2. MENGGUNAKAN setProfile()
-    // Urutan: { stepHeight, stepLength, cycleTime, standHeight }
-    GaitProfile profilUjiCoba = { 
-        50.0f,   // Tinggi angkatan kaki saat melangkah (50 mm)
-        80.0f,   // Jauh ayunan langkah (80 mm)
-        1200.0f, // Waktu 1 siklus langkah (1.2 detik)
-        100.0f   // Tinggi perut / pangkal kaki dari lantai (100 mm)
-    };
-    robot.setGaitProfile(profilUjiCoba);
-
-    Serial.println("=== TEST TRAJEKTORI 1 KAKI ===");
-    Serial.println("Ketik 'W' lalu Enter untuk mulai melangkah maju");
-    Serial.println("Ketik 'S' lalu Enter untuk berhenti (kembali ke posisi netral)");
+    // 4. Tampilkan menu panduan di Serial Monitor
+    Serial.println("==========================================");
+    Serial.println("   TES BODY KINEMATICS HEXAPOD AKTIF!   ");
+    Serial.println("==========================================");
+    Serial.println("Gunakan format berikut untuk menggerakkan bodi:");
+    Serial.println("1. Translasi -> T <X> <Y> <Z> (Contoh: T 0 0 -20)");
+    Serial.println("2. Rotasi    -> R <Roll> <Pitch> <Yaw> (Contoh: R 15 -5 0)");
+    Serial.println("3. Reset     -> Ketik: RESET");
+    Serial.println("==========================================");
 }
 
 void loop() {
-    // 3. Baca perintah dari Serial PC
-    if (Serial.available()) {
-        char cmd = Serial.read();
+    // WAJIB ADA: Menjaga mesin kalkulator dan servo tetap berjalan
+    robot.update(); 
+
+    // Cek apakah ada pesan masuk dari laptop
+    if (Serial.available() > 0) {
+        // Baca teks sampai tombol Enter ditekan
+        String input = Serial.readStringUntil('\n');
+        input.trim(); // Membersihkan spasi kosong atau karakter 'enter' tersembunyi
+
+        // Jika perintah adalah TRANSLASI (diawali huruf T dan spasi)
+        if (input.startsWith("T ")) {
+            float tx = 0, ty = 0, tz = 0;
+            // sscanf digunakan untuk menyedot 3 angka desimal dari teks
+            if (sscanf(input.c_str(), "T %f %f %f", &tx, &ty, &tz) == 3) {
+                robot.setBodyTranslation(tx, ty, tz);
+                Serial.printf("Eksekusi Translasi: X=%.1f, Y=%.1f, Z=%.1f\n", tx, ty, tz);
+            } else {
+                Serial.println("Format salah! Gunakan: T <X> <Y> <Z>");
+            }
+        }
         
-        if (cmd == 'W' || cmd == 'w') {
-            // Perintah jalan: maju 100%, geser 0%, belok 0%
-            robot.walk(1.0f, 0.0f, 0.0f); 
-            Serial.println("Mengeksekusi langkah berjalan...");
-        } 
-        else if (cmd == 'S' || cmd == 's') {
-            // Perintah berhenti
-            robot.stop();
-            Serial.println("Berhenti (kembali ke pose berdiri)...");
+        // Jika perintah adalah ROTASI (diawali huruf R dan spasi)
+        else if (input.startsWith("R ")) {
+            float r = 0, p = 0, y = 0;
+            if (sscanf(input.c_str(), "R %f %f %f", &r, &p, &y) == 3) {
+                robot.setBodyRotation(r, p, y);
+                Serial.printf("Eksekusi Rotasi: Roll=%.1f, Pitch=%.1f, Yaw=%.1f\n", r, p, y);
+            } else {
+                Serial.println("Format salah! Gunakan: R <Roll> <Pitch> <Yaw>");
+            }
+        }
+        
+        // Jika perintah adalah RESET
+        else if (input == "RESET") {
+            robot.setBodyTranslation(0, 0, 0);
+            robot.setBodyRotation(0, 0, 0);
+            Serial.println("Kembali ke posisi netral (0, 0, 0).");
+        }
+        
+        // Jika teks tidak dikenali
+        else if (input.length() > 0) {
+            Serial.println("Perintah tidak dikenali!");
         }
     }
-
-    // 4. Jantung sistem (Wajib dipanggil terus-menerus tanpa delay)
-    // Ini akan menjalankan HexaGait -> IK -> Servo secara otomatis
-    robot.update(); 
 }
 
-// Kode sebelumnya untuk IK manual pake komunikasi serial (x, y, z)
+// Kode sebelumnya untuk ngetes jalan maju
 // | | | | | | | | |
 // V V V V V V V V V
 
 // #include <Arduino.h>
 // #include "Calib.h"
-// #include "HexaServos.h"
-// #include "LegInverseKinematics.h"
+// #include "Hexapod.h"
 
-// HexaServos servos;
-
-// // Fungsi bantuan untuk mengubah derajat IK menjadi mikrodetik PWM
-// uint16_t angleToPulse(float degree) {
-//     // Asumsi: 0 derajat = PULSE_MIN (500us), 180 derajat = PULSE_MAX (2500us)
-//     float pulse = gCalib.param[K_PULSE_MIN] + 
-//                   (degree / 180.0f) * (gCalib.param[K_PULSE_MAX] - gCalib.param[K_PULSE_MIN]);
-//     return (uint16_t)constrain(pulse, gCalib.param[K_PULSE_MIN], gCalib.param[K_PULSE_MAX]);
-// }
+// Hexapod robot;
 
 // void setup() {
 //     Serial.begin(115200);
-//     delay(2000); // Tunggu serial siap
+//     delay(2000);
     
+//     // 1. Inisialisasi kalibrasi dan sistem robot
 //     Calib::begin();
-//     servos.begin();
-    
-//     Serial.println("=== TEST 1 KAKI HEXAPOD ===");
-//     Serial.println("Format input: X Y Z");
-//     Serial.println("Contoh ketik: 100 0 -80");
+//     robot.begin();
+
+//     // 2. MENGGUNAKAN setProfile()
+//     // Urutan: { stepHeight, stepLength, cycleTime, standHeight }
+//     GaitProfile profilUjiCoba = { 
+//         50.0f,   // Tinggi angkatan kaki saat melangkah (50 mm)
+//         80.0f,   // Jauh ayunan langkah (80 mm)
+//         1200.0f, // Waktu 1 siklus langkah (1.2 detik)
+//         100.0f   // Tinggi perut / pangkal kaki dari lantai (100 mm)
+//     };
+//     robot.setGaitProfile(profilUjiCoba);
+
+//     Serial.println("=== TEST TRAJEKTORI 1 KAKI ===");
+//     Serial.println("Ketik 'W' lalu Enter untuk mulai melangkah maju");
+//     Serial.println("Ketik 'S' lalu Enter untuk berhenti (kembali ke posisi netral)");
 // }
 
 // void loop() {
-//     // Cek apakah ada data masuk dari PC
+//     // 3. Baca perintah dari Serial PC
 //     if (Serial.available()) {
-//         float x = Serial.parseFloat();
-//         float y = Serial.parseFloat();
-//         float z = Serial.parseFloat();
+//         char cmd = Serial.read();
         
-//         // Bersihkan sisa karakter (seperti Enter/Newline)
-//         while(Serial.read() != -1); 
-
-//         float coxaDeg, femurDeg, tibiaDeg;
-//         bool inRange = LegInverseKinematics::solve(x, y, z, coxaDeg, femurDeg, tibiaDeg);
-
-//         Serial.print("Target X:"); Serial.print(x);
-//         Serial.print(" Y:"); Serial.print(y);
-//         Serial.print(" Z:"); Serial.println(z);
-
-//         if (inRange) {
-//             Serial.print(">> IK Sukses! Coxa: "); Serial.print(coxaDeg);
-//             Serial.print(" | Femur: "); Serial.print(femurDeg);
-//             Serial.print(" | Tibia: "); Serial.println(tibiaDeg);
-
-//             // Geser +90 derajat agar nilai tengah (0 derajat IK) menjadi posisi 90 derajat Servo fisik
-//             servos.setLegPulse(0, angleToPulse(coxaDeg + 90.0f));
-//             servos.setLegPulse(1, angleToPulse(femurDeg + 90.0f));
-//             servos.setLegPulse(2, angleToPulse(tibiaDeg)); // Lutut biasanya sudah absolut
-//         } else {
-//             Serial.println(">> GAGAL: Titik target di luar jangkauan (Out of Range)!");
+//         if (cmd == 'W' || cmd == 'w') {
+//             // Perintah jalan: maju 100%, geser 0%, belok 0%
+//             robot.walk(1.0f, 0.0f, 0.0f); 
+//             Serial.println("Mengeksekusi langkah berjalan...");
+//         } 
+//         else if (cmd == 'S' || cmd == 's') {
+//             // Perintah berhenti
+//             robot.stop();
+//             Serial.println("Berhenti (kembali ke pose berdiri)...");
 //         }
 //     }
 
-//     // Eksekusi pergerakan servo secara non-blocking
-//     servos.commit();
+//     // 4. Jantung sistem (Wajib dipanggil terus-menerus tanpa delay)
+//     // Ini akan menjalankan HexaGait -> IK -> Servo secara otomatis
+//     robot.update(); 
 // }
