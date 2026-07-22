@@ -128,4 +128,3 @@ void loop() {
 //     // Ini akan menjalankan HexaGait -> IK -> Servo secara otomatis
 //     robot.update(); 
 // }
-
