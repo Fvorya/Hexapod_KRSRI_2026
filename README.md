@@ -1,55 +1,89 @@
-# Penjelasan Kocak-Kocakan 😹
+# Ver 1.1 ☝🏽
 
-•	servo.ino
-Masih belum buat 6 kaki, baru coba jalanin satu kaki (kanan depan) pakai komunikasi serial ke Teensy buat merintah WALK sama STOP.
+Nambahin Body Kinematics dari program lama (LEGACY2026)
+``` cpp
+// ini di Hexapod.cpp
 
-•	config.h
-ngeset pin-pin apa saja yang kepake, ngukur spesifkasi badan robot, dll.
+void Hexapod::solvePose() {
+    // =================================================================
+    // 1A) PERSIAPAN MATRIKS (Di luar loop agar tidak dihitung berulang)
+    // =================================================================
+    arm_matrix_instance_f32 matTrans, matRotX, matRotY, matRotZ;
+    float dataTrans[16], dataRotX[16], dataRotY[16], dataRotZ[16];
+    
+    // Inisialisasi struktur matriks ARM (4 baris x 4 kolom)
+    arm_mat_init_f32(&matTrans, 4, 4, dataTrans);
+    arm_mat_init_f32(&matRotX, 4, 4, dataRotX);
+    arm_mat_init_f32(&matRotY, 4, 4, dataRotY);
+    arm_mat_init_f32(&matRotZ, 4, 4, dataRotZ);
 
-•	calib.cpp / .h
-Buat kalibrasi rentang atas bawah parameter dan nilai defaultnya terus disimpen ke EEPROM.
+    // Isi matriks dengan nilai NEGATIF (Kompensasi / Inverse Kinematics Bodi)
+    BodyKinematics::translation(-_trans.x, -_trans.y, -_trans.z, &matTrans);
+    BodyKinematics::rotationX(-_roll, &matRotX);
+    BodyKinematics::rotationY(-_pitch, &matRotY);
+    BodyKinematics::rotationZ(-_yaw, &matRotZ);
 
-•	HexaServos.cpp / .h
-Buat setup servonya batas aman dan ngatur saat awal robot nyala servonya ada di nilai tengah. Terus tinggal di-HexaServos::commit() jalanin servo.
+    for (int leg = 0; leg < 6; leg++) {
+        Vec3 foot = _gait.legTargets[leg];
 
-•	HexaGait.cpp / .h
-Ini nentuin cara tiap kaki ngelangkah. Kayak tingginya, jauhnya, berapa lama buat nyelesain satu langkah, posisi kaki.
+        // =================================================================
+        // 1B) EKSEKUSI TRANSFORMASI SIMD (Pada masing-masing kaki)
+        // =================================================================
+        // Vektor harus berukuran 4x1 (Homogeneous Coordinate), diakhiri angka 1.0f
+        float dataVecIn[4] = { foot.x, foot.y, foot.z, 1.0f }; 
+        float dataVecOut[4] = { 0 };
+        
+        arm_matrix_instance_f32 vecIn, vecOut;
+        arm_mat_init_f32(&vecIn, 4, 1, dataVecIn);
+        arm_mat_init_f32(&vecOut, 4, 1, dataVecOut);
 
-•	LegInverseKinematics.cpp / .h
-Buat ngesolve inverse kinematik pakai nilai-nilai yang sudah di-define di config.h
+        // A. Terapkan Translasi
+        BodyKinematics::apply(&matTrans, &vecIn, &vecOut);
+        
+        // B. Terapkan Rotasi X (Roll)
+        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn)); // Pindah hasil ke input
+        BodyKinematics::apply(&matRotX, &vecIn, &vecOut);
+        
+        // C. Terapkan Rotasi Y (Pitch)
+        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn));
+        BodyKinematics::apply(&matRotY, &vecIn, &vecOut);
+        
+        // D. Terapkan Rotasi Z (Yaw)
+        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn));
+        BodyKinematics::apply(&matRotZ, &vecIn, &vecOut);
 
-•	Hexapod.cpp / .h
-Semuanya bakal masuk ke sini. Bakal nerima perintah buat jalan/stop/pose robot terus nanti dikasih tiap kelas bawahnya (HexaServos, HexaGait, LegInverseKinematics.h).
+        // Ekstrak kembali hasil akhir ke dalam bentuk Vec3 3D biasa
+        Vec3 pb = { dataVecOut[0], dataVecOut[1], dataVecOut[2] };
 
-# Hexapod KRSRI 2026 🕷️ <- Versi Lebih Jelas
+        // =================================================================
+        // 2) Relatif pangkal coxa (Tetap sama seperti sebelumnya)
+        // =================================================================
+        float vx = pb.x - BODY_LEG_ORIGINS[leg][0];
+        float vy = pb.y - BODY_LEG_ORIGINS[leg][1];
+        float vz = pb.z - BODY_LEG_ORIGINS[leg][2];
 
-Repository ini berisi *source code* sistem kendali untuk robot Hexapod 3-DOF yang dirancang khusus untuk misi penyelamatan pada ajang **Kontes Robot SAR Indonesia (KRSRI) 2026**. 
+        // 3) Rotasi ke frame kaki (neutral menghadap +X)
+        float a = -deg2rad(BODY_LEG_ANGLE[leg]);
+        float lx = cosf(a) * vx - sinf(a) * vy;
+        float ly = sinf(a) * vx + cosf(a) * vy;
+        float lz = vz;
 
-Sistem diprogram menggunakan C++ berorientasi objek (OOP) dan dirancang untuk mikrokontroler dengan komputasi tinggi (seperti Teensy 4.1), dengan fokus pada pergerakan yang mulus (*smooth trajecotry*) dan arsitektur kode yang *modular*.
+        // 4) Inverse Kinematics Kaki
+        float coxa, femur, tibia;
+        InverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
 
-## ✨ Fitur Utama
+        // 5) Konversi ke pulse servo
+        uint8_t c = leg * 3 + 0, f = leg * 3 + 1, t = leg * 3 + 2;
+        _servos.setLegPulse(c, angleToPulse(c, coxa,          90.0f));
+        _servos.setLegPulse(f, angleToPulse(f, femur,         90.0f));
+        _servos.setLegPulse(t, angleToPulse(t, tibia - 90.0f, 90.0f));
+    }
+}
+```
+float vx, vy, vz <- ini buat ngasih tau jarak pangkal coxa ke target
 
-- **Inverse Kinematics (IK):** Perhitungan sudut sendi secara *real-time* (Coxa, Femur, Tibia) menggunakan trigonometri aturan cosinus untuk mencegah pergerakan di luar batas fisik.
-- **Tripod Gait Generator:** Animasi langkah berjalan menggunakan kurva trajektori **Sikloid**. Memastikan kecepatan ujung kaki berada di titik nol saat *liftoff* dan *touchdown* untuk menghilangkan hentakan mekanis.
-- **Slew Rate & Ramping:** Transisi mulus berbasis waktu (*dt*) saat robot berakselerasi, berhenti, atau berganti profil gaya berjalan (misal: dari mode merayap ke memanjat tangga).
-- **Fasad Architecture:** Kelas utama yang membungkus kerumitan perhitungan IK dan sinkronisasi kaki, sehingga perintah navigasi dari otak utama (*Mission*) menjadi sangat sederhana.
+float a  <- ini buat ngadepin sumbu x ke depan tiap masing-masing kaki
+float lx <- ini buat ngasih tau kemana harusnya kaki saat ini melangkah di sumbu x jika diperintah (x,y)
+float ly <- ini di sumbu y
 
-## 📂 Struktur Arsitektur Kode
-
-* **`servo.ino`** : Sandbox buat eksperimen. Fokus ke uji coba satu kaki (kanan depan) via komunikasi serial biar servo tidak langsung 'mengamuk' kalau logika kita salah.
-
-Kode dipecah menjadi beberapa "spesialis" untuk memudahkan *debugging* dan *unit testing*:
-
-* **`Hexapod.cpp / .h`** : Dirigen orkestra (CEO). Dia yang menerima perintah 'Jalan', lalu membagi tugas ke HexaGait (buat pola), LegInverseKinematics (buat sudut), dan HexaServos (eksekusi motor).
-* **`HexaGait.cpp / .h`** : Otak koreografer. Dia yang merancang pola langkah Tripod Gait. Dia yang menentukan kapan kaki harus melayang (fase Swing) dan kapan harus menapak (fase Stance) supaya robot jalan mulus, bukan loncat-loncat.
-* **`LegInverseKinematics.cpp / .h`** : Mesin kalkulator 3D. Mengubah keinginan kita (misal: 'kaki harus di titik X') menjadi sudut derajat yang dimengerti oleh servo.
-* **`HexaServos.cpp / .h`** : Driver otot. Ini jembatan antara kode matematika dan motor fisik. Tugasnya memastikan servo bergerak dengan halus dan tidak menyentak saat diperintah.
-* **`types.h` & `config.h`** : Fondasi tipe data (Vektor 3D), rumus rotasi matriks. Tempat menyimpan ukuran tulang kaki (Coxa, Femur, Tibia) dan peta pin PCA9685 supaya robot tahu anggota tubuhnya sendiri.
-
-## 🚀 Cara Penggunaan (Testing 1 Kaki)
-
-Untuk melakukan kalibrasi dan pengujian *Inverse Kinematics* pada satu kaki (3 servo), Anda dapat mengunggah file `servo/servo.ino`. 
-
-ketik "W" pada serial monitor Arduino IDE buat jalan ke depan dan "S" buat stop. Ada versi bedanya (di bagian bawah servo.ino) buat masukkin manual koordinat x, y, z buat gerakin kaki
-
----
+file .ino-nya udah diganti buat ngetes body kinematics dari serial monitor
