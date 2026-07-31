@@ -14,12 +14,14 @@
 //   } EEPROM;
 // #endif
 
-#define CALIB_VERSION 3     // naikkan bila layout CalibBlob/urutan param berubah
+#define CALIB_VERSION 4     // naikkan bila layout CalibBlob/urutan param berubah
 #define CALIB_ADDR    0
 
 const ParamDef PARAM_DEFS[N_PARAMS] = {
     { "pulse.min",        500.0f,  400.0f, 1200.0f },
     { "pulse.max",       2500.0f, 1800.0f, 2600.0f },
+    { "arm.pulse.min",   1000.0f,  500.0f, 1500.0f },
+    { "arm.pulse.max",   2000.0f, 1500.0f, 2500.0f },
     { "gait.step_height",  40.0f,    0.0f,  120.0f },
     { "gait.step_length",  60.0f,    0.0f,  150.0f },
     { "gait.cycle_time",  900.0f,  300.0f, 2000.0f },
@@ -71,11 +73,17 @@ uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
 
 void Calib::applyDefaults() {
     for (int i = 0; i < N_PARAMS; i++) gCalib.param[i] = PARAM_DEFS[i].def;
-    for (int i = 0; i < NUM_SERVOS; i++) {
+    
+    // <--- LOOPING SAMPAI TOTAL_SERVOS (21 Servo)
+    for (int i = 0; i < TOTAL_SERVOS; i++) {
         gCalib.offset[i] = 0.0f;
         gCalib.trim[i]   = 0;
-        gCalib.invert[i] = (i >= 9) ? 1 : 0;      // kaki kiri (idx 9..17) terbalik
+        
+        // Memastikan inversi HANYA berlaku untuk kaki kiri (index 9 sampai 17).
+        // Lengan (index 18, 19, 20) tidak ikut terbalik (bernilai 0).
+        gCalib.invert[i] = (i >= 9 && i < 18) ? 1 : 0;
     }
+    
     gCalib.magic[0] = 'H'; gCalib.magic[1] = 'X';
     gCalib.version  = CALIB_VERSION;
 }

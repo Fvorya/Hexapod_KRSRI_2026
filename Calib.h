@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include "config.h"
 
+#define TOTAL_SERVOS (NUM_SERVOS + ARM_NUM_SERVOS)
+
 enum ParamId {
-    K_PULSE_MIN, K_PULSE_MAX,
+    K_PULSE_MIN, K_PULSE_MAX, K_ARM_PULSE_MIN, K_ARM_PULSE_MAX,
     K_GAIT_STEP_HEIGHT, K_GAIT_STEP_LENGTH, K_GAIT_CYCLE_TIME, K_GAIT_DUTY,
     K_GAIT_SLEW_RATE, K_GAIT_PROFILE_TAU, K_GAIT_SETTLE_TAU,
     // K_STAB_TAU, K_STAB_SIGN_ROLL, K_STAB_SIGN_PITCH,
@@ -28,9 +30,9 @@ struct CalibBlob {
     char     magic[2];
     uint8_t  version;
     float    param[N_PARAMS];
-    float    offset[NUM_SERVOS];
-    int16_t  trim[NUM_SERVOS];
-    uint8_t  invert[NUM_SERVOS];
+    float    offset[TOTAL_SERVOS];
+    int16_t  trim[TOTAL_SERVOS];
+    uint8_t  invert[TOTAL_SERVOS];
     uint16_t crc;
 };
 
@@ -44,6 +46,10 @@ extern CalibBlob gCalib;
 
 #define SERVO_PULSE_MIN   ((uint16_t)gParam[K_PULSE_MIN])
 #define SERVO_PULSE_MAX   ((uint16_t)gParam[K_PULSE_MAX])
+
+#define SERVO_ARM_PULSE_MIN ((uint16_t)gParam[K_ARM_PULSE_MIN])
+#define SERVO_ARM_PULSE_MAX ((uint16_t)gParam[K_ARM_PULSE_MAX])
+
 #define SERVO_OFFSET      gOffset
 #define SERVO_TRIM_US     gTrim
 #define SERVO_INVERT      gInvert

@@ -1,7 +1,7 @@
 #include "Hexapod.h"
 #include <Arduino.h>
 
-Hexapod::Hexapod() { // (Abai) -> : _armR(&_servos, ARM_PIN_MAP_R), _armL(&_servos, ARM_PIN_MAP_L) {
+Hexapod::Hexapod() : _armR(&_servos, ARM_PIN_MAP_R) { // _armL(&_servos, ARM_PIN_MAP_L) {
     _roll = _pitch = _yaw = 0.0f;
     _trans = {0, 0, 0};
     _lastStabT = 0;
@@ -10,7 +10,7 @@ Hexapod::Hexapod() { // (Abai) -> : _armR(&_servos, ARM_PIN_MAP_R), _armL(&_serv
 void Hexapod::begin() {
     _servos.begin();
     _gait.begin();
-    // _armR.begin();
+    _armR.begin();
     // _armL.begin();
     profileFlat();
 }
@@ -21,6 +21,8 @@ void Hexapod::update() {
     // _armR.update();
     // _armL.update();
     _servos.commit();
+    _armR.commit();
+    // _armR.commit();
 }
 
 void Hexapod::walk(float forward, float strafe, float turn) {
@@ -39,7 +41,7 @@ void Hexapod::stop() { _gait.setMoveVector(0, 0, 0); }
 //     pitchDeg = clampf(pitchDeg, -STAB_MAX_DEG, STAB_MAX_DEG);
 //     // low-pass berbasis dt (konstan tau -> kehalusan tak tergantung kecepatan loop)
 //     uint32_t now = millis();
-//     float dt = _lastStabT ? (znow - _lastStabT) / 1000.0f : 0.02f;
+//     float dt = _lastStabT ? (now - _lastStabT) / 1000.0f : 0.02f;
 //     _lastStabT = now;
 //     dt = clampf(dt, 0.0f, 0.05f);
 //     float a = dt / (STAB_TAU + dt);
@@ -83,6 +85,25 @@ uint16_t Hexapod::angleToPulse(uint8_t id, float geoAngleDeg, float baseline) {
         (int)((servoAngle / 180.0f) * (SERVO_PULSE_MAX - SERVO_PULSE_MIN));
     pulse += SERVO_TRIM_US[id];
     return (uint16_t)constrain(pulse, SERVO_PULSE_MIN, SERVO_PULSE_MAX);
+}
+
+void Hexapod::moveArmTarget(float x, float y) {
+    float shoulderDeg = 0.0f;
+    float elbowDeg = 0.0f;
+
+    // Kurangi target koordinat dengan posisi fisik pangkal bahu dari pusat robot
+    float armLocalX = x - ARM_ORIGINS[0][0]; 
+    float armLocalY = y - ARM_ORIGINS[0][2]; // Menggunakan indeks [2] jika Y di IK lengan mewakili tinggi (Z di robot)
+
+    // Masukkan koordinat lokal yang sudah dikoreksi ke rumus IK Lengan
+    if (ArmInverse::solve(armLocalX, armLocalY, shoulderDeg, elbowDeg)) {
+        
+        uint16_t pulseShoulder = _armR.angleToPulse(0, shoulderDeg, 90.0f);
+        uint16_t pulseElbow    = _armR.angleToPulse(1, elbowDeg, 90.0f);
+
+        _armR.setArmPulse(0, pulseShoulder);
+        _armR.setArmPulse(1, pulseElbow);
+    }
 }
 
 void Hexapod::solvePose() {
