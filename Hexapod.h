@@ -7,7 +7,8 @@
 #include "types.h"
 #include "HexaServos.h"
 #include "HexaGait.h"
-// #include "HexaArm.h"
+#include "ArmInverse.h"
+#include "HexaArm.h"
 #include "LegInverseKinematics.h"
 #include "BodyKinematics.h"
 
@@ -38,13 +39,15 @@ public:
     // HexaArm* armLeft()  { return &_armL; }
     // HexaArm* arm()      { return &_armR; }  // default = kanan
 
+    void moveArmTarget(float x, float y);
+
     // Tuner: gerak mentah 1 servo (id 0..NUM_TUNE_SERVOS-1, lihat TUNE_PIN_MAP). Langsung, tanpa gait.
     void jog(uint8_t tuneId, uint16_t pulseUs);
 
 private:
     HexaServos _servos;
     HexaGait   _gait;
-    // HexaArm    _armR;
+    HexaArm    _armR;
     // HexaArm    _armL;
 
     // Pose badan (radian, mm). Hasil smoothing.

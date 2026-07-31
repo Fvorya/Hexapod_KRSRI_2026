@@ -4,13 +4,16 @@
 #include <stdint.h>
 
 #define NUM_SERVOS 18 // 18
-#define NUM_TUNE_SERVOS 18 //24
-// #define ARM_NUM_SERVOS 3
+#define NUM_TUNE_SERVOS 21 //24
+#define ARM_NUM_SERVOS 3 // 3 + 3
 
 // --- Dimensi Kaki Hexapod --- //
 #define COXA_LENGTH 23.0f
 #define FEMUR_LENGTH 54.0f
 #define TIBIA_LENGTH 69.0f
+
+#define UPPERARM_LENGTH 20.0f // panjang ini masih tes
+#define FOREARM_LENGTH 24.0f // panjang ini masih tes
 
 #define STAND_HEIGHT  100.0f // Tinggi badan dari tanah
 #define STAND_RADIUS   70.0f // Jauh kaki ke pangkal coxa
@@ -51,13 +54,18 @@ const uint8_t TUNE_PIN_MAP[NUM_TUNE_SERVOS][2] = {
     {0, 0},  {0, 1},  {0, 2},  // Kaki 2
     {1, 8},  {1, 9},  {1, 10}, // Kaki 3
     {1, 4},  {1, 5},  {1, 6},  // Kaki 4
-    {1, 0},  {1, 1},  {1, 2}  // Kaki 5
-    // {0, 12}, {0, 13}, {0, 14}, // Lengan kanan (base,shoulder,gripper)
+    {1, 0},  {1, 1},  {1, 2},  // Kaki 5
+    {0, 12}, {0, 13}, {0, 14} // Lengan kanan (base,shoulder,gripper)
     // {1, 12}, {1, 13}, {1, 14}  // Lengan kiri
 };
 
-// const uint8_t ARM_PIN_MAP_R[ARM_NUM_SERVOS][2] = { {0, 12}, {0, 13}, {0, 14} }; // Lengkan kanan
+const uint8_t ARM_PIN_MAP_R[ARM_NUM_SERVOS][2] = { {0, 12}, {0, 13}, {0, 14} }; // Lengkan kanan
 // const uint8_t ARM_PIN_MAP_L[ARM_NUM_SERVOS][2] = { {1, 12}, {1, 13}, {1, 14} }; // Lengan kiri
+
+const float ARM_ORIGINS[1][3] = { // [2][3]
+    { 50.0f,  0.0f, 30.0f}  // ARM_R
+    // { -50.0f,   0.0f, 30.0f}   // ARM_L
+};
 
 // BUS I2C (Wire SDA 18 / SCL 19 Teensy 4.1)
 #define SERVO_I2C_BUS    Wire
