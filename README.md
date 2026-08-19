@@ -1,28 +1,59 @@
-# Penjelasan Inverse Kinematics Lengan 🦾
+# Dokumentasi Hexapod Unlimited Kocak-Kocakan Dikit 🎃
 
-Bagian ini khusus menjelaskan bagaimana algoritma robot mengubah perintah koordinat target ujung jari `(x, y)` menjadi derajat putaran motor servo pada engsel bahu ($\theta_1$) dan siku ($\theta_2$). 
+Firmware ini adalah sistem kontrol terpadu untuk robot hexapod (kaki enam) berkemampuan navigasi otonom berbasis IMU, Kinematika Invers (IK) kaki dan lengan, serta manajemen kalibrasi EEPROM.
 
-Agar lebih mudah dibayangkan, berikut adalah skema geometri dan rumus matematis yang digunakan di dalam kode program:
+## 🛠️ Arsitektur Perangkat Keras & Konfigurasi Bus I2C
 
-![Ilustrasi Inverse Kinematics Lengan](Untitled2.png)
+Sistem menggunakan tiga bus I2C terpisah pada Teensy 4.1 untuk menghindari tabrakan data:
+* **`Wire` (SDA 18 / SCL 19):** Jalur khusus untuk sensor LiDAR (TCA9548A / VL53L0X).
+* **`Wire1` (SDA 17 / SCL 16):** Menghubungkan Driver Servo 1 (PCA9685 pada alamat `0x41`)[cite: 1, 18, 19].
+* **`Wire2` (SDA 25 / SCL 24):** Menghubungkan Driver Servo 0 (PCA9685 pada alamat `0x40`)[cite: 1, 18, 19].
+* **Serial2 (RX 7 / TX 8):** Jalur komunikasi IMU (Yahboom 10-axis, protokol WIT, 230400 baud)[cite: 1, 21].
 
-## Cara Kerja Algoritma
+---
 
-Algoritma di dalam file `ArmInverse.cpp` menggunakan pendekatan trigonometri (Aturan Kosinus) untuk menyelesaikan masalah lengan 2-DOF (*Degrees of Freedom*) Planar. Perhitungannya dibagi menjadi dua tahap utama:
+## 📋 Daftar Pengujian Fisik & Kalibrasi (Tahapan Eksekusi)
 
-### 1. Menghitung Sudut Siku / *Elbow* ($\theta_2$)
-Sudut tekukan siku harus dihitung terlebih dahulu dengan memanfaatkan Aturan Kosinus pada segitiga yang dibentuk oleh: pangkal bahu, engsel siku, dan titik koordinat target ujung jari.
+Sebelum menjalankan misi otonom atau navigasi penuh, lakukan pengujian dan kalibrasi dengan urutan berikut menggunakan Serial Monitor (115200 baud, *Newline*):
 
-* **Jarak ke Target:** Pertama, program mencari nilai kuadrat dari jarak garis lurus dari pangkal bahu langsung ke titik target ($x^2 + y^2$).
-* **Aturan Kosinus:** Memanfaatkan panjang fisik lengan atas ($A$ atau $L_1$) dan lengan bawah ($B$ atau $L_2$), nilai tersebut dimasukkan ke dalam Aturan Kosinus: $C^2 = A^2 + B^2 - 2AB \cos(c)$.
-* **Kompensasi Nol Derajat Servo:** Secara mekanis perangkat keras, saat servo siku berada di posisi $0^\circ$, lengan akan lurus merentang (membentuk sudut dalam $180^\circ$ pada segitiga). Oleh karena itu, dilakukan substitusi trigonometri $\cos(180^\circ - \theta_2) = -\cos(\theta_2)$ yang menghasilkan rumus aljabar akhir untuk mencari nilai kosinus siku.
-* **Konversi ke Derajat:** Nilai kosinus tersebut kemudian diubah menjadi sudut radian (lalu dikonversi ke derajat) menggunakan identitas sinus $\sin(\theta_2) = \sqrt{1 - \cos^2(\theta_2)}$ dan fungsi `atan2()`.
+### 1. Kalibrasi Kaki & Telapak Rata (`TES_GERAK`)
+Karena beban gravitasi dan *sagging* pada servo, posisi berdiri awal biasanya membuat ada kaki yang menggantung.
+* **Gunakan alat bantu eksternal `TES_GERAK.ino`** untuk mencari offset tinggi telapak per kaki (`zOff`).
+* Simpan hasilnya secara permanen ke **EEPROM alamat 2048** dengan mengetik **`W`**. 
+* *Catatan:* Program utama `Hexapod` Anda akan otomatis membaca data dari EEPROM 2048 ini saat pertama kali dinyalakan untuk mengoreksi posisi Z tiap telapak kaki[cite: 40].
 
-### 2. Menghitung Sudut Bahu / *Shoulder* ($\theta_1$)
-Pencarian sudut bahu membutuhkan kalkulasi kompensasi atau simpangan, karena posisi ujung jari tidak lagi berada sejajar dengan tulang lengan atas saat siku sedang ditekuk.
+### 2. Kalibrasi Kompas Arena & Pivot
+Untuk memastikan robot dapat berputar secara akurat menuju arah mata angin:
+* Letakkan robot menghadap Utara, lalu ketik **`c0`** (0=Utara, 1=Timur, 2=Selatan, 3=Barat)[cite: 16].
+* Ketik **`e`** untuk menyimpan data orientasi arena ke **EEPROM alamat 1792**[cite: 16].
+* Ketik **`C`** untuk melakukan kalibrasi putar otomatis guna menentukan rasio derajat per siklus langkah[cite: 16].
 
-* **Sudut Elevasi Target ($U_1$):** Menghitung sudut kemiringan garis lurus imajiner yang ditarik dari pangkal bahu langsung menembak ke titik target `(x, y)` menggunakan rumus `atan2(y, x)`.
-* **Sudut Simpangan Siku ($U_2$):** Karena siku ditekuk sebesar $\theta_2$, ujung jari bergeser dari sumbu utama lengan atas. Program menghitung seberapa besar simpangan sudut bayangan ini menggunakan letak lokal ujung jari ($B \sin(\theta_2)$ untuk posisi vertikal dan $A + B \cos(\theta_2)$ untuk posisi horizontal).
-* **Sudut Akhir Bahu ($\theta_1$):** Sudut putaran servo bahu didapatkan dengan mengurangkan sudut elevasi target ($U_1$) dengan sudut simpangan akibat tekukan siku ($U_2$). 
+---
 
-Melalui dua perhitungan berurutan di atas, ujung capit lengan robot akan selalu terkalibrasi dan mendarat akurat di koordinat yang diperintahkan.
+## 🕹️ Panduan Perintah Serial Monitor (`Hexapod_Unlimited`)
+
+Setelah firmware utama diunggah ke Teensy 4.1, Anda dapat mengontrol robot menggunakan perintah teks berikut:
+
+### Kontrol Dasar & Gerak
+* **`s`** : Memerintahkan robot untuk berdiri tegak (mengaktifkan siklus Kinematika Invers dan *gait*)[cite: 40].
+* **`w`** : Memerintahkan robot berjalan maju dengan kecepatan normal (`NAV_FWD_SPEED`)[cite: 25].
+**`Enter Kosong`** : Berhenti darurat (mengatur vektor gerak ke nol / rem mendadak)[cite: 35].
+
+### Navigasi & Kompas Arena (Modul `Navigation`)
+* **`c[0-3]`** : Mencatat sudut heading IMU saat ini sebagai arah arena (0=Utara, 1=Timur, 2=Selatan, 3=Barat)[cite: 16].
+* **`k`** : Mencetak tabel arah kompas arena yang tersimpan ke Serial Monitor[cite: 16].
+* **`e` / `E`** : Menyimpan / Memuat ulang data kompas dari EEPROM 1792[cite: 16].
+* **`o[0-3]`** : Memerintahkan robot berputar otomatis (*pivot closed-loop* dengan kendali PD) menuju arah kompas arena yang dipilih[cite: 16].
+* **`O<derajat>`** : Memerintahkan robot berputar relatif dari posisi saat ini (misal: `O90` untuk belok 90° searah jarum jam)[cite: 16].
+
+### Manipulator Lengan (Inverse Kinematics)
+* Lengan robot dikendalikan menggunakan Kinematika Invers 2D berbasis koordinat Cartesian ($X, Y$)[cite: 18, 41].
+* Pemanggilan fungsi `robot.moveArmTarget(x, y)` di dalam program akan otomatis menghitung sudut bahu dan siku secara presisi tanpa perlu menebak-nebak nilai pulsa servo[cite: 41].
+
+---
+
+## Kesimpulan
+
+Programnya masih sama fungsinya kayak TES_GERAK sama TES_IMU, buat kalibrasi kaki masih pakek TES_GERAK disimpen di EEPROM terus nanti dibaca di program ini.
+
+Karna lengan blom jadi blom bisa ngetes IK lengan. Sama buat LiDAR sama PID masih belom diimplementasiin.

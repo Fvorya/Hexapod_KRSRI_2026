@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #define NUM_SERVOS 18 // 18
-#define NUM_TUNE_SERVOS 21 //24
-#define ARM_NUM_SERVOS 3 // 3 + 3
+#define NUM_TUNE_SERVOS 24 // 24
+#define ARM_NUM_SERVOS 3 // 3 per lengan
 
 // --- Dimensi Kaki Hexapod --- //
 #define COXA_LENGTH 23.0f
@@ -38,7 +38,7 @@ const float BODY_LEG_ANGLE[6] = {
     120.0f     // 5 (Kaki kiri depan)
 };
 
-// Peta pin servo kaki (driver 0 = PCA9685 address (0x40)/driver 1 = PCA9685 address (0x41))
+// Peta pin servo kaki (driver 0 = PCA9685 address (0x41 Wire1)/driver 1 = PCA9685 address (0x40 Wire2))
 const uint8_t SERVO_PIN_MAP[NUM_SERVOS][2] = {
     {0, 8},  {0, 9},  {0, 10}, // Kaki 0 (coxa,femur,tibia)
     {0, 4},  {0, 5},  {0, 6},  // Kaki 1
@@ -55,23 +55,25 @@ const uint8_t TUNE_PIN_MAP[NUM_TUNE_SERVOS][2] = {
     {1, 8},  {1, 9},  {1, 10}, // Kaki 3
     {1, 4},  {1, 5},  {1, 6},  // Kaki 4
     {1, 0},  {1, 1},  {1, 2},  // Kaki 5
-    {0, 12}, {0, 13}, {0, 14} // Lengan kanan (base,shoulder,gripper)
-    // {1, 12}, {1, 13}, {1, 14}  // Lengan kiri
+    {0, 12}, {0, 13}, {0, 14}, // Lengan kanan (base,shoulder,gripper)
+    {1, 12}, {1, 13}, {1, 14}  // Lengan kiri
 };
 
 const uint8_t ARM_PIN_MAP_R[ARM_NUM_SERVOS][2] = { {0, 12}, {0, 13}, {0, 14} }; // Lengkan kanan
-// const uint8_t ARM_PIN_MAP_L[ARM_NUM_SERVOS][2] = { {1, 12}, {1, 13}, {1, 14} }; // Lengan kiri
+const uint8_t ARM_PIN_MAP_L[ARM_NUM_SERVOS][2] = { {1, 12}, {1, 13}, {1, 14} }; // Lengan kiri
 
-const float ARM_ORIGINS[1][3] = { // [2][3]
-    { 50.0f,  0.0f, 30.0f}  // ARM_R
-    // { -50.0f,   0.0f, 30.0f}   // ARM_L
+const float ARM_ORIGINS[2][3] = { // [2][3]
+    { 50.0f,  0.0f, 30.0f},  // ARM_R
+    { -50.0f,   0.0f, 30.0f}   // ARM_L
 };
 
 // BUS I2C (Wire SDA 18 / SCL 19 Teensy 4.1)
-#define SERVO_I2C_BUS    Wire
-#define SERVO_I2C_CLOCK  400000 // 400000 kHz
 #define LIDAR_I2C_BUS    Wire
-#define LIDAR_I2C_CLOCK  400000 // 400000 kHz
+#define SERVO_0_I2C_BUS  Wire1
+#define SERVO_1_I2C_BUS  Wire2
+
+#define SERVO_I2C_CLOCK  400000
+#define LIDAR_I2C_CLOCK  400000
 
 // --- LiDAR --- //
 // #define NUM_LIDAR        6
@@ -81,30 +83,38 @@ const float ARM_ORIGINS[1][3] = { // [2][3]
 // #define LIDAR_MAX_CM     400     // di atas ini dianggap tak valid
 
 // --- IMU --- //
-// #define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)
-// // Indeks lidar -> arti (sesuaikan pemasangan fisik)
-// #define LIDAR_FRONT      0
-// #define LIDAR_FRONT_R    1
-// #define LIDAR_RIGHT      2
-// #define LIDAR_BACK       3
-// #define LIDAR_LEFT       4
-// #define LIDAR_FRONT_L    5
+#define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)
+// Indeks lidar -> arti (sesuaikan pemasangan fisik)
+#define LIDAR_FRONT      0
+#define LIDAR_FRONT_R    1
+#define LIDAR_RIGHT      2
+#define LIDAR_BACK       3
+#define LIDAR_LEFT       4
+#define LIDAR_FRONT_L    5
 
-// #define IMU_SERIAL       Serial1
-// #define IMU_BAUD         921600   // Yahboom 10-axis (protokol WIT, frame 0x55)
+#define IMU_SERIAL       Serial2
+#define IMU_BAUD         230400   // Yahboom 10-axis (protokol WIT, frame 0x55)
 
 // --- Navigasi --- //
-// #define HEADING_TOLERANCE_DEG   3.0f     // Toleransi heading dianggap "lurus" (const)
-// #define FRONT_STOP_CM     20       // Berhenti/belok bila depan < ini (const)
-// #define NAV_FWD_SPEED     0.8f     // Kecepatan maju normal (0..1) (const)
+#define HEADING_TOLERANCE_DEG   6.0f     // Toleransi heading dianggap "lurus" (const)
+#define FRONT_STOP_CM     20       // Berhenti/belok bila depan < ini (const)
+#define NAV_FWD_SPEED     0.8f     // Kecepatan maju normal (0..1) (const)
+
+#define PIVOT_KP        0.020f   // Perintah putar per derajat error
+#define PIVOT_KD        0.004f   // Dari gyro Z murni
+#define PIVOT_MIN_CMD   0.25f    // Minimal gaya agar tidak cuma "menggeliat"
+#define PIVOT_DIAM_MS   500      // Harus di dalam toleransi selama ms ini
+#define PIVOT_BATAS_MS  20000    // Batas waktu timeout (20 detik)
+
+#define EE_KOMPAS_ADDR  1792     // Alamat memori untuk data kompas arena
 
 // --- Lain-Lain --- //
 // #define PIN_BUTTON_START  30   // Tombol mulai (INPUT_PULLUP)
 // #define PIN_LED_FOUND     13   // LED tanda korban ditemukan (cek aturan lomba)
 
 // Stabilisasi badan (IMU)
-// #define STAB_MAX_DEG      15.0f   // Clamp koreksi roll/pitch (const)
-// #define STAB_DEADBAND_DEG 1.0f    // Abaikan getaran kecil (const)
+#define STAB_MAX_DEG      15.0f   // Clamp koreksi roll/pitch (const)
+#define STAB_DEADBAND_DEG 1.0f    // Abaikan getaran kecil (const)
 
 #define SERVO_PWM_FREQ    50      // Hz, frekuensi sinyal PCA9685 (50-330 Hz)
 #define SERVO_COMMIT_MS   20      // ms, periode kirim 18 pulse (20=50Hz, 10=100Hz)

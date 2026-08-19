@@ -8,10 +8,10 @@ HexaServos::HexaServos() {
 
 void HexaServos::begin() {
     _kit0.begin();
-    // _kit1.begin();
+    _kit1.begin();
     SERVO_I2C_BUS.setClock(SERVO_I2C_CLOCK);   // bus servo terpisah, kencang
     _kit0.setPWMFreq(SERVO_FREQ);
-    // _kit1.setPWMFreq(SERVO_FREQ);
+    _kit1.setPWMFreq(SERVO_FREQ);
     uint16_t center = (SERVO_PULSE_MIN + SERVO_PULSE_MAX) / 2;
     for (int i = 0; i < NUM_SERVOS; i++) {
         _target[i] = center;
@@ -36,5 +36,5 @@ bool HexaServos::commit() {
 
 void HexaServos::writeRaw(uint8_t driver, uint8_t channel, uint16_t pulseUs) {
     if (driver == 0) _kit0.writeMicroseconds(channel, pulseUs);
-    // (Abai) -> else             _kit1.writeMicroseconds(channel, pulseUs);
+    else             _kit1.writeMicroseconds(channel, pulseUs);
 }

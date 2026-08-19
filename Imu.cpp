@@ -1,39 +1,98 @@
-// #include "Imu.h"
+#include "Imu.h"
+#include <string.h> // Dibutuhkan untuk fungsi memmove()
 
-// Imu::Imu() {
-//     _idx = 0; _frame = false; _have = false;
-//     _roll = _pitch = _yaw = 0;
-//     _roll0 = _pitch0 = 0;
-// }
+Imu::Imu() {
+    _rxN = 0;
+    _have = false;
+    _roll = _pitch = _yaw = 0;
+    _roll0 = _pitch0 = 0;
+    _gz = 0;
+}
 
-// void Imu::begin() { IMU_SERIAL.begin(IMU_BAUD); }
+void Imu::begin() {
+    // 1. Suntikkan buffer ekstra SEBELUM komunikasi serial dimulai
+    IMU_SERIAL.addMemoryForRead(_rxExtra, sizeof(_rxExtra));
+    
+    // 2. Mulai komunikasi (Pastikan IMU_BAUD di config.h sudah diubah ke 230400)
+    IMU_SERIAL.begin(IMU_BAUD); 
+}
 
-// void Imu::update() {
-//     while (IMU_SERIAL.available()) {
-//         byte b = IMU_SERIAL.read();
-//         if (b == 0x55 && !_frame) { _frame = true; _idx = 0; _rx[_idx++] = b; }
-//         else if (_frame) {
-//             _rx[_idx++] = b;
-//             if (_idx == BUF) {
-//                 _frame = false;
-//                 // Validasi checksum (jumlah 10 byte pertama = byte ke-11).
-//                 uint8_t sum = 0;
-//                 for (int i = 0; i < BUF - 1; i++) sum += _rx[i];
-//                 if (sum != _rx[BUF - 1]) continue;   // frame korup, buang
-//                 if (_rx[1] == 0x53) {   // paket sudut
-//                     int16_t r = (int16_t)(_rx[3] << 8 | _rx[2]);
-//                     int16_t p = (int16_t)(_rx[5] << 8 | _rx[4]);
-//                     int16_t y = (int16_t)(_rx[7] << 8 | _rx[6]);
-//                     _roll  = r / 32768.0f * 180.0f;
-//                     _pitch = p / 32768.0f * 180.0f;
-//                     float yaw = y / 32768.0f * 180.0f;
-//                     if (yaw < 0) yaw += 360.0f;   // 0..360 untuk kompas
-//                     // Gate lonjakan yaw (gangguan magnet) -> tolak delta tak fisik.
-//                     if (!_have || fabsf(angleDiffDeg(yaw, _yaw)) <= IMU_MAX_YAW_JUMP)
-//                         _yaw = yaw;
-//                     _have = true;
-//                 }
-//             }
-//         }
-//     }
-// }
+void Imu::update() {
+    // Logika Resinkronisasi Sejati (membuang byte satu per satu jika gagal)
+    while (IMU_SERIAL.available()) {
+        
+        // Jika buffer penuh, paksa geser 1 byte ke kiri
+        if (_rxN >= sizeof(_rxBuf)) {               
+            memmove(_rxBuf, _rxBuf + 1, --_rxN);
+        }
+        
+        // Baca data baru masuk
+        _rxBuf[_rxN++] = (uint8_t)IMU_SERIAL.read();
+
+        while (_rxN >= WIT_LEN) {
+            
+            // Validasi Header (0x55)
+            if (_rxBuf[0] != 0x55) {
+                memmove(_rxBuf, _rxBuf + 1, --_rxN); // Buang 1 byte
+                continue;
+            }
+            
+            // Validasi Checksum
+            uint8_t sum = 0;
+            for (uint8_t i = 0; i < WIT_LEN - 1; i++) sum += _rxBuf[i];
+            if (sum != _rxBuf[WIT_LEN - 1]) {
+                memmove(_rxBuf, _rxBuf + 1, --_rxN); // Buang 1 byte
+                continue;
+            }
+            
+            // Frame valid, terjemahkan nilainya
+            parseFrame(_rxBuf);
+            
+            // Buang 11 byte yang sudah sukses diproses dari buffer
+            _rxN -= WIT_LEN;
+            memmove(_rxBuf, _rxBuf + WIT_LEN, _rxN);
+        }
+    }
+}
+
+void Imu::parseFrame(const uint8_t* f) {
+    uint8_t t = f[1]; // Tipe paket (0x52 untuk Gyro, 0x53 untuk Sudut)
+    
+    int16_t v0 = (int16_t)(f[3] << 8 | f[2]);
+    int16_t v1 = (int16_t)(f[5] << 8 | f[4]);
+    int16_t v2 = (int16_t)(f[7] << 8 | f[6]);
+
+    switch (t) {
+        case 0x51: // Accelerometer (+- 16g)
+            _ax = v0 / 32768.0f * 16.0f;
+            _ay = v1 / 32768.0f * 16.0f;
+            _az = v2 / 32768.0f * 16.0f;
+            break;
+            
+        case 0x52: // Gyro / Angular Velocity (+- 2000 derajat/detik)
+            // Di sini kita hanya menyimpan Gyro Z karena paling relevan untuk Pivot
+            _gz = v2 / 32768.0f * 2000.0f; 
+            break;
+            
+        case 0x53: { // Sudut Euler (+- 180 derajat)
+            _roll  = v0 / 32768.0f * 180.0f;
+            _pitch = v1 / 32768.0f * 180.0f;
+            float y = v2 / 32768.0f * 180.0f;
+            
+            if (y < 0) y += 360.0f; 
+            if (!_have || fabsf(angleDiffDeg(y, _yaw)) <= IMU_MAX_YAW_JUMP) {
+                _yaw = y;
+            }
+            _have = true;
+            break;
+        }
+        
+        case 0x54: // Data Magnetik Mentah
+            _mhx = (float)v0; 
+            _mhy = (float)v1; 
+            _mhz = (float)v2;
+            break;
+            
+        default: break; 
+    }
+}

@@ -14,7 +14,7 @@
 //   } EEPROM;
 // #endif
 
-#define CALIB_VERSION 4     // naikkan bila layout CalibBlob/urutan param berubah
+#define CALIB_VERSION 5     // naikkan bila layout CalibBlob/urutan param berubah
 #define CALIB_ADDR    0
 
 const ParamDef PARAM_DEFS[N_PARAMS] = {
@@ -29,34 +29,19 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     { "gait.slew_rate",     3.0f,    0.5f,   10.0f },
     { "gait.profile_tau",   0.25f,   0.05f,   1.0f },
     { "gait.settle_tau",    0.10f,   0.02f,   0.5f },
-    // { "stab.tau",           0.08f,   0.02f,   0.5f },
-    // { "stab.sign_roll",    -1.0f,   -1.0f,    1.0f },
-    // { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f },
-    // { "heading.kp",         0.020f,  0.0f,    0.1f },
-    // { "heading.kd",         0.004f,  0.0f,    0.05f },
-    // { "wall.kp",            0.030f,  0.0f,    0.1f },
-    // { "wall.kd",            0.010f,  0.0f,    0.05f },
-    // { "wall.setpoint",     13.0f,    5.0f,   30.0f },
-    // { "head.utara",         0.0f,    0.0f,  360.0f },
-    // { "head.timur",        90.0f,    0.0f,  360.0f },
-    // { "head.selatan",     180.0f,    0.0f,  360.0f },
-    // { "head.barat",       270.0f,    0.0f,  360.0f },
-    // { "arena.mirror",       0.0f,    0.0f,    1.0f },   // 0=hadap kanan, 1=cermin (hadap kiri)
-    // { "arm.park.base",     90.0f,    0.0f,  180.0f },
-    // { "arm.park.shoulder", 30.0f,    0.0f,  180.0f },
-    // { "arm.park.grip",     20.0f,    0.0f,  180.0f },
-    // { "arm.reach.base",    90.0f,    0.0f,  180.0f },
-    // { "arm.reach.shoulder",150.0f,   0.0f,  180.0f },
-    // { "arm.reach.grip",    70.0f,    0.0f,  180.0f },
-    // { "arm.grip.base",     90.0f,    0.0f,  180.0f },
-    // { "arm.grip.shoulder",150.0f,    0.0f,  180.0f },
-    // { "arm.grip.grip",     10.0f,    0.0f,  180.0f },
-    // { "arm.lift.base",     90.0f,    0.0f,  180.0f },
-    // { "arm.lift.shoulder", 60.0f,    0.0f,  180.0f },
-    // { "arm.lift.grip",     10.0f,    0.0f,  180.0f },
-    // { "arm.drop.base",     90.0f,    0.0f,  180.0f },
-    // { "arm.drop.shoulder",120.0f,    0.0f,  180.0f },
-    // { "arm.drop.grip",     70.0f,    0.0f,  180.0f },
+    { "stab.tau",           0.08f,   0.02f,   0.5f },
+    { "stab.sign_roll",    -1.0f,   -1.0f,    1.0f },
+    { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f },
+    { "heading.kp",         0.020f,  0.0f,    0.1f },
+    { "heading.kd",         0.004f,  0.0f,    0.05f },
+    { "wall.kp",            0.030f,  0.0f,    0.1f },
+    { "wall.kd",            0.010f,  0.0f,    0.05f },
+    { "wall.setpoint",     13.0f,    5.0f,   30.0f },
+    { "head.utara",         0.0f,    0.0f,  360.0f },
+    { "head.timur",        90.0f,    0.0f,  360.0f },
+    { "head.selatan",     180.0f,    0.0f,  360.0f },
+    { "head.barat",       270.0f,    0.0f,  360.0f },
+    { "arena.mirror",       0.0f,    0.0f,    1.0f },   // 0=hadap kanan, 1=cermin (hadap kiri)
 };
 
 CalibBlob gCalib;
