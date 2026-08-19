@@ -11,6 +11,8 @@ public:
     void begin();
     void setArmPulse(uint8_t id, uint16_t pulseUs);
     bool commit();
+    
+    uint16_t angleToPulse(uint8_t id, float geoAngleDeg, float baseline);
 
 private:
     HexaServos* _driver;
@@ -18,7 +20,6 @@ private:
 
     uint16_t _target[ARM_NUM_SERVOS];
     unsigned long _lastUpdate;
-    uint16_t angleToPulse(uint8_t id, float geoAngleDeg, float baseline);
 };
 
 #endif

@@ -18,6 +18,7 @@ struct GaitProfile {
     float stepLength;   // mm
     float cycleTime;    // ms
     float standHeight;  // mm (foot z = -standHeight)
+    float standRadius;
 };
 
 class HexaGait {
@@ -37,7 +38,8 @@ private:
     float _tgtX, _tgtY, _tgtYaw;     // vektor gerak target
     float _curX, _curY, _curYaw;     // vektor gerak aktual (di-slew)
     bool _running;
-    unsigned long _cycleStart, _lastUpdate;
+    float _phase;
+    unsigned long _lastUpdate;
     void computeHome();
     float dtSeconds();
 };

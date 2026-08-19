@@ -33,11 +33,11 @@ public:
     void profileFlat();
     void profileStairs();
     void profileCrouch();
+    void profileNarrow();
     void setGaitProfile(const GaitProfile& p) { _gait.setProfile(p); }
 
-    // HexaArm* armRight() { return &_armR; }
-    // HexaArm* armLeft()  { return &_armL; }
-    // HexaArm* arm()      { return &_armR; }  // default = kanan
+    HexaArm* armRight() { return &_armR; }
+    HexaArm* armLeft()  { return &_armL; }
 
     void moveArmTarget(float x, float y);
 
@@ -48,12 +48,15 @@ private:
     HexaServos _servos;
     HexaGait   _gait;
     HexaArm    _armR;
-    // HexaArm    _armL;
+    HexaArm    _armL;
 
     // Pose badan (radian, mm). Hasil smoothing.
     float _roll, _pitch, _yaw;
     Vec3  _trans;
     uint32_t _lastStabT;   // untuk low-pass stabilisasi berbasis dt
+
+    // Offset Z per kaki dari EEPROM 2048 (Kalibrasi TES_GERAK)
+    float _zOff[6] = {0, 0, 0, 0, 0, 0};
 
     void solvePose();
     uint16_t angleToPulse(uint8_t servoID, float geoAngleDeg, float baseline);

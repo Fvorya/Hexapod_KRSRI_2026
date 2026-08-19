@@ -1,7 +1,18 @@
 #include "Hexapod.h"
 #include <Arduino.h>
 
-Hexapod::Hexapod() : _armR(&_servos, ARM_PIN_MAP_R) { // _armL(&_servos, ARM_PIN_MAP_L) {
+struct GerakStore {
+    uint8_t m0, m1, ver;
+    float   ccw, cw, maju;
+    int8_t  sign;
+    float   lvlR, lvlP;        
+    float   refR, refP;        
+    float   jac[4];            
+    float   zoff[6];  // Ini yang kita butuhkan!
+    uint8_t sum;
+};
+
+Hexapod::Hexapod() : _armR(&_servos, ARM_PIN_MAP_R), _armL(&_servos, ARM_PIN_MAP_L) {
     _roll = _pitch = _yaw = 0.0f;
     _trans = {0, 0, 0};
     _lastStabT = 0;
@@ -11,18 +22,29 @@ void Hexapod::begin() {
     _servos.begin();
     _gait.begin();
     _armR.begin();
-    // _armL.begin();
+    _armL.begin();
     profileFlat();
+
+    GerakStore s;
+    EEPROM.get(2048, s); 
+    
+    // Cek apakah data valid (magic number 0x6E 0x2C dan versi 2)
+    if (s.m0 == 0x6E && s.m1 == 0x2C && s.ver == 2) {
+        for (uint8_t i = 0; i < 6; i++) {
+            _zOff[i] = s.zoff[i]; // Salin offset telapak ke sistem
+        }
+        Serial.println("Hexapod: Offset kaki rata dimuat dari EEPROM 2048.");
+    } else {
+        Serial.println("Hexapod: Peringatan, kalibrasi kaki tidak valid/belum ada.");
+    }
 }
 
 void Hexapod::update() {
     _gait.update();
     solvePose();
-    // _armR.update();
-    // _armL.update();
     _servos.commit();
     _armR.commit();
-    // _armR.commit();
+    _armL.commit();
 }
 
 void Hexapod::walk(float forward, float strafe, float turn) {
@@ -63,16 +85,29 @@ void Hexapod::jog(uint8_t tuneId, uint16_t pulseUs) {
 }
 
 void Hexapod::profileFlat() {
-    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT });
+    // 0 DATAR: { 40, 60, 900, 100, 70 } -> Sesuai konstanta dasar
+    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT, STAND_RADIUS });
 }
+
 void Hexapod::profileStairs() {
-    // langkah lebih tinggi & panjang, badan sedikit lebih tinggi, lebih lambat.
-    _gait.setProfile({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 20.0f,
-                       GAIT_CYCLE_TIME + 300.0f, STAND_HEIGHT + 10.0f });
+    // 1 TANGGA: { 75, 70, 1800, 110, 70 }
+    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+900), Tinggi Badan(+10)
+    _gait.setProfile({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 10.0f,
+                       GAIT_CYCLE_TIME + 900.0f, STAND_HEIGHT + 10.0f, STAND_RADIUS });
 }
+
 void Hexapod::profileCrouch() {
-    // menunduk untuk masuk celah / ambil korban rendah.
-    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT - 20.0f });
+    // 2 MERUNDUK: { 40, 55, 1100, 80, 70 }
+    // Perubahan: Langkah(-5), Siklus(+200), Tinggi Badan(-20)
+    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 5.0f, 
+                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT - 20.0f, STAND_RADIUS });
+}
+
+void Hexapod::profileNarrow() {
+    // 3 SEMPIT: { 30, 45, 1000, 100, 45 }
+    // Perubahan: Tinggi(-10), Langkah(-15), Siklus(+100), Lebar Kaki(-25)
+    _gait.setProfile({ GAIT_STEP_HEIGHT - 10.0f, GAIT_STEP_LENGTH - 15.0f, 
+                       GAIT_CYCLE_TIME + 100.0f, STAND_HEIGHT, STAND_RADIUS - 25.0f });
 }
 
 // geoAngle (derajat) -> pulse, dengan kalibrasi per-servo.
@@ -107,58 +142,22 @@ void Hexapod::moveArmTarget(float x, float y) {
 }
 
 void Hexapod::solvePose() {
-    // =================================================================
-    // 1A) PERSIAPAN MATRIKS (Di luar loop agar tidak dihitung berulang)
-    // =================================================================
-    arm_matrix_instance_f32 matTrans, matRotX, matRotY, matRotZ;
-    float dataTrans[16], dataRotX[16], dataRotY[16], dataRotZ[16];
-    
-    // Inisialisasi struktur matriks ARM (4 baris x 4 kolom)
-    arm_mat_init_f32(&matTrans, 4, 4, dataTrans);
-    arm_mat_init_f32(&matRotX, 4, 4, dataRotX);
-    arm_mat_init_f32(&matRotY, 4, 4, dataRotY);
-    arm_mat_init_f32(&matRotZ, 4, 4, dataRotZ);
-
-    // Isi matriks dengan nilai NEGATIF (Kompensasi / Inverse Kinematics Bodi)
-    BodyKinematics::translation(-_trans.x, -_trans.y, -_trans.z, &matTrans);
-    BodyKinematics::rotationX(-_roll, &matRotX);
-    BodyKinematics::rotationY(-_pitch, &matRotY);
-    BodyKinematics::rotationZ(-_yaw, &matRotZ);
-
     for (int leg = 0; leg < 6; leg++) {
         Vec3 foot = _gait.legTargets[leg];
 
         // =================================================================
-        // 1B) EKSEKUSI TRANSFORMASI SIMD (Pada masing-masing kaki)
+        // 1) Body Kinematics (Metode Aljabar Langsung - Super Cepat)
         // =================================================================
-        // Vektor harus berukuran 4x1 (Homogeneous Coordinate), diakhiri angka 1.0f
-        float dataVecIn[4] = { foot.x, foot.y, foot.z, 1.0f }; 
-        float dataVecOut[4] = { 0 };
+        Vec3 p = { 
+            foot.x - _trans.x, 
+            foot.y - _trans.y, 
+            (foot.z + _zOff[leg]) - _trans.z  // <--- Z Offset dimasukkan di sini
+        };
         
-        arm_matrix_instance_f32 vecIn, vecOut;
-        arm_mat_init_f32(&vecIn, 4, 1, dataVecIn);
-        arm_mat_init_f32(&vecOut, 4, 1, dataVecOut);
-
-        // A. Terapkan Translasi
-        BodyKinematics::apply(&matTrans, &vecIn, &vecOut);
-        
-        // B. Terapkan Rotasi X (Roll)
-        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn)); // Pindah hasil ke input
-        BodyKinematics::apply(&matRotX, &vecIn, &vecOut);
-        
-        // C. Terapkan Rotasi Y (Pitch)
-        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn));
-        BodyKinematics::apply(&matRotY, &vecIn, &vecOut);
-        
-        // D. Terapkan Rotasi Z (Yaw)
-        memcpy(dataVecIn, dataVecOut, sizeof(dataVecIn));
-        BodyKinematics::apply(&matRotZ, &vecIn, &vecOut);
-
-        // Ekstrak kembali hasil akhir ke dalam bentuk Vec3 3D biasa
-        Vec3 pb = { dataVecOut[0], dataVecOut[1], dataVecOut[2] };
+        Vec3 pb = rotatePointInv(p, _roll, _pitch, _yaw);
 
         // =================================================================
-        // 2) Relatif pangkal coxa (Tetap sama seperti sebelumnya)
+        // 2) Relatif pangkal coxa
         // =================================================================
         float vx = pb.x - BODY_LEG_ORIGINS[leg][0];
         float vy = pb.y - BODY_LEG_ORIGINS[leg][1];
@@ -172,7 +171,7 @@ void Hexapod::solvePose() {
 
         // 4) Inverse Kinematics Kaki
         float coxa, femur, tibia;
-        InverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
+        LegInverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
 
         // 5) Konversi ke pulse servo
         uint8_t c = leg * 3 + 0, f = leg * 3 + 1, t = leg * 3 + 2;
