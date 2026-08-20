@@ -3,6 +3,7 @@
 
 // Fasad: SATU-SATUNYA class yang dipakai di .ino & misi.
 // Mengurus: gait -> body transform -> IK per kaki -> pulse servo (terkalibrasi).
+#include "EEPROM.h"
 #include "Calib.h"   // config.h + kalibrasi runtime
 #include "types.h"
 #include "HexaServos.h"
@@ -10,7 +11,6 @@
 #include "ArmInverse.h"
 #include "HexaArm.h"
 #include "LegInverseKinematics.h"
-#include "BodyKinematics.h"
 
 class Hexapod {
 public:

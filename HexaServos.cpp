@@ -7,11 +7,19 @@ HexaServos::HexaServos() {
 }
 
 void HexaServos::begin() {
+    // 1. Inisialisasi kedua modul (ini otomatis memanggil .begin() pada bus masing-masing)
     _kit0.begin();
     _kit1.begin();
-    SERVO_I2C_BUS.setClock(SERVO_I2C_CLOCK);   // bus servo terpisah, kencang
-    _kit0.setPWMFreq(SERVO_FREQ);
-    _kit1.setPWMFreq(SERVO_FREQ);
+
+    // 2. Set frekuensi PWM untuk motor servo (biasanya 50 Hz atau 330 Hz)
+    _kit0.setPWMFreq(SERVO_PWM_FREQ);
+    _kit1.setPWMFreq(SERVO_PWM_FREQ);
+
+    // 3. Set kecepatan komunikasi I2C agar pengiriman data ke 21 servo tidak lag
+    // Ganti SERVO_I2C_BUS yang lama dengan kedua bus ini:
+    SERVO_0_I2C_BUS.setClock(SERVO_I2C_CLOCK);
+    SERVO_1_I2C_BUS.setClock(SERVO_I2C_CLOCK);
+    
     uint16_t center = (SERVO_PULSE_MIN + SERVO_PULSE_MAX) / 2;
     for (int i = 0; i < NUM_SERVOS; i++) {
         _target[i] = center;
