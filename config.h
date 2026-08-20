@@ -76,22 +76,22 @@ const float ARM_ORIGINS[2][3] = { // [2][3]
 #define LIDAR_I2C_CLOCK  400000
 
 // --- LiDAR --- //
-// #define NUM_LIDAR        6
-// #define I2C_MUX_ADDR     0x70
-// #define LIDAR_EMA_ALPHA  0.4f    // bobot sampel baru (median dulu, lalu EMA)
-// #define LIDAR_TIMEOUT_MS 300     // sensor dianggap mati bila tak ada data valid
-// #define LIDAR_MAX_CM     400     // di atas ini dianggap tak valid
+#define NUM_LIDAR        6
+#define I2C_MUX_ADDR     0x70
+#define LIDAR_EMA_ALPHA  0.4f    // bobot sampel baru (median dulu, lalu EMA)
+#define LIDAR_TIMEOUT_MS 300     // sensor dianggap mati bila tak ada data valid
+#define LIDAR_MAX_CM     200     // 400 // di atas ini dianggap tak valid
 
-// --- IMU --- //
-#define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)
 // Indeks lidar -> arti (sesuaikan pemasangan fisik)
 #define LIDAR_FRONT      0
 #define LIDAR_FRONT_R    1
-#define LIDAR_RIGHT      2
+#define LIDAR_BACK_R     2
 #define LIDAR_BACK       3
-#define LIDAR_LEFT       4
+#define LIDAR_BACK_L     4
 #define LIDAR_FRONT_L    5
 
+// --- IMU --- //
+#define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)
 #define IMU_SERIAL       Serial2
 #define IMU_BAUD         230400   // Yahboom 10-axis (protokol WIT, frame 0x55)
 
