@@ -1,4 +1,4 @@
-#include "calib.h"
+#include "Calib.h"   // huruf besar: aman di filesystem case-sensitive (CI/Linux)
 #include <string.h>
 #include <EEPROM.h>
 
@@ -14,8 +14,16 @@
 //   } EEPROM;
 // #endif
 
-#define CALIB_VERSION 5     // naikkan bila layout CalibBlob/urutan param berubah
-#define CALIB_ADDR    0
+// v6: tabel invert diperbaiki (v5 memakai rumus "balik semua kaki kiri" yang
+//     salah di 9 dari 18 sendi). Versi WAJIB dinaikkan -- kalau tidak, blob v5
+//     yang sudah terlanjur tersimpan di EEPROM tetap lolos CRC dan invert lama
+//     akan dimuat kembali, sehingga perbaikan di bawah tidak berefek apa-apa.
+// v7: default wall.kp & wall.kd diganti (lihat catatan di PARAM_DEFS).
+//     Sama seperti v6, versi WAJIB dinaikkan: gain lama sudah terlanjur ada di
+//     EEPROM alamat 0 dan blob v6 tetap lolos CRC, jadi tanpa kenaikan versi
+//     robot akan memuat kembali 0,030/0,010 dan perubahan ini tak berefek.
+#define CALIB_VERSION 7     // naikkan bila layout CalibBlob/urutan param berubah
+#define CALIB_ADDR    EE_CALIB_ADDR   // satu sumber alamat: config.h / EEMap.h
 
 const ParamDef PARAM_DEFS[N_PARAMS] = {
     { "pulse.min",        500.0f,  400.0f, 1200.0f },
@@ -34,8 +42,16 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f },
     { "heading.kp",         0.020f,  0.0f,    0.1f },
     { "heading.kd",         0.004f,  0.0f,    0.05f },
-    { "wall.kp",            0.030f,  0.0f,    0.1f },
-    { "wall.kd",            0.010f,  0.0f,    0.05f },
+    // wall.kp 0,030 -> 0,008 : yang lama menjenuhkan kemudi ke +-1,00 begitu
+    //   dinding lebih jauh dari 46 cm, jadi robot memutar PENUH menghadap
+    //   dinding alih-alih menggeser mendekat.
+    // wall.kd 0,010 -> 0,030 : yang lama bekerja pada jarak yang dibulatkan ke
+    //   cm dengan pembagi dt loop, jadi ia hanya menyuntikkan impuls yang lalu
+    //   disaring GAIT_SLEW_RATE. Sesudah turunan dihitung pada laju sampel
+    //   LiDAR, angka yang lebih besar barulah berarti sebagai redaman.
+    // Dipilih lewat sweep di simulasi; tetap perlu disetel di robot sungguhan.
+    { "wall.kp",            0.008f,  0.0f,    0.1f },
+    { "wall.kd",            0.030f,  0.0f,    0.05f },
     { "wall.setpoint",     13.0f,    5.0f,   30.0f },
     { "head.utara",         0.0f,    0.0f,  360.0f },
     { "head.timur",        90.0f,    0.0f,  360.0f },
@@ -45,6 +61,27 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
 };
 
 CalibBlob gCalib;
+
+// Arah putar tiap sendi -- HASIL UJI FISIK, disalin dari
+// legacy-2026/TES_GERAK/servo_map.h (smDefaults, Agustus 2026).
+// Polanya TIDAK seragam per kaki, jadi JANGAN disederhanakan jadi rumus:
+//   coxa  : dibalik di KEENAM kaki (arah coxa memang berlawanan dgn pemasangan)
+//   femur : dibalik hanya di sisi KANAN (kaki 0,1,2)
+//   tibia : dibalik hanya di sisi KIRI  (kaki 3,4,5)
+// Femur & tibia saling melengkapi antar sisi -- konsisten dengan modul kaki
+// kanan/kiri yang terpasang bercermin.
+// Urutan slot: 0-17 kaki (coxa,femur,tibia per kaki), 18-20 lengan kanan,
+// 21-23 lengan kiri. Sama dengan SLOT_NAME[] di servo_map.h.
+static const uint8_t INVERT_DEF[TOTAL_SERVOS] = {
+    1, 1, 0,    // K0 kanan-depan
+    1, 1, 0,    // K1 kanan-tengah
+    1, 1, 0,    // K2 kanan-belakang
+    1, 0, 1,    // K3 kiri-belakang
+    1, 0, 1,    // K4 kiri-tengah
+    1, 0, 1,    // K5 kiri-depan
+    0, 0, 0,    // lengan kanan (base, shoulder, grip)
+    0, 0, 0     // lengan kiri
+};
 
 uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
     uint16_t crc = 0xFFFF;                        // CRC16-CCITT
@@ -59,14 +96,11 @@ uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
 void Calib::applyDefaults() {
     for (int i = 0; i < N_PARAMS; i++) gCalib.param[i] = PARAM_DEFS[i].def;
     
-    // <--- LOOPING SAMPAI TOTAL_SERVOS (21 Servo)
+    // <--- LOOPING SAMPAI TOTAL_SERVOS (24 slot: 18 kaki + 2x3 lengan)
     for (int i = 0; i < TOTAL_SERVOS; i++) {
         gCalib.offset[i] = 0.0f;
         gCalib.trim[i]   = 0;
-        
-        // Memastikan inversi HANYA berlaku untuk kaki kiri (index 9 sampai 17).
-        // Lengan (index 18, 19, 20) tidak ikut terbalik (bernilai 0).
-        gCalib.invert[i] = (i >= 9 && i < 18) ? 1 : 0;
+        gCalib.invert[i] = INVERT_DEF[i];   // lihat tabel di atas
     }
     
     gCalib.magic[0] = 'H'; gCalib.magic[1] = 'X';

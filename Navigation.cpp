@@ -1,30 +1,24 @@
 #include "Navigation.h"
-#include "Calib.h" // Memanggil ini agar bisa membaca GAIT_CYCLE_TIME dari sistem
-
-struct KompasStore { uint8_t m0, m1, ver; float head[4]; uint8_t sum; };
+#include "Calib.h"  // Memanggil ini agar bisa membaca GAIT_CYCLE_TIME dari sistem
+#include "EEMap.h"  // KompasStore, GerakStore, eeSum -- satu definisi bersama
 
 // Konstruktor disambungkan ke Hexapod
-Navigation::Navigation(Imu& imuRef, Hexapod& robotRef) : _imu(imuRef), _robot(robotRef) {}
+Navigation::Navigation(Imu& imuRef, Hexapod& robotRef, LidarArray& lidarRef)
+    : _imu(imuRef), _robot(robotRef), _lidar(lidarRef) {}
 
 void Navigation::begin() {
     kompasMuat(false);
+    gerakMuat(true);     // pivot & odometri hasil kalibrasi TES_GERAK
 }
 
 // ====================================================================
 // UTILITAS INTERNAL
 // ====================================================================
 
-float Navigation::wrap180(float d) {
+float Navigation::wrap180(float d) const {
     while (d >  180.0f) d -= 360.0f;
     while (d < -180.0f) d += 360.0f;
     return d;
-}
-
-uint8_t Navigation::kompasSum(const void* buf, size_t n) {
-    const uint8_t* p = (const uint8_t*)buf;
-    uint8_t acc = 0;
-    for (size_t i = 0; i < n; i++) acc = (uint8_t)(acc + p[i] * 31 + 7);
-    return acc;
 }
 
 // Meneruskan perintah putar langsung ke fungsi walk milik Hexapod
@@ -80,7 +74,7 @@ void Navigation::kompasSimpan() {
     memset(&s, 0, sizeof(s));
     s.m0 = 0xC0; s.m1 = 0x3A; s.ver = 1;
     for (uint8_t i = 0; i < 4; i++) s.head[i] = _headArah[i];
-    s.sum = kompasSum(&s, offsetof(KompasStore, sum));
+    s.sum = eeSum(&s, offsetof(KompasStore, sum));
     EEPROM.put(EE_KOMPAS_ADDR, s);
     Serial.println("Kompas Arena disimpan ke EEPROM 1792.");
 }
@@ -89,12 +83,29 @@ bool Navigation::kompasMuat(bool cerewet) {
     KompasStore s;
     EEPROM.get(EE_KOMPAS_ADDR, s);
     if (s.m0 != 0xC0 || s.m1 != 0x3A || s.ver != 1 ||
-        s.sum != kompasSum(&s, offsetof(KompasStore, sum))) {
+        s.sum != eeSum(&s, offsetof(KompasStore, sum))) {
         if (cerewet) Serial.println("EEPROM kompas kosong/rusak.");
         return false;
     }
     for (uint8_t i = 0; i < 4; i++) _headArah[i] = s.head[i];
     if (cerewet) Serial.println("4 arah dimuat dari EEPROM.");
+    return true;
+}
+
+int8_t Navigation::arahTerdekat(float yawDeg, float& selisihDeg) const {
+    int8_t terbaik = -1;
+    float  minAbs  = 1e9f;
+    for (uint8_t i = 0; i < 4; i++) {
+        if (_headArah[i] < 0) continue;          // arah ini belum dicatat
+        float d = wrap180(_headArah[i] - yawDeg);
+        if (fabsf(d) < minAbs) { minAbs = fabsf(d); terbaik = (int8_t)i; selisihDeg = d; }
+    }
+    if (terbaik < 0) selisihDeg = 0.0f;
+    return terbaik;
+}
+
+bool Navigation::kompasLengkap() const {
+    for (uint8_t i = 0; i < 4; i++) if (_headArah[i] < 0) return false;
     return true;
 }
 
@@ -108,46 +119,104 @@ void Navigation::kompasTabel() {
 }
 
 // ====================================================================
-// 2. PIVOT TERTUTUP (PD Controller)
+// 2. PIVOT TERTUTUP (PD) -- NON-BLOKIR
 // ====================================================================
+// pivotKe() hanya MEMULAI; pivotUpdate() menjalankan satu langkah tiap
+// navUpdate(). Dulu pivotKe() memblokir loop utama sampai 20 detik: selama itu
+// parser serial mati total, 'x' tidak bisa melemaskan servo, dan satu-satunya
+// rem adalah jalan keluar "tekan Enter" yang ditanam di dalam loop-nya sendiri.
+// Sekarang pivot memakai jalur berhenti yang sama dengan navigasi ikut-dinding.
+
+// Satu langkah kendali menuju targetYaw. Suku D murni dari gyro Z (di dalam
+// kemudiHeading), dan _pivotSign sudah diserap di sana juga. Dorongan minimal
+// diberikan SESUDAH penandaan arah, jadi arahnya ikut tanda turn.
+float Navigation::pivotLangkah(float targetYaw, float& err) const {
+    err = wrap180(targetYaw - _imu.yawDeg());
+    float turn = kemudiHeading(targetYaw);
+    if (fabsf(err) > HEADING_TOLERANCE_DEG && fabsf(turn) < PIVOT_MIN_CMD)
+        turn = (turn >= 0 ? PIVOT_MIN_CMD : -PIVOT_MIN_CMD);
+    return turn;
+}
 
 void Navigation::pivotKe(float targetYaw) {
     if (!_imu.hasData()) { Serial.println("Gagal: Tidak ada data IMU."); return; }
-
-    uint32_t t0 = millis(), lapor = 0, masukSejak = 0;
-    bool selesai = false;
-
-    while (millis() - t0 < PIVOT_BATAS_MS) {
-        updateSistem();
-        
-        float yawKini = _imu.yawDeg();
-        float gzKini = _imu.gyroZ();
-        
-        float err = wrap180(targetYaw - yawKini);
-        
-        // Suku D diambil murni dari Gyro Z untuk membuang kebisingan turunan
-        float turn = PIVOT_KP * err - PIVOT_KD * gzKini;
-        
-        if (turn >  1.0f) turn =  1.0f;
-        if (turn < -1.0f) turn = -1.0f;
-        
-        if (fabsf(err) > HEADING_TOLERANCE_DEG && fabsf(turn) < PIVOT_MIN_CMD) {
-            turn = (turn >= 0 ? PIVOT_MIN_CMD : -PIVOT_MIN_CMD);
-        }
-
-        gaitPutar(_pivotSign * turn);
-
-        // Histeresis masuk ke dalam toleransi target
-        if (fabsf(err) <= HEADING_TOLERANCE_DEG) {
-            if (!masukSejak) masukSejak = millis();
-            if (millis() - masukSejak >= PIVOT_DIAM_MS) { selesai = true; break; }
-        } else {
-            masukSejak = 0;
-        }
+    if (!_robot.isArmed()) {
+        Serial.println("Gagal: servo masih lemas. Ketik 'b' dulu supaya robot berdiri.");
+        return;
     }
-    
-    gaitPutar(0); // Matikan putaran setelah sampai atau timeout
-    tunggu(800);  // Biarkan kaki merespons dan kembali *settle* ke *home*
+
+    // Beda dengan mode arena yang MENOLAK jalan tanpa kalibrasi: pivot dengan
+    // arah putar terbalik ketahuan sendiri lewat timeout 20 detik, jadi cukup
+    // diperingatkan. Yang berbahaya adalah mode arena -- di fase jalan, tanda
+    // yang salah hanya melengkungkan lintasan diam-diam tanpa gejala.
+    if (!_pivotKalib) {
+        Serial.println("Peringatan: pivot belum dikalibrasi -- arah putar masih tebakan.");
+        Serial.println("            Kalau robot berputar MENJAUHI target, jalankan 'C' lalu 'S'.");
+    }
+
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah pivot.");
+
+    _mode        = NAV_PIVOT;
+    _fase        = FASE_PIVOT;
+    _pivotTarget = targetYaw;
+    _tPivot      = millis();
+    _diamSejak   = 0;
+    _tPrev       = 0;
+    _majuKini    = _turnKini = 0.0f;
+
+    Serial.print("Pivot MULAI menuju "); Serial.print(targetYaw, 1);
+    Serial.print(" der (sekarang ");     Serial.print(_imu.yawDeg(), 1);
+    Serial.println(" der).");
+    Serial.println("  's', 'x', atau Enter untuk membatalkan.");
+}
+
+// Satu langkah pivot. Dipanggil navUpdate() saat _mode == NAV_PIVOT.
+void Navigation::pivotUpdate() {
+    uint32_t now = millis();
+
+    // Fase 2: target tercapai, perintah putar sudah nol, tinggal menunggu kaki
+    // settle ke home. Pengganti tunggu(800) yang dulu memblokir di ujung.
+    if (_fase == FASE_SETTLE) {
+        if (now - _tPivot >= PIVOT_SETTLE_MS) {
+            _mode = NAV_DIAM;
+            _majuKini = _turnKini = 0.0f;
+            Serial.print("Pivot SELESAI: yaw "); Serial.print(_imu.yawDeg(), 1);
+            Serial.print(" der, simpang ");
+            Serial.print(wrap180(_pivotTarget - _imu.yawDeg()), 1);
+            Serial.println(" der.");
+        }
+        return;
+    }
+
+    // IMU bisa lepas di tengah pivot (kabel Serial2). Tanpa penjaga ini yaw
+    // membeku di nilai terakhir dan robot berputar terus sampai timeout.
+    if (!_imu.hasData()) { navBerhenti("data IMU hilang saat pivot."); return; }
+
+    if (now - _tPivot > PIVOT_BATAS_MS) {
+        navBerhenti("pivot gagal mencapai target (timeout).");
+        return;
+    }
+
+    float err;
+    float turn = pivotLangkah(_pivotTarget, err);
+    _majuKini = 0.0f;
+    _turnKini = turn;
+    _robot.walk(0.0f, 0.0f, turn);
+
+    // Histeresis: harus berada di dalam toleransi selama PIVOT_DIAM_MS, bukan
+    // sekadar menyentuhnya sesaat saat melintas.
+    if (fabsf(err) <= HEADING_TOLERANCE_DEG) {
+        if (_diamSejak == 0) _diamSejak = now;
+        if (now - _diamSejak >= PIVOT_DIAM_MS) {
+            _robot.stop();
+            _turnKini  = 0.0f;
+            _fase      = FASE_SETTLE;
+            _tPivot    = now;          // dipakai ulang: awal hitungan settle
+            _diamSejak = 0;
+        }
+    } else {
+        _diamSejak = 0;
+    }
 }
 
 void Navigation::pivotKompas(uint8_t arah) {
@@ -172,27 +241,427 @@ void Navigation::pivotRelatif(float der) {
 // ====================================================================
 
 void Navigation::kalibrasiPivot(uint8_t siklus) {
-    if (!_imu.hasData()) return;
+    if (!_imu.hasData()) { Serial.println("Gagal: Tidak ada data IMU."); return; }
+    if (!_robot.isArmed()) {
+        Serial.println("Gagal: servo masih lemas. Ketik 'b' dulu supaya robot berdiri.");
+        return;
+    }
+    if (siklus == 0) siklus = 4;
+
+    // kalibrasiPivot() MASIH memblokir (tunggu/tungguYaw). Selama itu navUpdate()
+    // tidak dipanggil, jadi mode apa pun yang sedang berjalan akan membeku lalu
+    // berebut perintah gait dengan kalibrasi. Hentikan dulu, jangan biarkan
+    // keduanya menulis vektor gerak yang sama.
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih kalibrasi pivot.");
 
     uint32_t lama = (uint32_t)(siklus * GAIT_CYCLE_TIME);
-    float hasil[2], yawAkum;
+    float hasil[2];
 
     for (uint8_t arah = 0; arah < 2; arah++) {
         float cmd = arah ? -1.0f : 1.0f;
         gaitPutar(cmd);
         tunggu(500); // Tunggu *slew* naik mulus
-        
-        tungguYaw(lama, yawAkum);
-        
+
+        // BUG LAMA: kedua pengukuran memakai variabel yang sama, padahal
+        // tungguYaw() menolkan akumulatornya di awal. Akibatnya putaran utama
+        // TERBUANG dan hasil[] cuma berisi rotasi sisa pengereman 1 detik --
+        // derajat/siklus jadi jauh terlalu kecil. Sekarang dipisah lalu
+        // dijumlahkan, karena keduanya sama-sama rotasi akibat perintah ini.
+        float utama = 0.0f, sisaRem = 0.0f;
+        tungguYaw(lama, utama);
+
         gaitPutar(0);
-        tungguYaw(1000, yawAkum); // Sisa *settle* pengereman
-        
-        hasil[arah] = yawAkum;
+        tungguYaw(1000, sisaRem);   // sisa *settle* pengereman
+
+        hasil[arah] = utama + sisaRem;
     }
 
     _degCCW = hasil[0] / siklus;
     _degCW  = hasil[1] / siklus;
     _pivotSign = (_degCCW >= 0) ? +1 : -1;
+    _pivotKalib = (fabsf(_degCCW) > 0.1f || fabsf(_degCW) > 0.1f);
 
-    Serial.print("Kalibrasi selesai. Tanda putar: "); Serial.println(_pivotSign);
+    Serial.print("Kalibrasi selesai. CCW "); Serial.print(_degCCW, 2);
+    Serial.print(" der/siklus, CW ");        Serial.print(_degCW, 2);
+    Serial.print(" der/siklus, tanda putar "); Serial.println(_pivotSign);
+    Serial.println("Ketik 'S' untuk menyimpannya ke EEPROM 2048 (kalau tidak, hilang saat reset).");
+}
+
+// ====================================================================
+// 4. KALIBRASI GERAK DI EEPROM 2048 (blok milik TES_GERAK)
+// ====================================================================
+
+bool Navigation::gerakMuat(bool cerewet) {
+    GerakStore s;
+    EEPROM.get(EE_GERAK_ADDR, s);
+
+    if (s.m0 != 0x6E || s.m1 != 0x2C || s.ver != 2 ||
+        s.sum != eeSum(&s, offsetof(GerakStore, sum))) {
+        if (cerewet) Serial.println("Navigation: kalibrasi pivot EEPROM 2048 belum ada -> jalankan 'C' lalu 'S'.");
+        _pivotKalib = false;
+        return false;
+    }
+
+    _degCCW = s.ccw; _degCW = s.cw; _mmMaju = s.maju;
+    // JANGAN pernah biarkan 0: gaitPutar(_pivotSign * turn) akan selalu nol
+    // dan pivot berputar-putar 20 detik tanpa menggerakkan apa pun.
+    _pivotSign = (s.sign >= 0) ? +1 : -1;
+    _pivotKalib = (fabsf(_degCCW) > 0.1f || fabsf(_degCW) > 0.1f);
+
+    if (cerewet) {
+        Serial.print("Navigation: pivot dimuat dari EEPROM 2048 -> CCW ");
+        Serial.print(_degCCW, 2); Serial.print(" / CW "); Serial.print(_degCW, 2);
+        Serial.println(" der per siklus.");
+    }
+    return _pivotKalib;
+}
+
+// Baca-ubah-tulis: field milik TES_GERAK (zoff, lvlR/lvlP, refR/refP, jac)
+// DIPERTAHANKAN apa adanya. Kalau blok belum ada, dibuat baru dengan field
+// itu bernilai nol -- jadi jangan pakai ini untuk menimpa kalibrasi kaki.
+void Navigation::gerakSimpan() {
+    GerakStore s;
+    EEPROM.get(EE_GERAK_ADDR, s);
+
+    bool sah = (s.m0 == 0x6E && s.m1 == 0x2C && s.ver == 2 &&
+                s.sum == eeSum(&s, offsetof(GerakStore, sum)));
+    if (!sah) {
+        memset(&s, 0, sizeof(s));
+        s.m0 = 0x6E; s.m1 = 0x2C; s.ver = 2;
+        Serial.println("Navigation: blok 2048 belum sah -> dibuat baru (zOff & rata badan = 0).");
+    }
+
+    s.ccw = _degCCW; s.cw = _degCW; s.maju = _mmMaju; s.sign = _pivotSign;
+    s.sum = eeSum(&s, offsetof(GerakStore, sum));
+    EEPROM.put(EE_GERAK_ADDR, s);
+
+    Serial.println("Navigation: kalibrasi pivot disimpan ke EEPROM 2048.");
+}
+
+void Navigation::gerakTabel() {
+    Serial.println("\n--- KALIBRASI GERAK (EEPROM 2048) ---");
+    Serial.print("  status      : ");
+    Serial.println(_pivotKalib ? "terkalibrasi" : "BELUM (jalankan 'C' lalu 'S')");
+    Serial.print("  CCW         : "); Serial.print(_degCCW, 2); Serial.println(" der/siklus");
+    Serial.print("  CW          : "); Serial.print(_degCW, 2);  Serial.println(" der/siklus");
+    Serial.print("  maju        : "); Serial.print(_mmMaju, 1); Serial.println(" mm/siklus");
+    Serial.print("  tanda putar : "); Serial.println(_pivotSign);
+}
+
+// ====================================================================
+// 5. NAVIGASI OTONOM: IKUT DINDING (NON-BLOKIR)
+// ====================================================================
+// Berbeda dari pivotKe() yang memblokir sampai 20 detik, ini hanya menghitung
+// SATU langkah tiap dipanggil. Perintah serial tetap terproses, dan 'x' /
+// Enter selalu bisa menyela.
+//
+// Di sinilah pembedaan tiga keadaan LiDAR terbayar:
+//   jarak cm   -> kemudikan PD terhadap dinding
+//   LIDAR_JAUH -> dinding hilang (tikungan/celah) -> cari dengan membelok
+//   LIDAR_MATI -> sensor putus -> BERHENTI, jangan jalan buta
+// Kalau ketiganya disamakan (seperti kode lama), lorong terbuka akan
+// diperlakukan sama dengan sensor rusak.
+
+void Navigation::navMulai(ModeNav m) {
+    if (m == NAV_DIAM) { navBerhenti("diminta berhenti."); return; }
+    if (!_robot.isArmed()) {
+        Serial.println("Gagal: servo masih lemas. Ketik 'b' dulu supaya robot berdiri.");
+        return;
+    }
+    if (!_lidar.muxTerdeteksi()) {
+        Serial.println("Gagal: LiDAR tidak terdeteksi. Ketik 'I' untuk memindai bus.");
+        return;
+    }
+
+    // Periksa dua sensor yang BENAR-BENAR dipakai mode ini, sebelum melangkah.
+    // Tanpa ini robot mulai berjalan lalu navUpdate() menghentikannya satu
+    // iterasi kemudian -- dari luar terlihat seperti "menolak jalan tanpa
+    // sebab", dan pesannya tidak menyebut sensor mana yang bermasalah.
+    const bool    kiri     = (m == NAV_DINDING_KIRI || m == NAV_ARENA_KIRI);
+    const uint8_t idSisiCk = kiri ? LIDAR_FRONT_L : LIDAR_FRONT_R;
+
+    if (_lidar.getDistance(LIDAR_FRONT) == LIDAR_MATI) {
+        Serial.print("Gagal: sensor DEPAN (channel "); Serial.print(LIDAR_FRONT);
+        Serial.println(") tidak merespons -- jangan pernah berjalan buta ke depan.");
+        Serial.println("       Ketik 'I' untuk init ulang, lalu 'l' untuk memastikan.");
+        return;
+    }
+    if (_lidar.getDistance(idSisiCk) == LIDAR_MATI) {
+        Serial.print("Gagal: sensor samping "); Serial.print(LidarArray::nama(idSisiCk));
+        Serial.print(" (channel "); Serial.print(idSisiCk);
+        Serial.println(") tidak merespons.");
+        Serial.print("       Mode ini mengemudi dari sensor itu. Coba sisi sebelahnya ('");
+        Serial.print(kiri ? 'F' : 'f'); Serial.println("'), atau 'I' untuk init ulang.");
+        return;
+    }
+    bool arena = (m == NAV_ARENA_KIRI || m == NAV_ARENA_KANAN);
+    if (arena) {
+        if (!_imu.hasData()) {
+            Serial.println("Gagal: tidak ada data IMU."); return;
+        }
+        if (!kompasLengkap()) {
+            Serial.println("Gagal: kompas arena belum lengkap. Catat keempat arah");
+            Serial.println("       dengan 'c0'..'c3' lalu 'e', atau muat dengan 'E'.");
+            return;
+        }
+        // Kunci ke arah arena TERDEKAT dari hadap robot sekarang. Robot
+        // diasumsikan sudah kira-kira sejajar lorong saat perintah diberikan.
+        float selisih = 0.0f;
+        _arahKini = arahTerdekat(_imu.yawDeg(), selisih);
+        if (_arahKini < 0) { Serial.println("Gagal: tak ada arah arena yang cocok."); return; }
+        // WAJIB, bukan sekadar peringatan. Mode arena mengemudi berdasarkan
+        // selisih heading, dan _pivotSign-lah yang menentukan ke arah mana
+        // perintah putar menggeser yaw. Kalau tandanya salah, robot berbelok
+        // MENJAUHI target -- di fase belok tertangkap timeout, tapi di fase
+        // jalan ia hanya melengkung diam-diam ke arah yang keliru.
+        // _pivotSign tidak bisa ditebak dari kode: bergantung pemasangan IMU.
+        if (!_pivotKalib) {
+            Serial.println("Gagal: pivot belum dikalibrasi, arah putar belum diketahui.");
+            Serial.println("       Jalankan 'C' (kalibrasi) lalu 'S' (simpan) sekali saja.");
+            Serial.println("       Tanpa itu mode arena bisa mengemudi ke arah yang salah.");
+            return;
+        }
+    }
+
+    // Kalau ada pivot yang sedang berjalan, hentikan dulu supaya pesannya jelas
+    // -- bukan sekadar ditimpa diam-diam oleh _mode = m di bawah.
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah navigasi.");
+
+    _mode = m;
+    _fase = FASE_JALAN;
+    _errAda = false; _errPrev = 0.0f; _errTurunan = 0.0f; _errStempel = 0;
+    _tPrev = 0; _tBelok = 0; _tPivot = 0; _diamSejak = 0;
+
+    Serial.print("Navigasi MULAI: ikut dinding ");
+    Serial.print((m == NAV_DINDING_KIRI || m == NAV_ARENA_KIRI) ? "KIRI" : "KANAN");
+    if (arena) {
+        Serial.print(", terkunci arah "); Serial.print(_arahNama[_arahKini]);
+        Serial.print(" ("); Serial.print(_headArah[_arahKini], 1); Serial.print(" der)");
+    }
+    Serial.println();
+    Serial.println("  's', 'x', atau Enter untuk menghentikan.");
+}
+
+// Satu-satunya jalan berhenti untuk SEMUA mode, pivot termasuk. Karena 's',
+// 'x', Enter dan 'w' di .ino sudah memanggil ini, pivot otomatis ikut bisa
+// dibatalkan tanpa kode khusus.
+void Navigation::navBerhenti(const char* alasan) {
+    // Sudah diam -> tidak ada yang perlu dihentikan. Dulu baris ini hanya
+    // menyaring pemanggilan tanpa alasan, sehingga tiap 's'/'x'/Enter mencetak
+    // "Navigasi BERHENTI: ..." walau tak ada navigasi yang berjalan. Pemanggil
+    // di .ino semuanya sudah punya robot.stop()/disarm() sendiri.
+    if (_mode == NAV_DIAM) return;
+
+    bool pivot = (_mode == NAV_PIVOT);
+    _mode = NAV_DIAM;
+    _majuKini = _turnKini = 0.0f;
+    _robot.stop();
+    Serial.print(pivot ? "Pivot BERHENTI" : "Navigasi BERHENTI");
+    if (alasan) { Serial.print(": "); Serial.println(alasan); } else Serial.println(".");
+}
+
+// PD heading memakai gyro Z murni sebagai suku D (sama dengan pivotKe).
+// _pivotSign menyerap perbedaan konvensi tanda antara perintah putar dan
+// pembacaan yaw IMU -- itulah gunanya kalibrasi 'C'.
+float Navigation::kemudiHeading(float targetHeading) const {
+    float err = wrap180(targetHeading - _imu.yawDeg());
+    float turn = HEADING_KP * err - HEADING_KD * _imu.gyroZ();
+    return clampf(_pivotSign * turn, -1.0f, 1.0f);
+}
+
+void Navigation::navUpdate() {
+    if (_mode == NAV_DIAM) return;
+
+    // Penjaga yang berlaku untuk SEMUA mode.
+    if (!_robot.isArmed()) { navBerhenti("servo dilemaskan."); return; }
+
+    // Pivot berdiri sendiri hanya butuh IMU. Cek LiDAR-nya ditaruh SESUDAH ini
+    // supaya 'o'/'O' tetap bisa dipakai saat LiDAR belum terpasang -- dulu
+    // pivot memang tidak pernah menyentuh LiDAR sama sekali.
+    if (_mode == NAV_PIVOT) { pivotUpdate(); return; }
+
+    if (!_lidar.muxTerdeteksi()) { navBerhenti("LiDAR hilang."); return; }
+
+    // Waktu loop tidak lagi dipakai untuk turunan PD -- itu sumber masalahnya.
+    // _tPrev disimpan hanya sebagai penanda "sudah pernah jalan".
+    uint32_t now = millis();
+    _tPrev = now;
+
+    const bool    ikutKiri  = (_mode == NAV_DINDING_KIRI || _mode == NAV_ARENA_KIRI);
+    // sisi = +1 mengikuti dinding KIRI (yaw+ = belok kiri), -1 untuk kanan
+    const int8_t  sisi      = ikutKiri ? +1 : -1;
+    const uint8_t idSamping = ikutKiri ? LIDAR_FRONT_L : LIDAR_FRONT_R;
+
+    // ---- FASE BELOK (hanya mode terkunci arena) ----
+    // Berbelok ke mata angin berikutnya dengan kendali tertutup, bukan
+    // berputar buta selama sekian milidetik. Tetap non-blokir: satu langkah
+    // per pemanggilan, sama seperti fase jalan.
+    if (arenaTerkunci() && _fase == FASE_BELOK) {
+        if (_tPivot == 0) _tPivot = now;
+        if (now - _tPivot > NAV_PIVOT_BATAS_MS) {
+            navBerhenti("belok ke arah arena gagal (timeout).");
+            return;
+        }
+        // Rumus yang sama persis dengan pivot berdiri sendiri -- termasuk
+        // dorongan minimal supaya kaki tidak cuma menggeliat di tempat.
+        float err;
+        float turn = pivotLangkah(_headArah[_arahKini], err);
+
+        _majuKini = 0.0f; _turnKini = turn;
+        _robot.walk(0.0f, 0.0f, turn);
+
+        if (fabsf(err) <= HEADING_TOLERANCE_DEG) {
+            if (_diamSejak == 0) _diamSejak = now;
+            if (now - _diamSejak >= PIVOT_DIAM_MS) {
+                _fase = FASE_JALAN;
+                _tPivot = 0; _diamSejak = 0;
+                // mulai lagi PD dinding dari bersih
+                _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+                Serial.print("Navigasi: sudah menghadap "); Serial.println(_arahNama[_arahKini]);
+            }
+        } else {
+            _diamSejak = 0;
+        }
+        return;
+    }
+
+    int depan   = _lidar.getDistance(LIDAR_FRONT);
+    int samping = _lidar.getDistance(idSamping);
+
+    // 1) Sensor depan putus -> jangan pernah berjalan buta ke depan.
+    if (depan == LIDAR_MATI) { navBerhenti("sensor DEPAN tidak merespons."); return; }
+
+    // 2) Halangan di depan -> berputar MENJAUHI dinding yang diikuti.
+    if (depan != LIDAR_JAUH && depan <= FRONT_STOP_CM) {
+        if (arenaTerkunci()) {
+            // Ikut dinding KIRI -> saat mentok, belok KANAN = +90 der searah
+            // jarum jam = indeks arah berikutnya. Ikut dinding KANAN -> -1.
+            _arahKini = arahGeser(_arahKini, ikutKiri ? +1 : -1);
+            _fase = FASE_BELOK;
+            _tPivot = 0; _diamSejak = 0;
+            _robot.stop();
+            Serial.print("Navigasi: halangan depan -> belok ke ");
+            Serial.println(_arahNama[_arahKini]);
+            return;
+        }
+        if (_tBelok == 0) _tBelok = now;
+        if (now - _tBelok > NAV_BELOK_BATAS_MS) {
+            navBerhenti("terjebak -- berbelok terlalu lama tanpa jalan keluar.");
+            return;
+        }
+        _majuKini = 0.0f;
+        _turnKini = -sisi * NAV_BELOK_CMD;
+        _robot.walk(0.0f, 0.0f, _turnKini);
+        return;
+    }
+    _tBelok = 0;
+
+    // 3) Kecepatan maju, diturunkan mulus saat mendekati halangan.
+    float maju = NAV_FWD_SPEED;
+    if (depan != LIDAR_JAUH && depan < NAV_PELAN_CM) {
+        float k = (float)(depan - FRONT_STOP_CM) /
+                  (float)(NAV_PELAN_CM - FRONT_STOP_CM);
+        maju = NAV_FWD_SPEED * clampf(k, NAV_MAJU_MIN, 1.0f);
+    }
+
+    // 4) Kemudi PD terhadap dinding samping.
+    float turn;
+    if (samping == LIDAR_MATI) {
+        navBerhenti("sensor SAMPING tidak merespons.");
+        return;
+    } else if (samping == LIDAR_JAUH) {
+        // Dinding hilang: tikungan keluar atau mulut lorong. Membelok ke arah
+        // dinding dengan kekuatan tetap sampai ketemu lagi. Turunan di-reset
+        // supaya tidak melonjak saat dinding muncul kembali.
+        turn = sisi * NAV_CARI_CMD;
+        _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+    } else {
+        // Jarak float (belum dibulatkan ke cm) + stempel waktu sampelnya.
+        float jarak = _lidar.jarakHalus(idSamping);
+        if (jarak < 0.0f) jarak = (float)samping;      // jaga-jaga, tak boleh terjadi
+        uint32_t stempel = _lidar.stempelSampel(idSamping);
+
+        float err = jarak - (float)WALL_SETPOINT_CM;   // + = terlalu jauh
+
+        if (!_errAda) {
+            _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
+        } else if (stempel != _errStempel) {
+            // Sampel BARU -> perbarui turunan, memakai jarak waktu antar sampel
+            // yang sebenarnya. Dulu pembaginya dt loop, yang dijepit di 0,001 s
+            // -- satu lompatan pembulatan 1 cm jadi bernilai 10,0 satuan putar.
+            float dts = (float)(uint32_t)(stempel - _errStempel) / 1000.0f;
+            _errTurunan = (dts > 0.005f && dts < 0.5f) ? (err - _errPrev) / dts : 0.0f;
+            _errPrev = err; _errStempel = stempel;
+        }
+        // di antara sampel: _errTurunan ditahan, bukan dinolkan
+        turn = sisi * (WALL_KP * err + WALL_KD * _errTurunan);
+    }
+
+    // Sumbangan dinding dibatasi di SEMUA mode, bukan hanya mode arena.
+    // Tanpa batas ini WALL_KP*err menjenuh ke +-1,00 begitu dinding lebih jauh
+    // dari (1/WALL_KP + setpoint) -- robot memutar PENUH menghadap dinding
+    // alih-alih menggeser mendekat. Di lorong 60 cm dengan gain lama, simulasi
+    // menunjukkan perintah putar jenuh 61% waktu saat mulai dari tengah.
+    turn = clampf(turn, -NAV_WALL_TURN_MAX, NAV_WALL_TURN_MAX);
+
+    if (arenaTerkunci()) {
+        // Dinding mengoreksi posisi LATERAL; arah hadap diurus heading arena.
+        turn += kemudiHeading(_headArah[_arahKini]);
+    }
+    turn = clampf(turn, -1.0f, 1.0f);
+
+    _majuKini = maju;
+    _turnKini = turn;
+    _robot.walk(maju, 0.0f, turn);
+}
+
+void Navigation::navStatus() {
+    Serial.println("\n--- STATUS NAVIGASI ---");
+    Serial.print("  mode        : ");
+    switch (_mode) {
+        case NAV_DIAM:          Serial.println("DIAM"); break;
+        case NAV_DINDING_KIRI:  Serial.println("ikut dinding KIRI"); break;
+        case NAV_DINDING_KANAN: Serial.println("ikut dinding KANAN"); break;
+        case NAV_ARENA_KIRI:    Serial.println("ikut dinding KIRI + kunci arena"); break;
+        case NAV_ARENA_KANAN:   Serial.println("ikut dinding KANAN + kunci arena"); break;
+        case NAV_PIVOT:         Serial.println("PIVOT di tempat"); break;
+    }
+
+    if (_mode == NAV_PIVOT) {
+        Serial.print("  fase        : ");
+        Serial.println(_fase == FASE_SETTLE ? "SETTLE (kaki menenangkan diri)" : "BERPUTAR");
+        Serial.print("  target      : "); Serial.print(_pivotTarget, 1); Serial.println(" der");
+        Serial.print("  yaw & error : "); Serial.print(_imu.yawDeg(), 1);
+        Serial.print(" der, simpang ");
+        Serial.print(wrap180(_pivotTarget - _imu.yawDeg()), 1);
+        Serial.println(" der");
+    }
+    if (arenaTerkunci() && _arahKini >= 0) {
+        Serial.print("  fase        : ");
+        Serial.println(_fase == FASE_JALAN ? "JALAN" : "BELOK");
+        Serial.print("  arah dituju : "); Serial.print(_arahNama[_arahKini]);
+        Serial.print(" ("); Serial.print(_headArah[_arahKini], 1); Serial.println(" der)");
+        Serial.print("  yaw & error : "); Serial.print(_imu.yawDeg(), 1);
+        Serial.print(" der, simpang ");
+        Serial.print(wrap180(_headArah[_arahKini] - _imu.yawDeg()), 1);
+        Serial.println(" der");
+    }
+
+    int depan = _lidar.getDistance(LIDAR_FRONT);
+    int kiri  = _lidar.getDistance(LIDAR_FRONT_L);
+    int kanan = _lidar.getDistance(LIDAR_FRONT_R);
+    const char* lbl[3] = {"depan", "kiri ", "kanan"};
+    int val[3] = {depan, kiri, kanan};
+    for (uint8_t i = 0; i < 3; i++) {
+        Serial.print("  "); Serial.print(lbl[i]); Serial.print("       : ");
+        if      (val[i] == LIDAR_MATI) Serial.println("MATI");
+        else if (val[i] == LIDAR_JAUH) Serial.println("jauh");
+        else { Serial.print(val[i]); Serial.println(" cm"); }
+    }
+    Serial.print("  setpoint    : "); Serial.print(WALL_SETPOINT_CM); Serial.println(" cm");
+    Serial.print("  berhenti di : "); Serial.print(FRONT_STOP_CM);    Serial.println(" cm");
+    Serial.print("  perintah    : maju "); Serial.print(_majuKini, 2);
+    Serial.print("  putar ");              Serial.println(_turnKini, 2);
+    Serial.print("  sensor hidup: ");      Serial.print(_lidar.jumlahHidup());
+    Serial.print(" dari ");                Serial.println(NUM_LIDAR);
 }
