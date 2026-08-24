@@ -7,6 +7,9 @@ Imu::Imu() {
     _roll = _pitch = _yaw = 0;
     _roll0 = _pitch0 = 0;
     _gz = 0;
+    _tolakYaw = 0;
+    _ax = _ay = _az = 0;
+    _mhx = _mhy = _mhz = 0;
 }
 
 void Imu::begin() {
@@ -18,8 +21,11 @@ void Imu::begin() {
 }
 
 void Imu::update() {
-    // Logika Resinkronisasi Sejati (membuang byte satu per satu jika gagal)
-    while (IMU_SERIAL.available()) {
+    // Logika Resinkronisasi Sejati (membuang byte satu per satu jika gagal).
+    // Dibatasi IMU_MAX_BYTE_UPDATE byte per panggilan supaya loop utama tidak
+    // bisa kelaparan kalau IMU membanjiri serial.
+    uint16_t jatah = IMU_MAX_BYTE_UPDATE;
+    while (IMU_SERIAL.available() && jatah--) {
         
         // Jika buffer penuh, paksa geser 1 byte ke kiri
         if (_rxN >= sizeof(_rxBuf)) {               
@@ -82,6 +88,14 @@ void Imu::parseFrame(const uint8_t* f) {
             if (y < 0) y += 360.0f; 
             if (!_have || fabsf(angleDiffDeg(y, _yaw)) <= IMU_MAX_YAW_JUMP) {
                 _yaw = y;
+                _tolakYaw = 0;
+            } else if (++_tolakYaw >= IMU_MAX_YAW_TOLAK) {
+                // Sudah sekian sampel berturut-turut jauh dari nilai lama ->
+                // ini bukan spike sesaat, tapi heading yang benar-benar
+                // berpindah. Terima, jangan biarkan _yaw membeku selamanya.
+                _yaw = y;
+                _tolakYaw = 0;
+                Serial.println("Imu: yaw resinkron (lonjakan menetap diterima).");
             }
             _have = true;
             break;

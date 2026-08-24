@@ -46,29 +46,43 @@ inline float angleDiffDeg(float target, float current) {
 //     void reset() { has = false; prev = 0.0f; }
 // };
 
-// Rotasi titik oleh roll(X), pitch(Y), yaw(Z) dalam radian.
-// Urutan: Rz * Ry * Rx (intrinsic). Dipakai untuk body kinematics.
-// ponytail: rotasi titik langsung, bukan bangun matriks 4x4 + CMSIS-DSP.
-// Untuk 6 titik/loop ini lebih sederhana & cukup cepat di FPU Teensy.
-// Invers Rotasi Sejati: Z-Y-X dibalik menjadi X-Y-Z
+// ---------------------------------------------------------------- rotasi
+// KONVENSI FRAME (sama dengan config.h & TES_GERAK/kinematics.h):
+//   +X = KANAN, +Y = DEPAN, +Z = ATAS, origin = pusat badan.
+// Dari situ nama sumbu rotasi mengikuti FISIKA:
+//   ROLL  = putar terhadap sumbu DEPAN (+Y) -> badan miring kanan/kiri
+//   PITCH = putar terhadap sumbu KANAN (+X) -> badan mendongak/menunduk
+//   YAW   = putar terhadap +Z, positif = berlawanan jarum jam (belok KIRI)
+//
+// KOREKSI (Agustus 2026): versi lama memberi rollRad ke rotasi sumbu X dan
+// pitchRad ke sumbu Y -- TERTUKAR untuk frame ini. Perintah "roll" menghasilkan
+// gerak PITCH dan sebaliknya. TES_GERAK/motion.h sudah mencatat ketidakcocokan
+// ini ("nama di sini mengikuti FISIKA, bukan firmware"); sekarang firmware yang
+// disesuaikan supaya keduanya bicara bahasa yang sama.
+//
+// Yang dihitung adalah INVERS rotasi badan: bila badan berputar R terhadap
+// dunia sementara telapak diam di tanah, di frame badan telapak tampak
+// berputar R^-1. R = Rz(yaw)*Ry(roll)*Rx(pitch), jadi
+// R^-1 = Rx(-pitch)*Ry(-roll)*Rz(-yaw) -- URUTAN DIBALIK, bukan cuma sudut
+// dinegatifkan (menegatifkan sudut saja hanya benar untuk sudut kecil).
 static inline Vec3 rotatePointInv(Vec3 p, float rollRad, float pitchRad, float yawRad) {
     float c, s;
-    
-    // 1. Yaw (Rotasi Z dibalik)
+
+    // 1. Rz(-yaw)
     c = cosf(yawRad);  s = sinf(yawRad);
     float x1 =  c * p.x + s * p.y;
     float y1 = -s * p.x + c * p.y;
     float z1 =  p.z;
-    
-    // 2. Roll (Rotasi Y dibalik)
-    c = cosf(pitchRad); s = sinf(pitchRad);
+
+    // 2. Ry(-roll)  -- ROLL berputar terhadap sumbu DEPAN (+Y)
+    c = cosf(rollRad); s = sinf(rollRad);
     float x2 =  c * x1 - s * z1;
     float z2 =  s * x1 + c * z1;
     float y2 =  y1;
-    
-    // 3. Pitch (Rotasi X dibalik)
-    c = cosf(rollRad); s = sinf(rollRad);
-    
+
+    // 3. Rx(-pitch) -- PITCH berputar terhadap sumbu KANAN (+X)
+    c = cosf(pitchRad); s = sinf(pitchRad);
+
     // Kembalikan langsung ke dalam struktur Vec3
     return { x2, c * y2 + s * z2, -s * y2 + c * z2 };
 }

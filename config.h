@@ -8,9 +8,14 @@
 #define ARM_NUM_SERVOS 3 // 3 per lengan
 
 // --- Dimensi Kaki Hexapod --- //
-#define COXA_LENGTH 23.0f
-#define FEMUR_LENGTH 54.0f
-#define TIBIA_LENGTH 69.0f
+// SUMBER KEBENARAN: legacy-2026/TES_GERAK/kinematics.h (program yang sudah
+// terbukti berdiri). Nilai lama 23/54/69 SALAH -- femur meleset 26 mm dan
+// tibia 21 mm, sehingga IK menghitung femur -35 der (seharusnya -10,6 der)
+// dan lutut 127 der (seharusnya 82 der) pada pose berdiri baku.
+// Jangan diubah tanpa mengukur ulang kaki fisik.
+#define COXA_LENGTH  20.0f
+#define FEMUR_LENGTH 80.0f
+#define TIBIA_LENGTH 90.0f
 
 #define UPPERARM_LENGTH 20.0f // panjang ini masih tes
 #define FOREARM_LENGTH 24.0f // panjang ini masih tes
@@ -59,12 +64,27 @@ const uint8_t TUNE_PIN_MAP[NUM_TUNE_SERVOS][2] = {
     {1, 12}, {1, 13}, {1, 14}  // Lengan kiri
 };
 
-const uint8_t ARM_PIN_MAP_R[ARM_NUM_SERVOS][2] = { {0, 12}, {0, 13}, {0, 14} }; // Lengkan kanan
-const uint8_t ARM_PIN_MAP_L[ARM_NUM_SERVOS][2] = { {1, 12}, {1, 13}, {1, 14} }; // Lengan kiri
+// --- Lengan: DEPAN & BELAKANG (bukan kanan/kiri) --- //
+// Tiap lengan = BAHU, SIKU, GRIP. Dua sendi pertama menyapu satu bidang
+// VERTIKAL; tidak ada sendi pemutar di pangkal, jadi untuk membidik objek
+// yang tidak segaris, BADAN robot yang harus diarahkan.
+//
+// BELUM DIVERIFIKASI FISIK: mana dari kedua papan PCA yang memegang lengan
+// depan. Kalau saat diuji ('a' vs 'A') yang bergerak justru tertukar,
+// TUKAR SAJA kedua baris di bawah -- tidak ada yang lain perlu diubah.
+const uint8_t ARM_PIN_MAP_DEPAN[ARM_NUM_SERVOS][2]    = { {0, 12}, {0, 13}, {0, 14} }; // bahu, siku, grip
+const uint8_t ARM_PIN_MAP_BELAKANG[ARM_NUM_SERVOS][2] = { {1, 12}, {1, 13}, {1, 14} }; // bahu, siku, grip
 
-const float ARM_ORIGINS[2][3] = { // [2][3]
-    { 50.0f,  0.0f, 30.0f},  // ARM_R
-    { -50.0f,   0.0f, 30.0f}   // ARM_L
+// Pangkal BAHU tiap lengan (x, y, z) dari pusat badan, mm.
+// Lengan depan menghadap +Y (maju), lengan belakang menghadap -Y (mundur).
+// Versi lama keliru menaruh offset di sumbu X (kanan/kiri) -- itu sisa dari
+// asumsi "lengan kanan & kiri" yang ternyata salah.
+// ANGKA 50 MASIH PERKIRAAN -- ukur ulang saat lengan terpasang.
+#define ARM_DEPAN     0
+#define ARM_BELAKANG  1
+const float ARM_ORIGINS[2][3] = {
+    { 0.0f,  50.0f, 30.0f},  // ARM_DEPAN    : 50 mm di depan pusat, 30 mm di atas
+    { 0.0f, -50.0f, 30.0f}   // ARM_BELAKANG : 50 mm di belakang pusat
 };
 
 // BUS I2C (Wire SDA 18 / SCL 19 Teensy 4.1)
@@ -80,18 +100,46 @@ const float ARM_ORIGINS[2][3] = { // [2][3]
 #define I2C_MUX_ADDR     0x70
 #define LIDAR_EMA_ALPHA  0.4f    // bobot sampel baru (median dulu, lalu EMA)
 #define LIDAR_TIMEOUT_MS 300     // sensor dianggap mati bila tak ada data valid
-#define LIDAR_MAX_CM     200     // 400 // di atas ini dianggap tak valid
+#define LIDAR_MAX_CM     200     // 400 // di atas ini dianggap "jauh", bukan rusak
 
-// Indeks lidar -> arti (sesuaikan pemasangan fisik)
-#define LIDAR_FRONT      0
-#define LIDAR_FRONT_R    1
-#define LIDAR_BACK_R     2
-#define LIDAR_BACK       3
-#define LIDAR_BACK_L     4
-#define LIDAR_FRONT_L    5
+// Tiga keadaan yang dikembalikan getDistance(). Membedakan "tak ada objek
+// dalam jangkauan" dari "sensor putus" itu penting: untuk wall-follow,
+// keduanya butuh reaksi yang berlawanan.
+#define LIDAR_JAUH       999     // sensor sehat, tak ada objek dalam jangkauan
+#define LIDAR_MATI       (-1)    // sensor tidak merespons / belum ada data
+
+// ARAH FISIK -> CHANNEL MUX. Hasil uji fisik Agustus 2026.
+//
+// JANGAN mengasumsikan channel 0 menghadap depan. Urutan kabel di robot ini
+// ternyata TERBALIK terhadap urutan yang diasumsikan kode lama: channel n
+// memegang arah yang dulu diberi indeks (5 - n). Keempat arah yang sempat
+// diperiksa satu per satu semuanya cocok dengan pola itu, dan pola yang sama
+// meramalkan dua sisanya -- yang ternyata memang dua sensor yang rusak.
+//
+//   ch0 = KIRI DEPAN     ch1 = KIRI BELAKANG    ch2 = BELAKANG
+//   ch3 = KANAN BELAKANG ch4 = KANAN DEPAN      ch5 = DEPAN
+//
+// Akibat pemetaan lama: navigasi membaca channel 0 sebagai "depan", padahal
+// channel 0 justru salah satu sensor yang mati -- jadi 'f'/'F' selalu langsung
+// berhenti dengan "sensor DEPAN tidak merespons", berapa pun gain-nya.
+#define LIDAR_FRONT      5
+#define LIDAR_FRONT_R    4
+#define LIDAR_BACK_R     3
+#define LIDAR_BACK       2   // rusak fisik per Agustus 2026 (tidak dipakai navigasi)
+#define LIDAR_BACK_L     1
+#define LIDAR_FRONT_L    0   // rusak fisik per Agustus 2026 -> mode 'f' belum bisa
 
 // --- IMU --- //
 #define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)
+// Berapa penolakan BERTURUT-TURUT sebelum nilai baru diterima paksa.
+// Tanpa jalan keluar ini, satu pergeseran heading yang MENETAP (mis. IMU
+// re-referensi, atau medan magnet arena berubah permanen) membuat _yaw
+// membeku selamanya dan navigasi berjalan di atas heading basi.
+#define IMU_MAX_YAW_TOLAK  10
+// Batas byte yang diproses per update(). IMU 230400 baud memasok ~23 kB/s;
+// tanpa batas, update() bisa terus terjebak menguras serial dan loop utama
+// (termasuk parser perintah) tak pernah kebagian giliran.
+#define IMU_MAX_BYTE_UPDATE 512
 #define IMU_SERIAL       Serial2
 #define IMU_BAUD         230400   // Yahboom 10-axis (protokol WIT, frame 0x55)
 
@@ -100,13 +148,48 @@ const float ARM_ORIGINS[2][3] = { // [2][3]
 #define FRONT_STOP_CM     20       // Berhenti/belok bila depan < ini (const)
 #define NAV_FWD_SPEED     0.8f     // Kecepatan maju normal (0..1) (const)
 
-#define PIVOT_KP        0.020f   // Perintah putar per derajat error
-#define PIVOT_KD        0.004f   // Dari gyro Z murni
+// --- Wall-following & penghindaran halangan (non-blokir) --- //
+#define NAV_PELAN_CM       50    // mulai melambat bila halangan depan di bawah ini
+#define NAV_MAJU_MIN       0.15f // faktor kecepatan terendah saat mendekati halangan
+#define NAV_BELOK_CMD      0.60f // kekuatan putar saat menghindar halangan depan
+#define NAV_CARI_CMD       0.35f // kekuatan putar saat dinding samping hilang (tikungan)
+#define NAV_BELOK_BATAS_MS 8000  // berbelok lebih lama dari ini = dianggap terjebak
+
+// --- Mode terkunci kompas arena --- //
+// Heading arena jadi acuan SUDUT (lorong arena sejajar sumbu mata angin),
+// dinding jadi koreksi LATERAL. Keduanya tidak berebut: satu mengurus arah
+// hadap, satu mengurus posisi di tengah lorong.
+#define NAV_WALL_TURN_MAX  0.50f // batas sumbangan kemudi dari dinding
+#define NAV_PIVOT_BATAS_MS 12000 // timeout satu kali belok 90 derajat
+
+// GAIN PIVOT SEKARANG DI Calib: heading.kp / heading.kd (lihat kemudiHeading()).
+// Dulu ada PIVOT_KP/PIVOT_KD di sini yang nilainya PERSIS SAMA dengan default
+// heading.kp/kd, tapi hanya dibaca pivotKe(). Akibatnya fase belok arena dan
+// pivot manual punya knob terpisah tanpa alasan, dan knob yang di config.h
+// tidak bisa disetel tanpa kompilasi ulang. Sekarang keduanya satu knob.
 #define PIVOT_MIN_CMD   0.25f    // Minimal gaya agar tidak cuma "menggeliat"
 #define PIVOT_DIAM_MS   500      // Harus di dalam toleransi selama ms ini
+#define PIVOT_SETTLE_MS 800      // Sesudah sampai: perintah putar 0, tunggu kaki diam
 #define PIVOT_BATAS_MS  20000    // Batas waktu timeout (20 detik)
 
-#define EE_KOMPAS_ADDR  1792     // Alamat memori untuk data kompas arena
+// --- Peta EEPROM --- //
+// Alamat DIPATOK karena keempat blok ditulis program berbeda yang tidak
+// pernah dikompilasi bersama; alamat inilah kontraknya. Jarak antar blok
+// itu ruang tumbuh yang disengaja, bukan pemborosan (total terpakai ~502 B
+// dari 4284 B). Struct + penjaga static_assert-nya ada di EEMap.h.
+//    0 : CalibBlob   (272 B) firmware sendiri -- param, offset, trim, invert
+// 1024 : ServoMap    (126 B) TES_SERVO/SET_HOME -- invert & trim hasil uji fisik
+// 1792 : KompasStore  (24 B) TES_IMU -- 4 arah arena
+// 2048 : GerakStore   (80 B) TES_GERAK -- pivot, odometri, rata badan, zOff
+#define EE_CALIB_ADDR      0     // Blok kalibrasi firmware (Calib.cpp)
+#define EE_SERVOMAP_ADDR 1024    // Peta servo hasil kalibrasi fisik
+#define EE_KOMPAS_ADDR   1792    // Alamat memori untuk data kompas arena
+#define EE_GERAK_ADDR    2048    // Kalibrasi gerak dari TES_GERAK
+
+// Kapasitas EEPROM papan sasaran. Teensy 4.0/4.1 = 4284 byte (flash-emulated).
+// Ini hanya dugaan saat kompilasi -- eeMapPeriksa() membandingkannya dengan
+// EEPROM.length() yang sebenarnya saat boot.
+#define EE_TOTAL_BYTES  4284
 
 // --- Lain-Lain --- //
 // #define PIN_BUTTON_START  30   // Tombol mulai (INPUT_PULLUP)
@@ -116,11 +199,31 @@ const float ARM_ORIGINS[2][3] = { // [2][3]
 #define STAB_MAX_DEG      15.0f   // Clamp koreksi roll/pitch (const)
 #define STAB_DEADBAND_DEG 1.0f    // Abaikan getaran kecil (const)
 
+// --- Body kinematics (pose badan manual & demo uji) --- //
+// Batas ini bukan batas mekanis kaki, melainkan pagar supaya perintah uji
+// tidak langsung melempar IK ke luar jangkauan. Kalau muncul peringatan
+// "di luar jangkauan IK", kecilkan angkanya atau turunkan STAND_HEIGHT.
+#define BODY_MAX_ROT_DEG   20.0f  // clamp roll/pitch/yaw perintah manual
+#define BODY_MAX_TRANS_MM  40.0f  // clamp geser badan X/Y/Z
+
+// LAJU RAMP POSE BADAN. Tanpa ini, 'r20 0 0' mengubah sudut femur ~49 der
+// dalam SATU siklus commit 20 ms (~550 us lompatan pulse) -- servo disuruh
+// bergerak ~2400 der/detik dan robot menyentak keras. Vektor gerak gait sudah
+// di-slew (GAIT_SLEW_RATE) dan profil medan sudah di-ramp (GAIT_PROFILE_TAU),
+// tapi pose badan dulu diterapkan MENTAH karena letaknya sesudah gait.
+// Demo 'B' tidak terpengaruh: sapuan sinusnya paling cepat ~21 der/detik.
+#define BODY_SLEW_DEG_S    60.0f  // laju maks rotasi badan, derajat/detik
+#define BODY_SLEW_MM_S    120.0f  // laju maks geser badan, mm/detik
+#define BODY_DEMO_ROT_DEG  10.0f  // amplitudo rotasi saat demo 'B'
+#define BODY_DEMO_TRANS_MM 25.0f  // amplitudo translasi saat demo 'B'
+#define BODY_DEMO_PHASE_S   3.0f  // detik per sumbu (6 sumbu = 18 detik)
+
 #define SERVO_PWM_FREQ    50      // Hz, frekuensi sinyal PCA9685 (50-330 Hz)
 #define SERVO_COMMIT_MS   20      // ms, periode kirim 18 pulse (20=50Hz, 10=100Hz)
 
 // Loop kontrol laju-tetap (dt deterministik untuk gait/PID/stabilisasi).
 #define CONTROL_HZ        100     // Hz, tick loop utama (servo commit tetap di SERVO_COMMIT_MS)
 #define PROFILE_LOOP      1       // 1 = cetak "PROF avg/max/util" tiap detik (saat tak tuning)
+#define GAIT_DEBUG        0       // 1 = cetak fase gait tiap 200 ms (hanya saat melangkah)
 
 #endif

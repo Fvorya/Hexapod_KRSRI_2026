@@ -35,6 +35,7 @@ private:
     float _roll, _pitch, _yaw;
     float _roll0, _pitch0;
     float _gz;                  // Penampung Gyro Z
+    uint8_t _tolakYaw;          // penolakan lonjakan yaw berturut-turut
     float _ax, _ay, _az;        // Percepatan X, Y, Z (Accel)
     float _mhx, _mhy, _mhz;     // Medan magnet X, Y, Z (Magnet)
 

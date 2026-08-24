@@ -146,9 +146,15 @@ void HexaGait::update() {
         legTargets[leg].z = _footHome[leg].z + dz;
     }
 
+    // Telemetri fase. Dulu dicetak tanpa syarat tiap 200 ms -- termasuk saat
+    // robot berdiri diam -- sehingga menenggelamkan output perintah lain.
+    // Sekarang hanya saat benar-benar melangkah, dan bisa dimatikan lewat
+    // GAIT_DEBUG di config.h.
+#if GAIT_DEBUG
     static uint32_t tPrint = 0;
     if (millis() - tPrint > 200) {
         tPrint = millis();
         Serial.printf("phase=%.3f dt=%.4f cyc=%.0f\n", (float)_phase, dt, _prof.cycleTime);
     }
+#endif
 }
