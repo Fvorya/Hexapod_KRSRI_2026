@@ -1,5 +1,6 @@
 #include "Calib.h"   // huruf besar: aman di filesystem case-sensitive (CI/Linux)
 #include <string.h>
+#include <stddef.h>   // offsetof -- lihat catatan CRC di save()/load()
 #include <EEPROM.h>
 
 // Gunakan ini apabila ingin mengetes di PC
@@ -22,26 +23,33 @@
 //     Sama seperti v6, versi WAJIB dinaikkan: gain lama sudah terlanjur ada di
 //     EEPROM alamat 0 dan blob v6 tetap lolos CRC, jadi tanpa kenaikan versi
 //     robot akan memuat kembali 0,030/0,010 dan perubahan ini tak berefek.
-#define CALIB_VERSION 7     // naikkan bila layout CalibBlob/urutan param berubah
+// v8: wall.setpoint 13 -> 19 cm, plus dua parameter BARU (wall.min, wall.hantu).
+// v9: wall.hantu DIBUANG lagi. Pekerjaannya pindah ke LIDAR_MIN_CM di config.h,
+//     yang menolak bacaan mustahil di SEMUA arah -- termasuk sensor DEPAN, yang
+//     tidak pernah terlindungi oleh wall.hantu. Itulah sebab robot berbelok
+//     sendiri di lorong kosong: hantu 5 cm sensor depan dibaca sebagai halangan.
+//     Menyaring di LidarArray membuat satu aturan berlaku untuk semua pemakai
+//     jaraknya, bukan cuma jalur ikut-dinding.
+#define CALIB_VERSION 9     // naikkan bila layout CalibBlob/urutan param berubah
 #define CALIB_ADDR    EE_CALIB_ADDR   // satu sumber alamat: config.h / EEMap.h
 
 const ParamDef PARAM_DEFS[N_PARAMS] = {
-    { "pulse.min",        500.0f,  400.0f, 1200.0f },
-    { "pulse.max",       2500.0f, 1800.0f, 2600.0f },
-    { "arm.pulse.min",   1000.0f,  500.0f, 1500.0f },
-    { "arm.pulse.max",   2000.0f, 1500.0f, 2500.0f },
-    { "gait.step_height",  40.0f,    0.0f,  120.0f },
-    { "gait.step_length",  60.0f,    0.0f,  150.0f },
-    { "gait.cycle_time",  900.0f,  300.0f, 2000.0f },
-    { "gait.duty",          0.5f,    0.3f,    0.7f },
-    { "gait.slew_rate",     3.0f,    0.5f,   10.0f },
-    { "gait.profile_tau",   0.25f,   0.05f,   1.0f },
-    { "gait.settle_tau",    0.10f,   0.02f,   0.5f },
-    { "stab.tau",           0.08f,   0.02f,   0.5f },
-    { "stab.sign_roll",    -1.0f,   -1.0f,    1.0f },
-    { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f },
-    { "heading.kp",         0.020f,  0.0f,    0.1f },
-    { "heading.kd",         0.004f,  0.0f,    0.05f },
+    { "pulse.min",        500.0f,  400.0f, 1200.0f, P_SERVO_LEMAS },
+    { "pulse.max",       2500.0f, 1800.0f, 2600.0f, P_SERVO_LEMAS },
+    { "arm.pulse.min",   1000.0f,  500.0f, 1500.0f, P_SERVO_LEMAS },
+    { "arm.pulse.max",   2000.0f, 1500.0f, 2500.0f, P_SERVO_LEMAS },
+    { "gait.step_height",  40.0f,    0.0f,  120.0f, P_PERLU_B },
+    { "gait.step_length",  60.0f,    0.0f,  150.0f, P_PERLU_B },
+    { "gait.cycle_time",  900.0f,  300.0f, 2000.0f, P_PERLU_B },
+    { "gait.duty",          0.5f,    0.3f,    0.7f, P_LANGSUNG },
+    { "gait.slew_rate",     3.0f,    0.5f,   10.0f, P_LANGSUNG },
+    { "gait.profile_tau",   0.25f,   0.05f,   1.0f, P_LANGSUNG },
+    { "gait.settle_tau",    0.10f,   0.02f,   0.5f, P_LANGSUNG },
+    { "stab.tau",           0.08f,   0.02f,   0.5f, P_BELUM_DIPAKAI },
+    { "stab.sign_roll",    -1.0f,   -1.0f,    1.0f, P_BELUM_DIPAKAI },
+    { "stab.sign_pitch",   -1.0f,   -1.0f,    1.0f, P_BELUM_DIPAKAI },
+    { "heading.kp",         0.020f,  0.0f,    0.1f, P_LANGSUNG },
+    { "heading.kd",         0.004f,  0.0f,    0.05f, P_LANGSUNG },
     // wall.kp 0,030 -> 0,008 : yang lama menjenuhkan kemudi ke +-1,00 begitu
     //   dinding lebih jauh dari 46 cm, jadi robot memutar PENUH menghadap
     //   dinding alih-alih menggeser mendekat.
@@ -50,14 +58,49 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     //   disaring GAIT_SLEW_RATE. Sesudah turunan dihitung pada laju sampel
     //   LiDAR, angka yang lebih besar barulah berarti sebagai redaman.
     // Dipilih lewat sweep di simulasi; tetap perlu disetel di robot sungguhan.
-    { "wall.kp",            0.008f,  0.0f,    0.1f },
-    { "wall.kd",            0.030f,  0.0f,    0.05f },
-    { "wall.setpoint",     13.0f,    5.0f,   30.0f },
-    { "head.utara",         0.0f,    0.0f,  360.0f },
-    { "head.timur",        90.0f,    0.0f,  360.0f },
-    { "head.selatan",     180.0f,    0.0f,  360.0f },
-    { "head.barat",       270.0f,    0.0f,  360.0f },
-    { "arena.mirror",       0.0f,    0.0f,    1.0f },   // 0=hadap kanan, 1=cermin (hadap kiri)
+    { "wall.kp",            0.008f,  0.0f,    0.1f, P_LANGSUNG },
+    { "wall.kd",            0.030f,  0.0f,    0.05f, P_LANGSUNG },
+    // GEOMETRI -- kenapa 13 cm membuat kaki menggesek dinding.
+    //
+    // Titik TERLEBAR robot adalah ujung kaki TENGAH: pangkal coxa x = +-90 mm
+    // ditambah STAND_RADIUS 70 mm = 160 mm dari pusat badan. Diukur di
+    // sim_dinding, angka itu TIDAK bertambah saat berjalan maupun saat memutar
+    // di batas NAV_WALL_TURN_MAX -- kaki tengah bergeser di sumbu Y, bukan X.
+    //
+    // Keempat LiDAR samping (ch0/ch1 kiri, ch3/ch4 kanan) menghadap TEGAK LURUS
+    // dinding; hanya ch5 (depan) dan ch2 (belakang) yang searah sumbu panjang.
+    // Jadi saat robot sejajar lorong:
+    //
+    //     x_dinding = x_sensor + jarak_terbaca
+    //
+    // x_sensor = jarak pasang sensor dari pusat badan, diukur ~50 mm dari
+    // gambar tata letak (ch0/ch1 di 49,8 mm; ch3/ch4 di 52,0 mm).
+    //
+    // Konsekuensinya: kaki menyentuh dinding saat sensor masih membaca
+    // 160 - 50 = 110 mm. Setpoint lama 13 cm hanya menyisakan celah 2 cm --
+    // satu ayunan kemudi saja sudah cukup untuk menyentuh.
+    //
+    // 19 cm memberi 50 + 190 - 160 = 80 mm celah. Batas atas dinaikkan ke 45 cm
+    // supaya lorong lebar juga terlayani.
+    //
+    // CARA MENYETEL YANG PALING TEPAT (tidak perlu menebak x_sensor):
+    // berdirikan robot di samping dinding, atur dengan tangan sampai celah
+    // ujung kaki tengah ke dinding sesuai selera (mis. 8 cm), lalu baca 'L'.
+    // Angka sensor samping SAAT ITU adalah wall.setpoint yang benar.
+    { "wall.setpoint",     19.0f,    5.0f,   45.0f, P_LANGSUNG },
+    // AMBANG "TERLALU DEKAT". Di bawah ini kendali PD dilewati dan robot
+    // memutar menjauh dengan kekuatan tetap. Perlu karena PD proporsional
+    // dengan wall.kp 0,008 memang SENGAJA lembut supaya tidak menjenuh saat
+    // dinding jauh -- konsekuensinya, saat terlalu dekat 10 cm pun koreksinya
+    // cuma 0,08 dari 1,00. Satu gain tidak bisa memenuhi kedua kebutuhan itu,
+    // jadi respons dekat dipisahkan jadi aturannya sendiri.
+    // 15 cm = kaki masih 4 cm dari dinding saat penjaga ini mulai bekerja.
+    { "wall.min",          15.0f,    4.0f,   35.0f, P_LANGSUNG },
+    { "head.utara",         0.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
+    { "head.timur",        90.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
+    { "head.selatan",     180.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
+    { "head.barat",       270.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
+    { "arena.mirror",       0.0f,    0.0f,    1.0f, P_BELUM_DIPAKAI },   // 0=hadap kanan, 1=cermin (hadap kiri)
 };
 
 CalibBlob gCalib;
@@ -107,17 +150,32 @@ void Calib::applyDefaults() {
     gCalib.version  = CALIB_VERSION;
 }
 
+// CRC dihitung sampai offsetof(crc), BUKAN sizeof - sizeof(crc).
+//
+// Keduanya terlihat setara, dan memang setara kalau struct-nya tidak punya
+// padding di ekor. CalibBlob punya: sizeof 272, tapi field crc ada di byte
+// 268-269, jadi 272-2 = 270 berarti hash ikut MENELAN field crc itu sendiri.
+// Akibatnya save() mem-hash crc LAMA lalu menimpanya dengan crc BARU, sehingga
+// load() -- yang mem-hash rentang sama, kini berisi crc baru -- selalu
+// mendapat angka berbeda dan SELALU menolak blob-nya.
+//
+// Jadi blok kalibrasi di EEPROM 0 tidak pernah sekali pun berhasil dimuat:
+// tiap boot jatuh ke applyDefaults() lalu menulis ulang. Gejalanya cuma satu
+// baris "EEPROM kosong/rusak/versi beda" yang gampang dikira normal.
+//
+// ServoMap kebetulan lolos (sizeof 126, crc di 124) -- kebetulan, bukan
+// karena rumusnya benar. Karena itu di sini pun dipakai offsetof.
 void Calib::save() {
     gCalib.magic[0] = 'H'; gCalib.magic[1] = 'X';
     gCalib.version  = CALIB_VERSION;
-    gCalib.crc = crc16((const uint8_t*)&gCalib, sizeof(CalibBlob) - sizeof(gCalib.crc));
+    gCalib.crc = crc16((const uint8_t*)&gCalib, offsetof(CalibBlob, crc));
     EEPROM.put(CALIB_ADDR, gCalib);
 }
 
 bool Calib::load() {
     CalibBlob tmp;
     EEPROM.get(CALIB_ADDR, tmp);
-    uint16_t want = crc16((const uint8_t*)&tmp, sizeof(CalibBlob) - sizeof(tmp.crc));
+    uint16_t want = crc16((const uint8_t*)&tmp, offsetof(CalibBlob, crc));
     if (tmp.magic[0] == 'H' && tmp.magic[1] == 'X' &&
         tmp.version == CALIB_VERSION && tmp.crc == want) {
         gCalib = tmp;

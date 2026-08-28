@@ -95,12 +95,68 @@ const float ARM_ORIGINS[2][3] = {
 #define SERVO_I2C_CLOCK  400000
 #define LIDAR_I2C_CLOCK  400000
 
-// --- LiDAR --- //
+// --- LiDAR (VL53L1X) --- //
 #define NUM_LIDAR        6
 #define I2C_MUX_ADDR     0x70
 #define LIDAR_EMA_ALPHA  0.4f    // bobot sampel baru (median dulu, lalu EMA)
 #define LIDAR_TIMEOUT_MS 300     // sensor dianggap mati bila tak ada data valid
-#define LIDAR_MAX_CM     200     // 400 // di atas ini dianggap "jauh", bukan rusak
+
+// MODE JARAK. Long TERLIHAT paling menggoda, tapi di arena bercahaya justru
+// paling pendek -- jangkauannya anjlok karena cahaya sekitar:
+//
+//      mode     gelap    cahaya terang    anggaran waktu minimum
+//      Short    136 cm       135 cm             20 ms
+//      Medium   290 cm        76 cm             33 ms
+//      Long     360 cm        73 cm             33 ms
+//
+// Navigasi tidak pernah memakai jarak di atas NAV_PELAN_CM (50 cm) untuk
+// mengemudi, jadi Short sudah lebih dari cukup -- hampir kebal cahaya sekitar,
+// dan anggaran 20 ms mempercepat laju sampel, yang langsung memperbaiki suku
+// turunan PD karena turunan dihitung pada laju sampel LiDAR.
+#define LIDAR_MODE_SHORT   0
+#define LIDAR_MODE_MEDIUM  1
+#define LIDAR_MODE_LONG    2
+#define LIDAR_MODE       LIDAR_MODE_SHORT
+
+#define LIDAR_BUDGET_US  20000   // anggaran waktu per pengukuran (us)
+#define LIDAR_PERIOD_MS  25      // jeda antar pengukuran (ms), >= anggaran waktu
+// BATAS ATAS -- hasil uji fisik, bukan angka dari lembar data. Di robot ini
+// bacaan masih akurat sampai ~70 cm; di atas itu sensornya tidak melaporkan
+// angka besar, melainkan JATUH KE HANTU 5 cm (lihat LIDAR_MIN_CM di bawah).
+// Dulu 120 -- terlalu optimis, dan tak pernah menolong karena mekanisme
+// gagalnya memang bukan "angka membesar".
+#define LIDAR_MAX_CM      70     // di atas ini dianggap "jauh", bukan rusak
+
+// BATAS BAWAH PER ARAH -- bacaan di bawah ini MUSTAHIL berasal dari benda
+// sungguhan, karena kaki robot sudah menabraknya lebih dulu:
+//
+//   samping (ch0,1,3,4) : ujung kaki tengah 160 mm - sensor 50 mm = 110 mm
+//   depan   (ch5)       : ujung kaki depan  139 mm - sensor 62 mm =  77 mm
+//   belakang(ch2)       : ujung kaki blkg   139 mm - sensor 66 mm =  73 mm
+//
+// Ini BUKAN sekadar penyaring hantu. Di robot ini "tak ada objek dalam
+// jangkauan" MUNCUL SEBAGAI bacaan pendek 5 cm, bukan sebagai status
+// SignalFail -- jadi bacaan di bawah batas ini artinya justru KOSONG, kebalikan
+// dari "ada halangan sangat dekat". Menafsirkannya sebagai halangan membuat
+// robot berbelok menghindari lorong yang sebenarnya terbuka lebar.
+//
+// Diambil sedikit di bawah angka geometri di atas supaya benda nyata yang
+// benar-benar mepet tetap terbaca. Urutan indeks = channel mux.
+const uint8_t LIDAR_MIN_CM[6] = {
+    10,  // ch0 kiri depan   (samping)
+    10,  // ch1 kiri belakang(samping)
+     7,  // ch2 belakang
+    10,  // ch3 kanan blkg   (samping)
+    10,  // ch4 kanan depan  (samping)
+     7   // ch5 depan
+};
+
+// ROI 4x4 menyempitkan bidang pandang dari ~27 der ke ~15 der. Berguna kalau
+// dicurigai sensor tetangga saling melihat (crosstalk) -- dua sensor sisi yang
+// sama menghadap arah yang SAMA di robot ini, jadi kerucut 27 der keduanya
+// benar-benar tumpang tindih. MATI secara default: bidang pandang sempit juga
+// membuat dinding lebih mudah luput saat robot menyerongi dinding.
+#define LIDAR_ROI_SEMPIT 0       // 1 = setROISize(4,4)
 
 // Tiga keadaan yang dikembalikan getDistance(). Membedakan "tak ada objek
 // dalam jangkauan" dari "sensor putus" itu penting: untuk wall-follow,
@@ -118,6 +174,23 @@ const float ARM_ORIGINS[2][3] = {
 //
 //   ch0 = KIRI DEPAN     ch1 = KIRI BELAKANG    ch2 = BELAKANG
 //   ch3 = KANAN BELAKANG ch4 = KANAN DEPAN      ch5 = DEPAN
+//
+// ARAH BERKAS (bukan sekadar posisi dudukan). Ini BUKAN cincin berjarak 60 der:
+//
+//   ch0, ch1 : menghadap KIRI  -- TEGAK LURUS dinding
+//   ch3, ch4 : menghadap KANAN -- TEGAK LURUS dinding
+//   ch5      : menghadap DEPAN     ch2 : menghadap BELAKANG
+//
+// Nama "kiri depan / kiri belakang" hanya menerangkan DI MANA sensornya duduk
+// di badan, bukan ke mana ia memandang. Bedanya penting untuk wall-follow:
+// berkas tegak lurus mengukur jarak dinding apa adanya, sedangkan berkas
+// menyerong akan memanjang sebesar 1/cos(sudut serong) dan menghasilkan umpan
+// balik positif saat robot menoleh (lihat README bagian 7.7).
+//
+// Sensor samping duduk ~50 mm dari pusat badan (diukur dari gambar tata letak:
+// ch0/ch1 di 49,8 mm, ch3/ch4 di 52,0 mm), sedangkan ujung kaki TENGAH ada di
+// 160 mm. Jadi kaki sudah menyentuh dinding saat sensor masih membaca ~11 cm --
+// itulah dasar wall.setpoint / wall.min / wall.hantu di Calib.cpp.
 //
 // Akibat pemetaan lama: navigasi membaca channel 0 sebagai "depan", padahal
 // channel 0 justru salah satu sensor yang mati -- jadi 'f'/'F' selalu langsung
@@ -154,6 +227,14 @@ const float ARM_ORIGINS[2][3] = {
 #define NAV_BELOK_CMD      0.60f // kekuatan putar saat menghindar halangan depan
 #define NAV_CARI_CMD       0.35f // kekuatan putar saat dinding samping hilang (tikungan)
 #define NAV_BELOK_BATAS_MS 8000  // berbelok lebih lama dari ini = dianggap terjebak
+// Dinding samping hilang lebih lama dari ini -> berhenti, jangan berputar
+// selamanya. Tanpa batas ini, sensor samping yang macet melapor "kosong"
+// (mis. jatuh ke hantu) membuat robot memutar NAV_CARI_CMD tanpa henti dan
+// berjalan melingkar di tengah arena. Hanya berlaku di mode 'f'/'F' polos:
+// di mode arena heading yang mengunci arah, jadi dinding hilang tidak
+// membuatnya melingkar. 10 detik ~ 86 cm perjalanan pada laju sekarang, cukup
+// untuk melewati mulut lorong yang lebar.
+#define NAV_CARI_BATAS_MS 10000
 
 // --- Mode terkunci kompas arena --- //
 // Heading arena jadi acuan SUDUT (lorong arena sejajar sumbu mata angin),
@@ -215,6 +296,29 @@ const float ARM_ORIGINS[2][3] = {
 #define BODY_SLEW_DEG_S    60.0f  // laju maks rotasi badan, derajat/detik
 #define BODY_SLEW_MM_S    120.0f  // laju maks geser badan, mm/detik
 #define BODY_DEMO_ROT_DEG  10.0f  // amplitudo rotasi saat demo 'B'
+
+// --- DEMO OTOMATIS SAAT MENYALA -- SEMENTARA, UNTUK PAJANGAN --------------
+//
+// MEMATIKANNYA: ganti satu angka di bawah jadi 0, lalu unggah ulang.
+//
+// PERINGATAN KESELAMATAN. Robot ini sengaja dirancang menyala dalam keadaan
+// LEMAS (PWM mati) -- lihat bagian 3 README. Itu yang membuat reset dan
+// unggah ulang tidak pernah menghentak 18 servo. Demo ini MEMBATALKAN
+// perlindungan tersebut: robot akan berdiri sendiri beberapa detik sesudah
+// menyala, termasuk sesudah setiap kali program diunggah.
+//
+// Karena itu ada DEMO_BOOT_TUNDA: jeda sebelum servo dihidupkan, supaya ada
+// waktu menjauhkan tangan atau menekan tombol apa pun untuk membatalkan.
+// JANGAN mengecilkannya di bawah 2 detik.
+//
+// Urutannya persis sama dengan mengetik: 'b' -> 'z10 1' -> tunggu -> '0'.
+// Perintahnya benar-benar dilewatkan ke parser yang sama, bukan disalin --
+// jadi demo ini tidak bisa menyimpang dari perilaku perintah manualnya.
+#define DEMO_BOOT          0      // 0 = MATI (kembali ke boot lemas yang aman)
+#define DEMO_BOOT_TUNDA    3000   // ms, jeda sebelum servo dihidupkan
+#define DEMO_BOOT_BERDIRI  1500   // ms, tunggu kaki menetap sesudah berdiri
+#define DEMO_BOOT_LAMA    20000   // ms, lama goyang berjalan
+#define DEMO_BOOT_PERINTAH "z10 2"   // dijalankan apa adanya lewat handleCmd()
 #define BODY_DEMO_TRANS_MM 25.0f  // amplitudo translasi saat demo 'B'
 #define BODY_DEMO_PHASE_S   3.0f  // detik per sumbu (6 sumbu = 18 detik)
 

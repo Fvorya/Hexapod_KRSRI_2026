@@ -106,8 +106,13 @@ private:
     // itu bukan turunan, itu impuls.
     uint32_t _errStempel = 0;    // stempel sampel LiDAR yang dipakai _errPrev
     float    _errTurunan = 0.0f; // cm/detik, ditahan antar sampel
-    uint32_t _tPrev   = 0;
+
+    // Iterasi terakhir masuk pita "terlalu dekat"? Dicetak oleh 'n' supaya
+    // saat menyetel terlihat pita mana yang sedang bekerja.
+    bool     _pitaDekat = false;
+
     uint32_t _tBelok  = 0;      // sejak kapan sedang menghindar halangan depan
+    uint32_t _tCari   = 0;      // sejak kapan dinding samping hilang (0 = terlihat)
 
     // --- mode terkunci arena & pivot berdiri sendiri ---
     FaseNav  _fase     = FASE_JALAN;

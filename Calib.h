@@ -12,12 +12,26 @@ enum ParamId {
     K_GAIT_SLEW_RATE, K_GAIT_PROFILE_TAU, K_GAIT_SETTLE_TAU,
     K_STAB_TAU, K_STAB_SIGN_ROLL, K_STAB_SIGN_PITCH,
     K_HEADING_KP, K_HEADING_KD, K_WALL_KP, K_WALL_KD, K_WALL_SETPOINT,
+    K_WALL_MIN,
     K_HEAD_UTARA, K_HEAD_TIMUR, K_HEAD_SELATAN, K_HEAD_BARAT,
     K_ARENA_MIRROR,   // 0 = arena hadap kanan (default), 1 = cermin (hadap kiri)
     N_PARAMS
 };
 
-struct ParamDef {const char* name; float def, lo, hi;};
+// KAPAN sebuah parameter benar-benar berpengaruh sesudah diubah. Ini bukan
+// hiasan: tanpa keterangan ini, mengubah gait.step_height lalu melihat robot
+// tidak berubah apa-apa terlihat seperti perintahnya gagal, padahal nilainya
+// memang baru masuk saat profil gait di-set ulang.
+enum ParamBerlaku : uint8_t {
+    P_LANGSUNG = 0,     // dibaca tiap loop -> efeknya seketika
+    P_PERLU_B,          // baru masuk lewat profileFlat(), yaitu saat 'b'
+    P_SERVO_LEMAS,      // mengubah pemetaan sudut->pulse SELURUH servo sekaligus
+    P_BELUM_DIPAKAI     // slotnya ada, tapi belum ada kode yang membacanya
+};
+
+// PARAM_DEFS ada di flash dan TIDAK ikut CalibBlob, jadi menambah field di sini
+// tidak mengubah tata letak EEPROM dan tidak menuntut kenaikan CALIB_VERSION.
+struct ParamDef {const char* name; float def, lo, hi; ParamBerlaku berlaku;};
 
 struct CalibBlob {
     char     magic[2];
@@ -60,7 +74,11 @@ extern CalibBlob gCalib;
 #define HEADING_KD        gParam[K_HEADING_KD]
 #define WALL_KP           gParam[K_WALL_KP]
 #define WALL_KD           gParam[K_WALL_KD]
-#define WALL_SETPOINT_CM  ((int)gParam[K_WALL_SETPOINT])
+// Setpoint TIDAK lagi dibulatkan ke int. Dulu (int) memaksa jarak dinding
+// hanya bisa disetel per 1 cm, padahal celah ujung kaki ke dinding cuma
+// beberapa cm -- setengah centimeter benar-benar terasa di situ.
+#define WALL_SETPOINT_CM  gParam[K_WALL_SETPOINT]
+#define WALL_MIN_CM       gParam[K_WALL_MIN]
 #define HEAD_UTARA        gParam[K_HEAD_UTARA]
 #define HEAD_TIMUR        gParam[K_HEAD_TIMUR]
 #define HEAD_SELATAN      gParam[K_HEAD_SELATAN]

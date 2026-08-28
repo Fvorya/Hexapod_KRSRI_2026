@@ -109,6 +109,39 @@ static void yawStreamUpdate() {
     Serial.println();
 }
 
+// ====================================================================
+// GOYANG ROLL BERGELOMBANG (non-blokir) -- untuk pajangan
+// Kaki TETAP MENAPAK; hanya badan yang mengayun, sama seperti demo 'B'.
+// Bedanya: 'B' menyapu enam sumbu sekali jalan lalu berhenti, sedangkan ini
+// berayun terus sampai dihentikan, dengan amplitudo & periode yang bisa diatur.
+//
+// Fase pitch opsional membuatnya jadi gelombang berputar, bukan metronom:
+// pitch = amp*sin(wt + fase). Fase 90 der membuat badan menelusuri kerucut.
+// ====================================================================
+static bool     goyangOn   = false;
+static uint32_t goyangT0   = 0;
+static float    goyangAmp  = 12.0f;   // derajat
+static float    goyangPer  = 2.0f;    // detik per siklus penuh
+static float    goyangFase = 0.0f;    // beda fase pitch, derajat (0 = roll murni)
+
+static void goyangStop(const char* alasan) {
+    if (!goyangOn) return;
+    goyangOn = false;
+    robot.setBodyRotation(0, 0, 0);    // di-ramp pulang, bukan dilepas mendadak
+    Serial.print("Goyang roll berhenti: "); Serial.println(alasan);
+}
+
+static void goyangUpdate() {
+    if (!goyangOn) return;
+    float t = (millis() - goyangT0) / 1000.0f;
+    float w = 2.0f * (float)M_PI / goyangPer;
+    float roll  = goyangAmp * sinf(w * t);
+    float pitch = (fabsf(goyangFase) > 0.01f)
+                  ? goyangAmp * sinf(w * t + deg2rad(goyangFase))
+                  : 0.0f;
+    robot.setBodyRotation(roll, pitch, 0.0f);
+}
+
 // Aliran LiDAR ke Serial Monitor, pola sama dengan aliran yaw di atas.
 static bool     lidOn   = false;
 static uint32_t lidT    = 0;
@@ -135,6 +168,81 @@ static uint8_t argFloats(const char* s, float* out, uint8_t maxn) {
         p = end;
     }
     return n;
+}
+
+// ====================================================================
+// PARAMETER KALIBRASI ('q' lihat, 'Q' ubah, 'W' simpan)
+// Menyambungkan Calib::findParam()/setParam()/save() yang selama ini ada
+// tapi tidak pernah dipanggil siapa pun -- akibatnya tiap penyetelan gain
+// menuntut kompilasi ulang DAN kenaikan CALIB_VERSION.
+// ====================================================================
+
+static const char* namaBerlaku(ParamBerlaku b) {
+    switch (b) {
+        case P_LANGSUNG:     return "langsung";
+        case P_PERLU_B:      return "ketik 'b'";
+        case P_SERVO_LEMAS:  return "servo lemas";
+        default:             return "belum dipakai";
+    }
+}
+
+// Ambil satu token (sampai spasi) dari s+1. Mengembalikan penunjuk ke sisa
+// string sesudah token, atau nullptr bila tidak ada token.
+static const char* ambilToken(const char* s, char* out, uint8_t maks) {
+    const char* p = s + 1;
+    while (*p == ' ') p++;
+    if (!*p) return nullptr;
+    uint8_t n = 0;
+    while (*p && *p != ' ' && *p != '=' && n < maks - 1) out[n++] = *p++;
+    out[n] = 0;
+    return n ? p : nullptr;
+}
+
+// Cocok persis dulu (Calib::findParam), lalu awalan yang unik supaya tidak
+// perlu mengetik "gait.profile_tau" lengkap di Serial Monitor.
+// -1 = tidak ketemu, -2 = ambigu (kandidatnya sudah dicetak).
+static int cariParam(const char* nama) {
+    int i = Calib::findParam(nama);
+    if (i >= 0) return i;
+
+    int ketemu = -1, n = 0;
+    size_t L = strlen(nama);
+    for (int k = 0; k < N_PARAMS; k++)
+        if (strncmp(nama, PARAM_DEFS[k].name, L) == 0) { ketemu = k; n++; }
+
+    if (n == 1) return ketemu;
+    if (n > 1) {
+        Serial.print("Awalan '"); Serial.print(nama); Serial.println("' ambigu:");
+        for (int k = 0; k < N_PARAMS; k++)
+            if (strncmp(nama, PARAM_DEFS[k].name, L) == 0) {
+                Serial.print("   "); Serial.println(PARAM_DEFS[k].name);
+            }
+        return -2;
+    }
+    return -1;
+}
+
+static void cetakSatuParam(int i) {
+    const ParamDef& d = PARAM_DEFS[i];
+    float v = gParam[i];
+    Serial.print("  ");
+    Serial.print(d.name);
+    for (size_t k = strlen(d.name); k < 18; k++) Serial.print(' ');
+    Serial.print(v, 3);
+    Serial.print(fabsf(v - d.def) > 1e-6f ? " *" : "  ");
+    Serial.print("  def "); Serial.print(d.def, 3);
+    Serial.print("  [ ");  Serial.print(d.lo, 2);
+    Serial.print(" .. ");  Serial.print(d.hi, 2);
+    Serial.print(" ]  ");  Serial.println(namaBerlaku(d.berlaku));
+}
+
+static void cetakSemuaParam() {
+    Serial.println("\n--- PARAMETER KALIBRASI (EEPROM 0) ---");
+    Serial.println("  nama              nilai      default      rentang        berlaku");
+    for (int i = 0; i < N_PARAMS; i++) cetakSatuParam(i);
+    Serial.println("  '*' = berbeda dari default");
+    Serial.println("  Q<nama> <nilai> untuk mengubah, W untuk menyimpan ke EEPROM.");
+    Serial.println("  Nama boleh disingkat selama awalannya unik (mis. Qwall.kp 0.012).");
 }
 
 static void cetakPoseBadan() {
@@ -247,12 +355,106 @@ static void handleCmd(char* s) {
             nav.navStatus();
             break;
 
+        case 'j': {  // Jejak statistik LiDAR: j (semua) atau j<channel>
+            if (lidar.jejakJalan()) { Serial.println("Jejak sedang berjalan, tunggu selesai."); break; }
+            float p[2] = {-1, 5};
+            uint8_t n = argFloats(s, p, 2);
+            lidar.jejakMulai((n >= 1) ? (int8_t)p[0] : -1,
+                             (uint16_t)clampf((n >= 2) ? p[1] : 5.0f, 1.0f, 30.0f));
+            break;
+        }
+
+        // 'u' = uji isolasi. SENGAJA bukan 'J': huruf besar-kecil dipakai di
+        // firmware ini untuk pasangan SIMETRIS (f/F kiri-kanan, g/G grip),
+        // bukan untuk dua fungsi berbeda. 'j' dan 'J' terlalu mudah tertukar.
+        case 'u': {  // u = sapu semua sensor; u<channel> <detik> = satu sensor
+            if (lidar.isolasiJalan()) { Serial.println("Uji isolasi sedang berjalan."); break; }
+            float p[2] = {-1, 4};
+            uint8_t n = argFloats(s, p, 2);
+            lidar.isolasiMulai((n >= 1) ? (int8_t)p[0] : -1,
+                               (uint16_t)clampf((n >= 2) ? p[1] : 4.0f, 2.0f, 20.0f));
+            break;
+        }
+
         case 'I':   // Pindai bus I2C LiDAR + init ulang sensor yang belum aktif
             lidar.pindaiI2C();
             break;
 
         case 'M':   // Cetak peta EEPROM + cek kapasitas chip sebenarnya
             eeMapPeriksa(true);
+            break;
+
+        // --- PARAMETER KALIBRASI ---
+        case 'q': {   // q = daftar semua, q<nama> = satu parameter
+            char nm[24];
+            if (!ambilToken(s, nm, sizeof(nm))) { cetakSemuaParam(); break; }
+            int i = cariParam(nm);
+            if (i == -1) { Serial.print("Parameter tidak dikenal: "); Serial.println(nm); }
+            else if (i >= 0) cetakSatuParam(i);
+            break;
+        }
+
+        case 'Q': {   // Q<nama> <nilai>
+            char nm[24];
+            const char* sisa = ambilToken(s, nm, sizeof(nm));
+            if (!sisa) { Serial.println("Format: Q<nama> <nilai>, misal Qwall.kp 0.012"); break; }
+
+            while (*sisa == ' ' || *sisa == '=') sisa++;
+            char* akhir;
+            float minta = strtof(sisa, &akhir);
+            if (akhir == sisa) { Serial.println("Nilai tidak terbaca. Misal: Qwall.kp 0.012"); break; }
+
+            int i = cariParam(nm);
+            if (i == -1) { Serial.print("Parameter tidak dikenal: "); Serial.println(nm); break; }
+            if (i < 0) break;                    // ambigu, kandidat sudah dicetak
+
+            const ParamDef& d = PARAM_DEFS[i];
+
+            // Mengubah pemetaan sudut->pulse menggeser KEENAM BELAS servo
+            // sekaligus tanpa ramp -- kelas bahaya yang sama dengan lonjakan
+            // pose badan. Haruskan servo lemas dulu, jangan cuma diperingatkan.
+            if (d.berlaku == P_SERVO_LEMAS && robot.isArmed()) {
+                Serial.print("Ditolak: '"); Serial.print(d.name);
+                Serial.println("' menggeser semua servo sekaligus tanpa ramp.");
+                Serial.println("        Ketik 'x' (lemas) dulu, ubah, lalu 'b' lagi.");
+                break;
+            }
+
+            float sebelum = gParam[i];
+            if (!Calib::setParam(d.name, minta)) {   // clamp ke [lo,hi] di dalam
+                Serial.println("Gagal menyetel parameter.");
+                break;
+            }
+            float sesudah = gParam[i];
+
+            Serial.print(d.name); Serial.print(" : ");
+            Serial.print(sebelum, 3); Serial.print(" -> "); Serial.println(sesudah, 3);
+
+            // Clamp diam-diam persis kelas bug yang sudah berkali-kali menggigit
+            // di firmware ini -- jadi katakan kalau permintaannya dipangkas.
+            if (fabsf(sesudah - minta) > 1e-6f) {
+                Serial.print("  (diminta "); Serial.print(minta, 3);
+                Serial.print(", DI-CLAMP ke rentang sah "); Serial.print(d.lo, 3);
+                Serial.print(" .. "); Serial.print(d.hi, 3); Serial.println(")");
+            }
+
+            switch (d.berlaku) {
+                case P_PERLU_B:
+                    Serial.println("  Baru berlaku sesudah profil gait di-set ulang -- ketik 'b'.");
+                    break;
+                case P_BELUM_DIPAKAI:
+                    Serial.println("  CATATAN: belum ada kode yang membaca parameter ini.");
+                    break;
+                default: break;
+            }
+            Serial.println("  Masih di RAM. Ketik 'W' supaya bertahan sesudah reset.");
+            break;
+        }
+
+        case 'W':   // Simpan seluruh blok Calib ke EEPROM 0
+            Calib::save();
+            Serial.println("Parameter disimpan ke EEPROM 0. Bertahan sesudah reset,");
+            Serial.println("  KECUALI bila CALIB_VERSION dinaikkan -- blob lama lalu dibuang.");
             break;
 
         case 'e':
@@ -289,6 +491,7 @@ static void handleCmd(char* s) {
             uint8_t n = argFloats(s, a, 3);
             if (n == 0) { cetakPoseBadan(); break; }
             if (demoOn) demoStop("diambil alih perintah manual.");
+            if (goyangOn) goyangStop("diambil alih perintah manual.");
             robot.setBodyRotation(a[0], a[1], a[2]);
             robot.update();               // hitung ulang supaya laporan di bawah akurat
             cetakPoseBadan();
@@ -300,6 +503,7 @@ static void handleCmd(char* s) {
             uint8_t n = argFloats(s, a, 3);
             if (n == 0) { cetakPoseBadan(); break; }
             if (demoOn) demoStop("diambil alih perintah manual.");
+            if (goyangOn) goyangStop("diambil alih perintah manual.");
             robot.setBodyTranslation(a[0], a[1], a[2]);
             robot.update();
             cetakPoseBadan();
@@ -308,12 +512,56 @@ static void handleCmd(char* s) {
 
         case '0':    // Nolkan pose badan (kembali tegak & terpusat)
             if (demoOn) demoStop("dinolkan.");
+            if (goyangOn) goyangStop("dinolkan.");
             robot.setBodyRotation(0, 0, 0);
             robot.setBodyTranslation(0, 0, 0);
             Serial.println("Pose badan dinolkan.");
             break;
 
+        case 'z': {  // Goyang roll bergelombang. z<amplitudo> <periode> <fasePitch>
+            if (goyangOn) { goyangStop("dihentikan pengguna."); break; }
+
+            float p[3] = {goyangAmp, goyangPer, goyangFase};
+            uint8_t n = argFloats(s, p, 3);
+            if (n >= 1) goyangAmp  = clampf(p[0], 1.0f, BODY_MAX_ROT_DEG);
+            if (n >= 2) goyangPer  = clampf(p[1], 0.2f, 30.0f);
+            if (n >= 3) goyangFase = clampf(p[2], -180.0f, 180.0f);
+
+            // Pose badan di-ramp BODY_SLEW_DEG_S. Kalau laju puncak sinus
+            // melebihi itu, ramp memotong puncaknya dan yang terlihat bukan
+            // gelombang lagi melainkan segitiga. Naikkan periodenya, dan
+            // katakan -- jangan diam-diam menghasilkan bentuk yang salah.
+            float perMin = goyangAmp * 2.0f * (float)M_PI / BODY_SLEW_DEG_S;
+            if (goyangPer < perMin) {
+                Serial.print("Periode dinaikkan "); Serial.print(goyangPer, 2);
+                Serial.print(" -> ");               Serial.print(perMin, 2);
+                Serial.println(" detik supaya sinusnya tidak terpotong ramp.");
+                Serial.println("  (turunkan amplitudo kalau ingin ayunan lebih cepat)");
+                goyangPer = perMin;
+            }
+
+            if (demoOn) demoStop("diambil alih goyang roll.");
+            if (!robot.isArmed())
+                Serial.println("(servo masih lemas -- ketik 'b' dulu bila ingin melihatnya)");
+
+            goyangOn = true; goyangT0 = millis();
+
+            float lajuPuncak = goyangAmp * 2.0f * (float)M_PI / goyangPer;
+            Serial.print("Goyang roll HIDUP: amplitudo "); Serial.print(goyangAmp, 1);
+            Serial.print(" der, periode ");               Serial.print(goyangPer, 2);
+            Serial.println(" detik.");
+            if (fabsf(goyangFase) > 0.01f) {
+                Serial.print("  pitch ikut, beda fase "); Serial.print(goyangFase, 0);
+                Serial.println(" der -- badan menelusuri kerucut.");
+            }
+            Serial.print("  laju puncak "); Serial.print(lajuPuncak, 1);
+            Serial.print(" der/detik (batas ramp "); Serial.print(BODY_SLEW_DEG_S, 0);
+            Serial.println("). 'z' lagi untuk berhenti.");
+            break;
+        }
+
         case 'B':    // Demo sapuan 6 sumbu (18 detik), tekan lagi untuk berhenti
+            if (goyangOn) goyangStop("diambil alih demo 'B'.");
             if (demoOn) { demoStop("dihentikan pengguna."); break; }
             if (!robot.isArmed()) Serial.println("(servo masih lemas -- ketik 'b' dulu bila ingin melihat gerakannya)");
             demoOn = true; demoT0 = millis(); demoAxis = -1;
@@ -384,16 +632,25 @@ static void handleCmd(char* s) {
         case 'x': // Lemas darurat: PWM mati, servo bebas
             nav.navBerhenti("servo dilemaskan.");
             if (demoOn) demoStop("servo dilemaskan.");
+            if (goyangOn) goyangStop("servo dilemaskan.");
             robot.disarm();
             break;
 
         case 'd': // Dump diagnostik (kalibrasi + IK per kaki)
             robot.debugDump();
+#if DEMO_BOOT
+            // Robot yang berdiri sendiri saat dinyalakan itu menyimpang dari
+            // rancangan boot-lemas, jadi jangan biarkan ia jadi kejutan bagi
+            // orang berikutnya yang membuka diagnostik.
+            Serial.println("  CATATAN: DEMO_BOOT aktif -- robot berdiri sendiri saat menyala.");
+            Serial.println("           Matikan lewat DEMO_BOOT 0 di config.h.");
+#endif
             break;
 
         // --- 7. KONTROL ROBOT DASAR ---
         case 'b': {   // Berdiri diam (pose netral). Opsional: b<mm> untuk atur tinggi badan.
             if (demoOn) demoStop("kembali ke pose berdiri.");
+            if (goyangOn) goyangStop("kembali ke pose berdiri.");
             robot.stop();                        // vektor gerak = 0 -> gait settle ke posisi home
             robot.setBodyTranslation(0, 0, 0);   // buang geser badan
             robot.setBodyRotation(0, 0, 0);      // buang roll/pitch/yaw badan
@@ -442,6 +699,10 @@ static void handleCmd(char* s) {
             Serial.println("  l      : Tabel jarak keenam sensor");
             Serial.println("  L      : Hidup/matikan aliran LiDAR ( L<ms> untuk atur jeda )");
             Serial.println("  I      : Pindai bus I2C + INIT ULANG sensor yang mati");
+            Serial.println("  j      : Jejak statistik semua sensor 5 detik (cari hantu)");
+            Serial.println("  j<ch> <detik> : Jejak satu channel, mis. j5 10");
+            Serial.println("  u      : Uji isolasi SEMUA sensor -> tabel kesimpulan");
+            Serial.println("  u<ch> <detik> : Uji isolasi satu sensor, mis. u5 4");
             Serial.println("NAVIGASI OTONOM (non-blokir):");
             Serial.println("  f      : Jalan mengikuti dinding KIRI");
             Serial.println("  F      : Jalan mengikuti dinding KANAN");
@@ -453,6 +714,11 @@ static void handleCmd(char* s) {
             Serial.println("  K      : Tabel kalibrasi pivot (EEPROM 2048)");
             Serial.println("  S      : Simpan hasil kalibrasi 'C' ke EEPROM 2048");
             Serial.println("  M      : Cetak peta EEPROM + kapasitas chip");
+            Serial.println("PARAMETER (gain PD, gait, pulse -- tanpa kompilasi ulang):");
+            Serial.println("  q          : Daftar semua parameter + rentang sahnya");
+            Serial.println("  q<nama>    : Lihat satu parameter (mis. qwall)");
+            Serial.println("  Q<nm> <nl> : Ubah parameter (mis. Qwall.kp 0.012)");
+            Serial.println("  W          : Simpan parameter ke EEPROM 0");
             Serial.println("PIVOT (non-blokir -- 's'/'x'/Enter membatalkan):");
             Serial.println("  o[0-3] : Pivot menuju arah arena");
             Serial.println("  O[der] : Pivot relatif (misal O90)");
@@ -471,6 +737,9 @@ static void handleCmd(char* s) {
             Serial.println("  t<x> <y> <z> : Set geser badan, mm (misal: t0 0 -20 untuk merunduk)");
             Serial.println("  0            : Nolkan pose badan");
             Serial.println("  B            : Demo sapuan 6 sumbu (18 detik)");
+            Serial.println("  z            : Goyang roll bergelombang, terus-menerus (pajangan)");
+            Serial.println("  z<amp> <per> <fase> : amplitudo der, periode detik, fase pitch der");
+            Serial.println("                 contoh: z12 2   atau  z15 3 90 (badan menelusuri kerucut)");
             Serial.println("LENGAN (bahu, siku, grip -- depan & belakang):");
             Serial.println("  a<jkn> <tgi> : Lengan DEPAN ke jangkauan/tinggi mm (misal: a70 20)");
             Serial.println("  A<jkn> <tgi> : Lengan BELAKANG");
@@ -486,6 +755,103 @@ static void handleCmd(char* s) {
             Serial.println("Perintah tidak dikenal. Ketik 'h' untuk bantuan.");
     }
 }
+
+// ====================================================================
+// DEMO OTOMATIS SAAT MENYALA (sementara -- matikan lewat DEMO_BOOT di config.h)
+// ====================================================================
+// Non-blokir, seperti semua yang lain di loop utama: ia hanya memeriksa jam
+// lalu memanggil handleCmd() dengan perintah yang PERSIS sama dengan yang
+// diketik manusia. Tidak ada logika gerak yang disalin ke sini, jadi demo
+// tidak bisa berperilaku beda dari perintah manualnya.
+//
+// Ditulis sebagai state machine, bukan rangkaian delay(). Selama delay()
+// parser serial mati -- artinya demo tidak bisa dibatalkan, IMU dan LiDAR
+// berhenti diperbarui, dan servo tidak di-commit. Persis kesalahan yang sudah
+// dibersihkan dari pivotKe() sebelumnya; jangan dibawa masuk lagi lewat demo.
+#if DEMO_BOOT
+enum BootFase : uint8_t { BOOT_TUNDA, BOOT_BERDIRI, BOOT_GOYANG, BOOT_SELESAI };
+static BootFase bootFase = BOOT_TUNDA;
+static uint32_t bootT    = 0;
+
+// Menjalankan satu perintah lewat parser normal. handleCmd() menerima char*
+// dan boleh menulisi bufernya, jadi literalnya disalin dulu -- menulisi string
+// literal itu perilaku tak terdefinisi.
+static void bootJalankan(const char* perintah) {
+    char buf[24];
+    strncpy(buf, perintah, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = 0;
+    handleCmd(buf);
+}
+
+// Membatalkan URUTAN-nya saja. Kalau goyang sudah terlanjur jalan, ia sengaja
+// DIBIARKAN: sejak operator menyentuh keyboard, dialah yang memegang kendali,
+// dan menghentikan pajangan gara-gara ia mengetik 'l' untuk melihat LiDAR itu
+// mengejutkan. Yang hilang cuma '0' otomatis di ujung -- jadi keadaannya
+// disebutkan, bukan dibiarkan jadi kejutan.
+static void bootBatal(const char* alasan) {
+    if (bootFase == BOOT_SELESAI) return;
+    bool masihGoyang = (bootFase == BOOT_GOYANG) && goyangOn;
+    bootFase = BOOT_SELESAI;
+    Serial.print("\nDemo menyala DIBATALKAN: "); Serial.println(alasan);
+    if (masihGoyang)
+        Serial.println("  goyang MASIH jalan -- 'z' atau '0' untuk menghentikannya.");
+}
+
+static void bootUpdate() {
+    if (bootFase == BOOT_SELESAI) return;
+    uint32_t now = millis();
+
+    switch (bootFase) {
+        case BOOT_TUNDA: {
+            // Hitung mundur yang terlihat. Operator harus TAHU servo akan
+            // menyala, bukan dikejutkan olehnya -- robot ini biasanya menyala
+            // dalam keadaan lemas, jadi berdiri sendiri itu tidak terduga.
+            static uint32_t tCetak = 0;
+            if (now - tCetak >= 1000) {
+                tCetak = now;
+                uint32_t sisa = (now < DEMO_BOOT_TUNDA) ? (DEMO_BOOT_TUNDA - now) : 0;
+                Serial.print("  demo menyala dalam "); Serial.print((sisa + 999) / 1000);
+                Serial.println(" detik -- ketik apa saja lalu Enter untuk batal");
+            }
+            if (now >= DEMO_BOOT_TUNDA) {
+                Serial.println("Demo menyala: berdiri.");
+                bootJalankan("b");
+                bootFase = BOOT_BERDIRI;
+                bootT = now;
+            }
+            break;
+        }
+
+        case BOOT_BERDIRI:
+            // Beri kaki waktu menetap dulu. Menggoyang badan saat gait masih
+            // menuju pose home membuat kedua gerakan bertumpuk.
+            if (now - bootT >= DEMO_BOOT_BERDIRI) {
+                Serial.print("Demo menyala: '"); Serial.print(DEMO_BOOT_PERINTAH);
+                Serial.print("' selama "); Serial.print(DEMO_BOOT_LAMA / 1000);
+                Serial.println(" detik.");
+                bootJalankan(DEMO_BOOT_PERINTAH);
+                bootFase = BOOT_GOYANG;
+                bootT = now;
+            }
+            break;
+
+        case BOOT_GOYANG:
+            // goyangOn bisa mati lebih dulu kalau sesuatu mengambil alih pose
+            // badan. Kalau begitu, jangan menunggu sampai waktunya habis lalu
+            // menimpa apa pun yang sedang berjalan dengan '0'.
+            if (!goyangOn) { bootBatal("goyang dihentikan dari luar."); break; }
+            if (now - bootT >= DEMO_BOOT_LAMA) {
+                bootJalankan("0");
+                bootFase = BOOT_SELESAI;
+                Serial.println("Demo menyala SELESAI -- robot tetap berdiri.");
+                Serial.println("  (matikan permanen lewat DEMO_BOOT 0 di config.h)");
+            }
+            break;
+
+        default: break;
+    }
+}
+#endif  // DEMO_BOOT
 
 // ====================================================================
 // FUNGSI SETUP
@@ -526,6 +892,14 @@ void setup() {
     Serial.println("\nSistem siap -- SERVO MASIH LEMAS (PWM mati).");
     Serial.println("Topang robot, lalu ketik 'b' untuk berdiri. 'x' untuk melemaskan lagi.");
     Serial.println("Ketik 'h' untuk daftar perintah, 'd' untuk diagnostik.");
+
+#if DEMO_BOOT
+    Serial.println("\n!! DEMO MENYALA AKTIF -- robot akan BERDIRI SENDIRI.");
+    Serial.print(  "   urutan: 'b' -> '"); Serial.print(DEMO_BOOT_PERINTAH);
+    Serial.print(  "' "); Serial.print(DEMO_BOOT_LAMA / 1000); Serial.println(" detik -> '0'.");
+    Serial.println("   Topang robot SEKARANG. Ketik apa saja lalu Enter untuk membatalkan.");
+    Serial.println("   Matikan permanen: DEMO_BOOT 0 di config.h.");
+#endif
 }
 
 // ====================================================================
@@ -537,7 +911,11 @@ void loop() {
     lidar.update();     // satu sensor per putaran, non-blokir
 
     // 2. DEMO BODY KINEMATICS + ALIRAN YAW (keduanya non-blokir)
+#if DEMO_BOOT
+    bootUpdate();       // urutan demo saat menyala; berhenti sendiri sesudah '0'
+#endif
     demoUpdate();
+    goyangUpdate();
     yawStreamUpdate();
     lidarStreamUpdate();
 
@@ -561,6 +939,14 @@ void loop() {
     while (Serial.available()) {
         char ch = Serial.read();
 
+#if DEMO_BOOT
+        // Byte APA PUN membatalkan demo menyala -- termasuk Enter kosong, yang
+        // memang rem daruratnya. Dibatalkan di sini, sebelum karakternya
+        // diproses, supaya perintah yang diketik operator tetap berjalan
+        // normal sesudahnya dan tidak berebut dengan urutan demo.
+        bootBatal("ada perintah dari pengguna.");
+#endif
+
         // Eksekusi jika ditekan Enter
         if (ch == '\n' || ch == '\r') {
             buf[len] = 0; // Kunci string
@@ -571,6 +957,7 @@ void loop() {
                 // Fitur Keselamatan: Tekan Enter kosong untuk rem darurat
                 nav.navBerhenti("rem darurat.");
                 if (demoOn) demoStop("rem darurat.");
+                if (goyangOn) goyangStop("rem darurat.");
                 robot.stop();
                 Serial.println("!! REM DARURAT (Vektor = 0) !!");
             }

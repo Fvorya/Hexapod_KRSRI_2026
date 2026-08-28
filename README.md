@@ -1,6 +1,6 @@
 # Hexapod Unlimited
 
-Firmware Teensy 4.1 untuk robot hexapod berkaki enam: gait tripod, kinematika invers kaki dan lengan, IMU 10-axis, enam LiDAR ToF, dan navigasi otonom ikut-dinding. Semua kalibrasi permanen di EEPROM.
+Firmware Teensy 4.1 untuk robot hexapod berkaki enam: gait tripod, kinematika invers kaki dan lengan, IMU 10-axis, enam LiDAR ToF **VL53L1X**, dan navigasi otonom ikut-dinding. Semua kalibrasi permanen di EEPROM.
 
 **Status singkat (Agustus 2026).** Kaki, gait, body kinematics, pivot, dan navigasi ikut-dinding sudah jalan. Lengan belum terpasang fisik sehingga IK-nya belum teruji. Dua dari enam LiDAR rusak fisik — akibatnya mode ikut-dinding **kiri** belum bisa dipakai, mode **kanan** bisa.
 
@@ -20,6 +20,7 @@ Firmware Teensy 4.1 untuk robot hexapod berkaki enam: gait tripod, kinematika in
 10. [Peta EEPROM](#10-peta-eeprom)
 11. [Prosedur bring-up & kalibrasi](#11-prosedur-bring-up--kalibrasi)
 12. [Daftar perintah serial](#12-daftar-perintah-serial)
+12b. [Menyetel parameter tanpa kompilasi ulang](#12b-menyetel-parameter-tanpa-kompilasi-ulang)
 13. [Harness simulasi PC](#13-harness-simulasi-pc)
 14. [Apa yang berubah dari program lama](#14-apa-yang-berubah-dari-program-lama)
 15. [Yang masih menunggu](#15-yang-masih-menunggu)
@@ -111,14 +112,14 @@ Tiga bus I2C terpisah supaya tidak ada tabrakan alamat:
 
 | Bus | Pin | Isi |
 |---|---|---|
-| `Wire` | SDA 18 / SCL 19 | Mux LiDAR TCA9548A `0x70` + 6× VL53L0X `0x29` |
+| `Wire` | SDA 18 / SCL 19 | Mux LiDAR TCA9548A `0x70` + 6× VL53L1X `0x29` |
 | `Wire1` | SDA 17 / SCL 16 | PCA9685 driver 0 `0x41` |
 | `Wire2` | SDA 25 / SCL 24 | PCA9685 driver 1 `0x40` |
 | `Serial2` | RX 7 / TX 8 | IMU Yahboom 10-axis, protokol WIT, 230400 baud |
 
 > **Jangan pernah menyatukan bus LiDAR dengan PCA9685.** Alamat ALL-CALL bawaan PCA9685 juga `0x70` — sama dengan TCA9548A — dan akan bentrok.
 
-Pustaka **"VL53L0X by Pololu"** wajib terpasang. Karena `LidarArray.cpp` ada di dalam folder sketsa, tanpa pustaka itu **seluruh sketsa gagal dikompilasi**.
+Pustaka **"VL53L1X by Pololu"** wajib terpasang — itu pustaka **terpisah**, bukan versi baru dari "VL53L0X by Pololu". Karena `LidarArray.cpp` ada di dalam folder sketsa, tanpa pustaka itu **seluruh sketsa gagal dikompilasi**.
 
 ### Geometri kaki
 
@@ -139,6 +140,32 @@ Konsekuensi praktisnya: **Teensy tidak perlu dilepas dari robot untuk upload.** 
 * Pengaktifan **berikutnya** memakai ramp 400 ms (`rampTo`) karena posisi terakhir sudah diketahui.
 * **`x`** mematikan PWM kapan saja.
 * Servo lengan default **nonaktif**; hidup otomatis saat perintah lengan pertama dipakai.
+
+### ⚠ `DEMO_BOOT` — pengecualian sementara untuk pajangan
+
+`DEMO_BOOT` di `config.h` **membatalkan perlindungan di atas**: robot berdiri sendiri beberapa detik sesudah menyala, termasuk sesudah **setiap kali program diunggah**. Ia ada karena diminta untuk pajangan sesaat.
+
+```
+DEMO_BOOT 0   <- kembali ke boot lemas yang aman
+```
+
+Urutannya persis sama dengan mengetik `b` → `z10 1` → tunggu → `0`, dan perintahnya benar-benar dilewatkan ke `handleCmd()` yang sama — bukan disalin — jadi demo tidak bisa menyimpang dari perilaku perintah manualnya.
+
+| tahap | waktu | yang terjadi |
+|---|---|---|
+| tunda | `DEMO_BOOT_TUNDA` 3000 ms | servo **tetap lemas**, hitung mundur dicetak tiap detik |
+| berdiri | + `DEMO_BOOT_BERDIRI` 1500 ms | `b` — servo hidup, kaki menetap |
+| goyang | + `DEMO_BOOT_LAMA` 20000 ms | `z10 1` — badan mengayun 10°, kaki tetap menapak |
+| selesai | — | `0` — pose badan dinolkan, robot **tetap berdiri** |
+
+Yang menjaganya tetap aman sejauh mungkin:
+
+* **Tunda 3 detik sebelum servo hidup.** Jangan dikecilkan di bawah 2 detik — ini satu-satunya jendela untuk menjauhkan tangan atau membatalkan.
+* **Ketikan apa pun membatalkan**, diproses sebelum karakternya masuk ke parser, jadi perintah yang diketik tetap berjalan normal sesudahnya. Kalau goyang sudah terlanjur jalan ia sengaja **dibiarkan** — sejak operator menyentuh keyboard, dialah yang pegang kendali — dan keadaan itu ikut dicetak, bukan dibiarkan jadi kejutan.
+* **State machine, bukan `delay()`.** Selama `delay()` parser serial mati, IMU dan LiDAR berhenti diperbarui, dan servo tidak di-commit — persis kesalahan yang sudah dibersihkan dari `pivotKe()`.
+* **`d` ikut mengingatkan** bahwa `DEMO_BOOT` aktif, supaya orang berikutnya yang membuka diagnostik tidak terkejut.
+
+Diuji di `sim_boot` lewat `loop()` yang asli: servo terbukti masih lemas pada t=2,8 s, hidup pada t=4,1 s, puncak roll 10,00° selama goyang, kembali ke 0,00° pada t=27 s dengan servo tetap hidup, dan **tidak** menghidupkan dirinya lagi selama 15 detik berikutnya. Jalur pembatalan diuji di proses terpisah — servo tidak pernah hidup sama sekali.
 
 ---
 
@@ -202,13 +229,53 @@ Semua nilai di-clamp ke `BODY_MAX_ROT_DEG` (20°) dan `BODY_MAX_TRANS_MM` (40 mm
 
 `d` menandai kaki bermasalah di kolom `rng`, dan `loop()` memperingatkan maksimal 1× per detik.
 
+### Goyang roll bergelombang (`z`) — mode pajangan
+
+Perintah `z` mengayunkan badan pada sumbu roll terus-menerus sampai dihentikan, sementara **keenam telapak tetap menapak di lantai**. Itu yang membuatnya enak dilihat: badan berayun di atas kaki yang diam.
+
+```
+z            hidup/mati dengan parameter terakhir (default 12°, 2 detik)
+z<amp> <per> amplitudo derajat, periode detik  -- mis. z8 4 (pelan, anggun)
+z<amp> <per> <fase>   fase pitch derajat; 90 membuat badan menelusuri KERUCUT
+```
+
+Bedanya dengan `B`: demo `B` menyapu enam sumbu sekali jalan lalu berhenti sendiri untuk **verifikasi**; `z` berayun tanpa henti untuk **dipajang**.
+
+Fase pitch itu yang mengubahnya dari metronom jadi gelombang berputar — `pitch = amp·sin(ωt + fase)`. Dengan fase 90° badan tidak sekadar miring kiri-kanan, tapi menelusuri kerucut penuh.
+
+**Penjaga bentuk gelombang.** Pose badan di-ramp `BODY_SLEW_DEG_S` (60 °/detik). Kalau laju puncak sinus melebihi itu, ramp memotong puncaknya dan yang keluar bukan gelombang lagi melainkan **segitiga**. Laju puncak sinus = `amp · 2π / periode`, jadi periode minimum yang aman adalah `amp · 2π / 60`.
+
+`z` menghitungnya dan menaikkan periode bila perlu — dengan mengatakannya, bukan diam-diam:
+
+```
+>>> z12 0.5
+Periode dinaikkan 0.50 -> 1.26 detik supaya sinusnya tidak terpotong ramp.
+  (turunkan amplitudo kalau ingin ayunan lebih cepat)
+```
+
+Tanpa penjaga itu, `z12 0.5` menuntut 151 °/detik — tiga kali di atas batas ramp. Diverifikasi di `sim_goyang` dengan mengukur pose yang benar-benar keluar sesudah melewati ramp; keempat preset menghasilkan puncak dan laju **100%** terhadap sinus ideal.
+
+Perintah apa pun yang menyentuh pose badan menghentikannya lebih dulu (`b`, `r`, `t`, `0`, `B`, `x`, Enter), jadi tidak pernah ada dua sumber yang berebut menulis pose.
+
 **Cara membaca demo `B`:** kalau body kinematics benar, telapak **tidak boleh bergeser di lantai** — badan mengayun di atas kaki yang diam. Kalau telapak ikut menyeret, ada yang salah di rantai transform.
 
 ---
 
 ## 6. LiDAR
 
-Enam VL53L0X lewat mux TCA9548A. `update()` memajukan **satu** sensor per pemanggilan tanpa busy-wait, dengan polling bit status interupsi. Filter: median-3 (buang spike) → EMA (`LIDAR_EMA_ALPHA` 0,4).
+Enam **VL53L1X** lewat mux TCA9548A. `update()` memajukan **satu** sensor per pemanggilan tanpa busy-wait, memakai `dataReady()` dari pustaka. Filter: median-3 (buang spike) → EMA (`LIDAR_EMA_ALPHA` 0,4).
+
+### Mode jarak — Long justru bukan yang terjauh di arena
+
+| Mode | Gelap | Cahaya terang | Anggaran waktu minimum |
+|---|---|---|---|
+| **Short** | 136 cm | **135 cm** | 20 ms |
+| Medium | 290 cm | 76 cm | 33 ms |
+| Long | 360 cm | 73 cm | 33 ms |
+
+Navigasi tidak pernah memakai jarak di atas `NAV_PELAN_CM` (50 cm) untuk mengemudi — `LIDAR_MAX_CM` hanya memilah "jauh". Jadi **Short** yang dipakai: cakupannya berlipat dari yang dibutuhkan, hampir kebal cahaya sekitar, dan anggaran 20 ms mempercepat laju sampel dari ~33 ms — yang langsung memperbaiki suku turunan PD, karena turunan dihitung pada laju sampel LiDAR (bagian 7.3).
+
+Semuanya di `config.h`: `LIDAR_MODE`, `LIDAR_BUDGET_US`, `LIDAR_PERIOD_MS`, `LIDAR_MAX_CM`, `LIDAR_ROI_SEMPIT`. Kombinasi mode dan anggaran waktu dijaga `static_assert` — salah pasang gagal saat kompilasi, bukan berakhir sebagai `setMeasurementTimingBudget()` yang ditolak diam-diam di lapangan.
 
 ### Tiga keadaan, bukan dua
 
@@ -220,7 +287,41 @@ Enam VL53L0X lewat mux TCA9548A. `update()` memajukan **satu** sensor per pemang
 
 Pembedaan ini pondasi navigasi: "lorong terbuka" dan "kabel putus" menuntut reaksi yang **berlawanan**. Caranya, `_lastResp` mencatat kapan sensor terakhir menjawab **apa pun**, terpisah dari `_lastOk` yang mencatat pembacaan dalam jangkauan.
 
-> **Jebakan yang sempat membatalkan seluruh desain ini.** Pustaka Pololu mengembalikan tepat **8190 mm** untuk "tidak ada target". Penyaring lama membuang `mm >= 8000` di baris yang sama dengan timeout — yaitu **sebelum** `_lastResp` disegarkan. Jadi jawaban paling normal dari sensor yang menghadap ruang terbuka dibuang sebagai omong kosong, dan sesudah `LIDAR_TIMEOUT_MS` sensor itu dilaporkan `LIDAR_MATI`. Cabang `cm > LIDAR_MAX_CM` pun nyaris tak pernah tercapai, karena VL53L0X melompat langsung dari jarak terukur ke 8190 — tidak merayap lewat 250 cm. Sekarang hanya `timeout` dan `0xFFFF` yang berarti tidak menjawab.
+### Ketiganya dipisahkan lewat `range_status`, bukan ambang jarak
+
+Ini beda paling penting dari VL53L0X, dan yang paling mudah luput saat porting. VL53L0X mengembalikan **8190 mm** sebagai sentinel "tidak ada target". **VL53L1X tidak punya sentinel apa pun** — `range_mm` selalu berisi angka hasil hitungan, sah atau tidak:
+
+```cpp
+ranging_data.range_mm = ((uint32_t)range * 2011 + 0x0400) / 0x0800;   // tanpa syarat
+```
+
+Jadi kode gaya VL53L0X yang menyaring dengan `mm >= 8000` bukan cuma tidak berfungsi — ia **menerima angka sampah sebagai jarak sah**, dan robot mengira ada dinding di tempat yang kosong. Satu-satunya sumber kebenaran adalah `range_status`, yang dipilah jadi tiga golongan:
+
+| Golongan | Status | Perlakuan | `_lastResp` disegarkan? |
+|---|---|---|---|
+| Sah | `RangeValid`, `RangeValidNoWrapCheckFail`, `RangeValidMinRangeClipped` | pakai jaraknya | ya |
+| Tak ada target | `SignalFail`, `OutOfBoundsFail`, `WrapTargetFail` | tandai `LIDAR_JAUH` | ya |
+| Pengukuran buruk | `SigmaFail`, `XtalkSignalFail`, `MinRangeFail`, `HardwareFail`, … | buang | **tidak** |
+
+Kolom terakhir itu yang membuatnya **fail-safe**. Sensor yang terus-menerus menghasilkan sampah tidak disegarkan, jadi ia jatuh ke `LIDAR_MATI` sesudah `LIDAR_TIMEOUT_MS` dan navigasi berhenti. Kalau ia ikut disegarkan, ia akan tampak "jauh" selamanya — yaitu **"tidak ada halangan"** — justru saat sensornya paling tidak bisa dipercaya.
+
+`RangeValidMinRangeClipped` sengaja masuk golongan sah: artinya objek **sangat dekat** dan angkanya dipangkas ke batas bawah. Menolaknya akan membuat objek yang paling dekat justru dilaporkan "jauh".
+
+Diuji di `sim_lidar` untuk kesembilan status:
+
+```
+objek 60 cm (RangeValid)                 ->    60  jarak cm
+objek 150 cm > LIDAR_MAX_CM              ->   999  LIDAR_JAUH
+objek sangat dekat (MinRangeClipped)     ->     4  jarak cm
+tak ada target (SignalFail)              ->   999  LIDAR_JAUH
+pengukuran buruk (SigmaFail)             ->    -1  LIDAR_MATI   <- fail-safe
+terlalu dekat utk diukur (MinRangeFail)  ->    -1  LIDAR_MATI   <- fail-safe
+
+jumlahHidup() saat semua tak melihat apa pun : 6 dari 6
+jumlahHidup() saat semua menghasilkan sampah : 0 dari 6
+```
+
+> **Catatan sejarah.** Bug yang setara pernah ada di versi VL53L0X: penyaring `mm >= 8000` diletakkan sebaris dengan timeout, yaitu **sebelum** `_lastResp` disegarkan, sehingga sensor sehat yang menghadap ruang terbuka dilaporkan `LIDAR_MATI` dan `f`/`F` berhenti tepat di tikungan. Bentuknya berbeda, sumbernya sama: menyimpulkan kesehatan sensor dari angka jarak.
 
 ### Peta channel: urutan kabelnya TERBALIK
 
@@ -245,6 +346,99 @@ Empat baris diperiksa satu per satu di robot; pola yang sama meramalkan dua sisa
 static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_FRONT_R) | ... ) == 0x3Fu,
               "LIDAR_* di config.h harus enam channel BERBEDA dalam 0..5");
 ```
+
+### Bacaan pendek palsu saat tidak ada objek
+
+Gejala lapangan: tak ada apa pun di depan sensor, tapi `l` sering menunjukkan **5–10 cm**. Ada dua sebab yang sama sekali berbeda, dan perintah `l` sekarang memisahkannya karena ikut mencetak jawaban **mentah** dari sensor:
+
+```
+0 DEPAN-KI  : jauh (di atas 120 cm)   [mentah 90 mm, wrap target fail]
+1 BLKG-KI   : MATI -- tidak merespons [mentah 700 mm, sigma fail]
+4 DEPAN-KA  : 8 cm                    [mentah 80 mm, range valid]
+5 DEPAN     : 60 cm                   [mentah 600 mm, range valid]
+```
+
+* **`wrap target fail`** — objeknya justru **terlalu jauh**. Sensor mengukur fase, dan target di luar jangkauan tak-ambigu bisa "berputar" (aliasing) menjadi jarak yang tampak pendek. VL53L1X mendeteksinya dengan mengukur pada dua laju pulsa lalu membandingkan; status ini artinya aliasing **terdeteksi**, jadi angkanya dibuang dan sensor dilaporkan `LIDAR_JAUH`. Ini sudah ditangani.
+* **`range valid` dengan angka pendek** — sensornya benar-benar melihat sesuatu. Ini **bukan** masalah program: kemungkinan besar crosstalk dari kaca penutup, atau bagian badan/kabel robot yang terserempet kerucut 27°.
+
+Tes yang memutuskan: **tutup sensor rapat dengan kain hitam.** Kain hitam menyerap IR, jadi hasil yang benar adalah `signal fail` (tak ada target). Kalau ia tetap melapor 5–10 cm `range valid`, cahayanya tidak pernah keluar dari modul — itu crosstalk kaca penutup, definitif. Pustaka Pololu **tidak** mengimplementasikan kalibrasi crosstalk kaca penutup; obatnya melepas kaca penutup, atau pindah ke port ST API penuh (`pololu/vl53l1x-st-api-arduino`).
+
+#### Bug yang ikut ketemu: median-3 dilucuti tepat saat dibutuhkan
+
+Histori median dinolkan (`_histN = 0`) setiap kali sensor melapor "jauh" — memang benar, jarak dekat dan jauh tidak boleh tercampur. Tapi baris berikutnya berbunyi:
+
+```cpp
+int m = (_histN < 3) ? cm : median3(...);   // sampel pertama LOLOS mentah-mentah
+_jauh[_cur] = false;                        // dan langsung membalik keadaan
+```
+
+Jadi sampel pertama sesudah keadaan "jauh" melewati median tanpa disaring, **dan** langsung mengubah sensor dari "tak ada objek" menjadi "ada dinding 8 cm". Satu hantu tunggal cukup. Filter yang dipasang untuk membuang spike justru dilucuti persis pada saat ia paling dibutuhkan.
+
+Sekarang keadaan "jauh" hanya ditinggalkan sesudah **tiga sampel dalam jangkauan berturut-turut**. Diukur di `sim_hantu`:
+
+| Skenario | Sebelum | Sesudah |
+|---|---|---|
+| 1 dari 4 sampel hantu 8 cm | melapor **8 cm, 25% waktu** | tetap "jauh" |
+| 1 dari 8 sampel hantu 10 cm | melapor **9 cm, 12% waktu** | tetap "jauh" |
+| objek nyata 40 cm menetap | 40 cm | 40 cm |
+
+Ongkosnya 3 × `LIDAR_PERIOD_MS` (~75 ms) sebelum objek baru diakui; pada 5,8 cm/detik robot hanya maju 0,4 mm.
+
+#### `j` — mengubah "sering 5 cm" jadi data
+
+Satu cuplikan `l` tidak bisa membedakan hantu yang **menetap** dari yang **berubah-ubah**. Perintah `j` mengumpulkan statistik mentah selama beberapa detik (non-blokir), lalu meringkas sebaran dan histogram statusnya:
+
+```
+j            semua channel, 5 detik
+j<ch> <detik>   satu channel, mis. j5 10
+```
+
+Tiga hasil yang mungkin, dan masing-masing menunjuk sebab yang berbeda:
+
+```
+      range valid : 83 (100%)
+      jarak sah : 49 .. 51 mm, rata 49 mm, sebaran 2 mm
+      -> nyaris TIDAK bersebaran: benda TETAP di depan sensor
+
+      signal fail : 83 (100%)                     <- ruang kosong yang benar
+
+      range valid : 83 (100%)
+      jarak sah : 45 .. 399 mm, sebaran 354 mm
+      -> sebaran LEBAR: pantulan tak menentu, bukan benda tetap
+```
+
+**Sebaran** itu kesimpulannya. Crosstalk kaca penutup dan bagian robot yang terserempet kerucut menghasilkan angka yang nyaris tak bergoyang (beberapa mm). Pantulan tak menentu bersebaran puluhan sampai ratusan mm. Di ruang kosong yang benar, yang wajar adalah **100% `signal fail`**.
+
+#### `J` — memisahkan crosstalk antar-sensor dari pantulan yang melekat
+
+`j` bisa memastikan hantunya **menetap**, tapi tidak bisa memberi tahu *dari mana*. Dua sebab menghasilkan angka yang identik:
+
+* **crosstalk antar-sensor** — keenam VL53L1X memancar **bersamaan terus-menerus** di mode kontinu, dan pancaran tetangga masuk ke penerima sensor ini;
+* **pantulan melekat** — kaca penutup, bibir lubang braket, atau bagian robot tepat di depan sensor.
+
+`u` mengukur tiap sensor **dua kali**: sekali saat kelima sensor lain ikut memancar, lalu sekali lagi sesudah kelimanya di-`stopContinuous()`. Itu percobaan yang tidak bisa dilakukan dengan tangan.
+
+```
+u              sapu SEMUA sensor berurutan, lalu tabel kesimpulan
+u<ch> <detik>  satu sensor saja, mis. u5 4
+```
+
+```
+--- TABEL UJI ISOLASI ---
+  channel        A: semua   B: sendiri   kesimpulan
+  ch0 DEPAN-KI     750 mm     750 mm    target NYATA, bukan hantu
+  ch1 BLKG-KI       29 mm    -kosong-   hantu HILANG -> crosstalk antar-sensor
+  ch5 DEPAN         45 mm    -kosong-   hantu HILANG -> crosstalk antar-sensor
+
+  KESIMPULAN: crosstalk ANTAR-SENSOR di semua yang bermasalah.
+  Bisa diperbaiki di perangkat lunak: ukur BERGILIRAN, bukan serentak.
+```
+
+Bacaan menetap di atas 150 mm dianggap benda sungguhan — tanpa batas itu, sensor yang kebetulan menghadap dinding ikut dituduh bermasalah.
+
+> **Kenapa `u`, bukan `J`.** Huruf besar-kecil di firmware ini dipakai untuk pasangan **simetris** — `f`/`F` kiri-kanan, `g`/`G` grip depan-belakang, `a`/`A` lengan. Memakai `j`/`J` untuk dua fungsi yang berbeda melanggar pola itu dan terbukti langsung tertukar saat dipakai. `u` dan `U` dua-duanya bebas, jadi salah ketik pun tidak melakukan apa-apa yang berbahaya.
+
+> **Batas yang jujur:** gerbang median menyaring hantu **sesekali**. Kalau crosstalk muncul di hampir setiap pengukuran, tiga sampel berturut-turut akan lolos — dan memang seharusnya begitu: kalau sensor terus-menerus bersikeras ada objek di 8 cm dengan status `range valid`, perangkat lunak tidak punya dasar untuk membantahnya. Itu wilayah optik, bukan kode.
 
 ### `I` memindai **dan** memulihkan
 
@@ -309,7 +503,16 @@ maju = NAV_FWD_SPEED × clamp( (depan − FRONT_STOP_CM) / (NAV_PELAN_CM − FRO
 
 Bukan rem mendadak: melambat linier mulai 50 cm, berhenti dan berputar di 20 cm. Kalau berbelok lebih dari `NAV_BELOK_BATAS_MS` (8 detik) tanpa jalan keluar, robot dianggap terjebak dan berhenti sendiri.
 
-### 7.2 Kemudi PD, dari sensor samping
+### 7.2 Kemudi terhadap dinding — DUA PITA, bukan satu rumus
+
+```
+jarak < wall.min (15 cm)  -> TERLALU DEKAT : putar menjauh kekuatan tetap + melambat
+selebihnya                -> PD normal terhadap wall.setpoint (19 cm)
+```
+
+Pita dekat adalah tambahan; sebelumnya hanya ada PD. Alasannya di §7.9. Bacaan yang mustahil disaring satu lapis lebih bawah, di `LidarArray` — lihat §7.11.
+
+**Pita PD:**
 
 ```
 err  = jarakSamping − WALL_SETPOINT_CM            (+ artinya TERLALU JAUH dari dinding)
@@ -320,17 +523,20 @@ turn = sisi × ( WALL_KP · err  +  WALL_KD · ė )
 
 Cek tandanya untuk mode `F` (dinding kanan, `sisi = −1`): terlalu jauh → `err` positif → `turn` negatif → belok kanan → **mendekat ke dinding**. Benar. Terlalu dekat → tandanya membalik sendiri.
 
-Dengan gain sekarang (`WALL_KP` 0,008 / `WALL_KD` 0,030, setpoint 13 cm), keadaan mantap (`ė` = 0):
+Kekuatan menjauh di pita dekat naik dari separuh di `wall.min` sampai penuh tepat di `LIDAR_MIN_CM` sensor itu — yaitu di jarak saat kaki sudah menyentuh dinding. Lebar ramp-nya ikut menyesuaikan kalau `wall.min` disetel, jadi tidak ada angka ketiga yang bisa lupa diubah.
 
-| jarak samping | err | turn | arah |
+Dengan gain sekarang (`WALL_KP` 0,008 / `WALL_KD` 0,030, setpoint 19 cm), keadaan mantap (`ė` = 0):
+
+| jarak samping | pita | turn | arah |
 |---|---|---|---|
-| 4 cm | −9 | **+0,072** | belok kiri — menjauh |
-| 8 cm | −5 | +0,040 | menjauh |
-| 13 cm | 0 | 0,000 | lurus |
-| 20 cm | +7 | −0,056 | belok kanan — mendekat |
-| 30 cm | +17 | −0,136 | mendekat |
-| 50 cm | +37 | −0,296 | mendekat |
-| ≥ 75,5 cm | ≥ +62,5 | **−0,500** | kena batas `NAV_WALL_TURN_MAX` |
+| 3 cm | — | — | dipetakan ke `LIDAR_JAUH` oleh `LIDAR_MIN_CM` (§7.11) |
+| 8 cm | dekat | **+0,50** | belok kiri — menjauh, laju maju −50% |
+| 11 cm | dekat | +0,39 | menjauh, laju maju −29% |
+| 15 cm | dekat | +0,25 | ambang, laju maju −0% |
+| 19 cm | PD | 0,000 | lurus |
+| 30 cm | PD | −0,088 | belok kanan — mendekat |
+| 50 cm | PD | −0,248 | mendekat |
+| ≥ 81,5 cm | PD | **−0,500** | kena batas `NAV_WALL_TURN_MAX` |
 
 **Suku P** mengurus *di mana* robot berada. **Suku D** mengurus *seberapa cepat ia mendekat* — itu remnya, supaya tidak menabrak karena terlanjur. `ė` dalam cm/detik:
 
@@ -383,24 +589,27 @@ Dipilih lewat sweep di simulasi (lorong 60 cm, 40 detik per uji, dua titik awal,
 
 `kd` 0,040 sedikit lebih rapi, tapi goyangan perintahnya di kondisi berderau menembus 7 satuan/detik — di atas `GAIT_SLEW_RATE` 3,0, jadi gait tidak sanggup mengikutinya dan sisanya terbuang.
 
-> **`CALIB_VERSION` wajib dinaikkan setiap default `PARAM_DEFS` diubah** (sekarang 7). Gain lama sudah terlanjur tersimpan di EEPROM alamat 0, dan blob versi lama tetap lolos CRC — tanpa kenaikan versi, robot memuat kembali nilai lama dan perubahan tidak berefek apa pun.
+> **`CALIB_VERSION` wajib dinaikkan setiap default `PARAM_DEFS` diubah** (sekarang 9). Gain lama sudah terlanjur tersimpan di EEPROM alamat 0, dan blob versi lama tetap lolos CRC — tanpa kenaikan versi, robot memuat kembali nilai lama dan perubahan tidak berefek apa pun.
 
-### 7.7 Yang TIDAK bisa diperbaiki dengan gain: sudut pasang sensor
+### 7.7 Sudut pasang sensor — kenapa 90° itu penting
+
+> **Koreksi.** Versi terdahulu bagian ini menyimpulkan robot ini **tidak akan bisa** menyusul dinding dari tengah lorong, karena diasumsikan keenam LiDAR duduk di cincin 60° sehingga sensor sampingnya menyerong. **Asumsi itu salah.** Keempat LiDAR samping menghadap tegak lurus dinding — hanya `ch5` (depan) dan `ch2` (belakang) yang searah sumbu panjang. Baris yang berlaku untuk robot ini adalah baris 90°, dan baris itu berhasil.
 
 Sweep yang sama dijalankan untuk tiga sudut pasang sensor samping:
 
 | Sudut sensor dari depan | Menyusul dinding dari tengah lorong | Menjaga jarak setelah dekat |
 |---|---|---|
-| 90° (tegak lurus) | berhasil, paling dekat 5,7 cm | baik (RMS 0,4 cm) |
-| 75° | **selalu menabrak**, semua gain | baik (RMS 0,6 cm) |
-| 60° | **selalu menabrak**, semua gain | baik (RMS 0,6 cm) |
+| **90° (tegak lurus) — robot ini** | **berhasil**, RMS sisa 1,9 cm, kemudi tak pernah jenuh | baik (RMS 0,7 cm) |
+| 75° | selalu menabrak, semua gain | baik |
+| 60° | selalu menabrak, semua gain | baik |
 
-Mekanismenya umpan balik positif, dan tidak ada gain yang bisa membalikkannya. Sinar yang miring ke depan **memanjang** saat robot menoleh ke arah dinding: pada sinar 60°, menoleh 30° membuat bacaan hampir **dua kali lipat** padahal jarak tegak lurusnya tidak berubah. Kendali membaca "makin jauh" lalu menoleh lebih dalam — sampai menabrak.
+Mekanisme kegagalan pada sensor menyerong adalah umpan balik positif, dan tidak ada gain yang bisa membalikkannya: sinar yang miring ke depan **memanjang** saat robot menoleh ke arah dinding — pada sinar 60°, menoleh 30° membuat bacaan hampir **dua kali lipat** padahal jarak tegak lurusnya tidak berubah. Kendali membaca "makin jauh" lalu menoleh lebih dalam.
 
-Praktisnya:
+Sinar **tegak lurus** juga memanjang saat robot menoleh (`d = d⊥ / cos θ`), tapi memanjang untuk **kedua arah toleh** — simetris, jadi tidak ada arah yang diuntungkan dan tidak ada umpan balik positif. Itulah sebabnya 90° berhasil dan 75° tidak.
 
-* untuk **menjaga** jarak setelah dekat, kendali ini sudah cukup — mulai dengan robot ~13 cm dari dinding dan kira-kira sejajar lorong;
-* untuk **mendekati** dinding dari tengah lorong, arahkan sensor samping tegak lurus, atau pakai mode `p`/`P` yang mengunci heading arena — di sana arah hadap diurus IMU, jadi kopling geometris ini tidak bisa mengumpan balik.
+Praktisnya untuk robot ini: mode `f`/`F` **boleh** dimulai dari tengah lorong. Tetap disarankan mulai kira-kira sejajar lorong, karena simpang heading awal yang besar tetap memperbesar bacaan lewat `1/cos θ`.
+
+Tabel ini tetap disimpan sebagai peringatan: **jangan menyalin gain ini ke robot yang sensor sampingnya menyerong.**
 
 ### 7.8 Penjaga keselamatan
 
@@ -408,6 +617,172 @@ Praktisnya:
 * Menolak mulai bila servo lemas atau mux LiDAR tak terdeteksi.
 * Berhenti sendiri bila servo dilemaskan di tengah jalan.
 * `s`, `x`, Enter, dan `w` semuanya membatalkan. Ini wajib: tanpa itu `navUpdate()` akan memerintahkan gerak lagi di iterasi berikutnya, sehingga robot tampak "menolak berhenti".
+
+### 7.9 Jarak dinding: yang diukur sensor ≠ celah kaki
+
+Saat uji fisik, kaki robot menggesek dinding walaupun sensor melaporkan jarak yang kelihatannya aman. Penyebabnya dua hal yang menumpuk, keduanya geometri.
+
+**1. Yang menabrak dinding bukan badan, tapi kaki tengah.** Pangkal coxa kaki tengah ada di x = ±90 mm, ditambah `STAND_RADIUS` 70 mm → ujung kakinya **160 mm dari pusat badan**. Diukur di `sim_dinding` dari `HexaGait` yang asli, angka itu tidak bertambah saat berjalan maupun saat memutar di batas `NAV_WALL_TURN_MAX` — kaki tengah bergeser di sumbu Y, bukan X. Jadi 160 mm adalah lebar separuh yang sebenarnya.
+
+**2. Sensor mengukur dari sisi badan, bukan dari ujung kaki.** Keempat LiDAR samping (ch0/ch1 kiri, ch3/ch4 kanan) menghadap **tegak lurus** dinding; hanya ch5 (depan) dan ch2 (belakang) yang searah sumbu panjang. Saat robot sejajar lorong:
+
+```
+x_dinding = x_sensor + jarak_terbaca
+```
+
+`x_sensor` diukur ~**50 mm** dari gambar tata letak (ch0/ch1 di 49,8 mm; ch3/ch4 di 52,0 mm). Artinya **kaki sudah menyentuh dinding saat sensor masih membaca 160 − 50 = 110 mm** — sensor tidak akan pernah melaporkan angka lebih kecil dari itu untuk dinding sungguhan.
+
+Celah ujung kaki ke dinding (dihitung `sim_dinding`):
+
+| setpoint terbaca | x_sensor 4,0 cm | x_sensor 5,0 cm | x_sensor 6,5 cm |
+|---|---|---|---|
+| 13 cm (lama) | +1,0 cm | **+2,0 cm** | +3,5 cm |
+| 15 cm | +3,0 cm | +4,0 cm | +5,5 cm |
+| 17 cm | +5,0 cm | +6,0 cm | +7,5 cm |
+| **19 cm (default baru)** | +7,0 cm | **+8,0 cm** | +9,5 cm |
+| 21 cm | +9,0 cm | +10,0 cm | +11,5 cm |
+
+Pada setelan lama celahnya cuma 2 cm — satu ayunan kemudi cukup untuk menyentuh.
+
+**Kenapa PD saja tidak cukup.** `wall.kp` 0,008 sengaja lembut supaya kemudi tidak menjenuh saat dinding jauh (§7.5). Konsekuensinya, berada 10 cm **terlalu dekat** hanya menghasilkan koreksi 0,08 dari 1,00 — nyaris tak terasa. Satu gain proporsional tidak bisa memenuhi dua kebutuhan yang berlawanan, jadi respons dekat dipisah jadi pitanya sendiri (§7.2): di bawah `wall.min` robot memutar menjauh dengan kekuatan tetap **dan** memperlambat laju maju, supaya kemudi sempat bekerja sebelum kaki sampai ke dinding.
+
+**Bacaan yang mustahil** tidak lagi diurus di sini — lihat §7.11.
+
+Diukur `sim_dinding` (lorong 60 cm, mulai dari posisi yang **sudah** terlalu dekat, derau ±1 cm, 40 detik):
+
+| aturan | celah kaki min sesudah pulih | celah kaki rata |
+|---|---|---|
+| lama (satu PD, setpoint 13) | 1,8 cm | 2,0 cm |
+| **baru (tiga pita, setpoint 19)** | **6,9 cm** | **8,7 cm** |
+
+Dengan hantu 3 cm disuntikkan: tanpa ambang, celah rata membengkak ke 18,8 cm (robot kabur ke seberang lorong); dengan ambang 8 cm, tetap 6,0 cm.
+
+**Cara menyetel yang paling tepat**, tanpa perlu menebak `x_sensor`: berdirikan robot di samping dinding, atur dengan tangan sampai celah ujung kaki tengah ke dinding sesuai selera (mis. 8 cm), lalu baca `L`. Angka sensor samping saat itu **adalah** `wall.setpoint` yang benar. Setel dengan `Qwall.setpoint <angka>` (berlaku langsung, tidak perlu `b`), lalu `W` untuk menyimpan.
+
+### 7.10 Bisakah yaw IMU membantu? Ya — tapi bukan sebagai kompas
+
+Mode `f`/`F` sekarang **sama sekali tidak memakai IMU**: kemudinya PD murni pada jarak LiDAR. Pertanyaannya wajar — apakah yaw bisa membantu? `sim_yaw` membandingkan tiga arsitektur pada plant lorong yang sama persis, memakai `LidarArray` dan `Imu` yang asli:
+
+| | Hukum kendali |
+|---|---|
+| **A** (sekarang) | `turn = sisi × (kp·err + kd·ė)` langsung pada jarak terbaca |
+| **B** | sama, tapi jarak dikoreksi dulu: `d⊥ = d_terbaca × cos θ` |
+| **C** | **kaskade** — jarak jadi lingkar LUAR yang lambat (menghasilkan sudut hadap yang diminta), heading + giro jadi lingkar DALAM yang cepat |
+| **D** | P pada jarak, redaman dari **giro saja** — tidak menyentuh yaw sama sekali |
+| **E** | seperti sekarang (P dan D pada jarak) **ditambah** redaman giro |
+
+Acuan arah lorong **tidak** diambil dari kompas arena. Ia ditaksir dari LiDAR sendiri:
+
+```
+d(d⊥)/dt = −v · sin θ        ->   θ_amatan = −asin( ḋ⊥ / v )
+acuan     = yaw − θ_amatan   (ditapis, tau ~4 detik)
+```
+
+Yaw dipakai sebagai **acuan relatif**, bukan sebagai arah mata angin. Bedanya besar — lihat skenario 5.
+
+> **Catatan jujur:** rancangan pertama memakai rata-rata bergerak dari yaw saja sebagai acuan. Itu **gagal** di skenario 3 — mulai menyerong 20°, acuannya ikut mengunci 20° yang salah, tidak ada yang mengoreksi, kaki menabrak (RMS 8,0 cm). Rata-rata yaw tidak punya acuan luar. Penaksir di atas punya: dinding sendiri yang jadi acuannya.
+
+Hasil (lorong 60 cm, 40 detik per uji, RMS diukur dari posisi badan yang SEJATI):
+
+RMS sisa (cm), diukur dari posisi badan yang SEJATI:
+
+| skenario | A | B | **C** | D | E |
+|---|---|---|---|---|---|
+| 1. menjaga jarak, derau ±1 cm | 0,12 | 0,10 | 0,33 | 0,12 | 0,09 |
+| 2. menyusul dari tengah lorong | 0,71 | 0,59 | **0,34** | 4,45 ✗ | 0,85 |
+| 3. mulai menyerong 20° | 1,70 | 1,71 | **1,06** | 6,05 ✗ **kaki menyentuh** | 2,33 ✗ **kaki menyentuh** |
+| 4. sensor berderau ±3 cm | 1,53 | 1,27 | **1,25** | 0,19 | 1,02 |
+| 5. kompas meleset tetap 15° | 0,16 | 0,07 | 0,30 | 0,13 | 0,12 |
+| goyangan perintah/detik | 5–9 | 5–9 | **1,6–1,8** | **0,1** | 6,7–11,5 |
+| kemudi jenuh, skenario 4 | 32% | 31% | **0%** | **0%** | 27% |
+
+**C adalah satu-satunya yang tidak pernah kalah.** Yang lain masing-masing punya lubang:
+
+* **Koreksi kosinus (B) hampir tidak berguna sendirian.** Pada sudut menyerong yang wajar inflasinya kecil — 20° hanya 6,4%, yaitu 1,2 cm pada setpoint 19 cm. Sudah di bawah derau sensor.
+* **Giro saja (D) menang telak saat MENJAGA, dan gagal total saat MENYUSUL.** Goyangan perintahnya cuma 0,1/detik dan kekebalan derau sensornya terbaik dari semuanya — tapi dari tengah lorong ia tidak pernah sampai, dan dari posisi menyerong ia menabrak. Disapu di `k_giro` 0,000 sampai 0,008: **gagal di semua nilai, termasuk nol**. Jadi bukan redamannya yang kekencangan — P saja memang tidak punya **antisipasi**. Jarak ada dua integrasi di belakang perintah putar (`turn → laju yaw → sudut → laju jarak → jarak`); giro meredam *sudut*, dan itu integrasi yang salah untuk meredam *jarak*.
+* **Menambah giro ke PD yang ada (E) justru memperburuk.** Redaman giro berebut dengan suku D jarak: goyangannya naik ke 6,7–11,5/detik, kemudi masih menjenuh 27%, dan di skenario menyerong kakinya tetap menyentuh. Dua peredam pada integrasi yang berbeda saling melawan.
+* **Kenapa C berhasil sementara D dan E tidak:** kaskade mengubah *tugas* lingkar jarak. Ia tidak lagi memilih laju putar (dua integrasi jauh dari jarak), melainkan memilih **sudut hadap** — satu integrasi. Lingkar orde satu jauh lebih mudah distabilkan, dan redaman gironya lalu bekerja di tempat yang benar, yaitu lingkar dalam.
+* **Yang benar-benar menang adalah kaskade (C), dan alasannya redaman.** Suku D sekarang tidak lagi menurunkan sinyal jarak yang berderau; redamannya datang dari **giro**, yang bersih dan berlaju tinggi. Di skenario sensor berderau, C tidak pernah menjenuhkan kemudi (**0%** vs **33%**) dan goyangan perintahnya seperlima.
+* **Goyangan itu bukan soal kosmetik.** `GAIT_SLEW_RATE` 3,0 satuan/detik: perintah yang bergoyang lebih cepat dari itu tidak pernah sampai ke kaki. A menghasilkan 5–9 goyangan/detik — sebagian besar usahanya terbuang di penapis gait. C menghasilkan 1,6.
+* **Kompas yang meleset TETAP tidak berpengaruh** (skenario 5), karena acuannya ditaksir ulang terus-menerus dan meleset itu ikut terserap. Ini menjawab kekhawatiran paling umum soal memakai magnetometer di dekat motor dan rangka besi.
+
+**Satu syarat keras — derau yaw:**
+
+| derau yaw | goyang A | goyang C | keterangan |
+|---|---|---|---|
+| ±0,0° | 5,1 | 0,3 | gait sanggup ikut |
+| ±0,5° | 5,5 | 1,6 | gait sanggup ikut |
+| ±1,0° | 5,6 | 3,0 | pas di `GAIT_SLEW_RATE` |
+| ±2,0° | 5,6 | 5,9 | **C sudah lebih kasar dari A** |
+| ±5,0° | 5,6 | 14,5 | jauh lebih kasar |
+
+Derau yaw masuk langsung ke lingkar dalam lewat `HEADING_KP`. RMS-nya tetap baik sampai ±5° (0,19–0,35 cm) — jadi ini soal kehalusan dan efisiensi, bukan kestabilan. **Ambangnya ~±1°.** Cek dengan aliran `y` pada robot yang berdiri diam, lalu ulangi sambil berjalan — motor dan rangka arena adalah sumber gangguan magnet yang nyata.
+
+**Kesimpulan: kaskade (C), atau tidak sama sekali.** Tidak ada jalan tengah yang murah — D dan E sudah membuktikan itu.
+
+**Belum dipasang di firmware,** dan tidak boleh dipasang sebelum satu angka diukur: **derau yaw di robot sungguhan, sambil berjalan.** Di bawah ±1° kaskade jelas menang; di atas ±2° ia justru lebih kasar dari yang sekarang. Angka itu belum pernah diukur, jadi keputusannya belum bisa diambil dari simulasi saja.
+
+Kalau nanti dipasang, ia membawa tiga kewajiban baru: mode `f`/`F` jadi bergantung pada IMU yang hidup (sekarang tidak), lingkar luar butuh angka **laju maju dalam cm/detik** (tersedia dari odometri `GerakStore`, tapi berarti kalibrasi `C`+`S` jadi syarat), dan ada 3–4 parameter baru untuk disetel. Sebaiknya dipasang sebagai **mode terpisah** (huruf baru), bukan menimpa `f`/`F` yang sudah teruji, supaya keduanya bisa di-A/B di robot sungguhan.
+
+### 7.11 Hantu sensor DEPAN — robot berbelok di lorong yang kosong
+
+Gejala lapangan: sedang ikut dinding, di depan tidak ada apa-apa, robot tiba-tiba berbelok ke kiri.
+
+Rantai sebabnya pendek dan seluruhnya bisa dilacak:
+
+1. Sensor robot ini melaporkan **"tak ada objek dalam jangkauan" sebagai bacaan ~5 cm berstatus `RangeValid`** — bukan sebagai `SignalFail`. Ini diketahui dari uji fisik: jangkauan akurat ~70 cm, dan di luar itu angkanya jatuh ke 5 cm, bukan membesar.
+2. `depan = 5` lolos semua penyaring dan masuk ke cabang `depan <= FRONT_STOP_CM (20)`.
+3. Cabang itu menjalankan `turn = −sisi × NAV_BELOK_CMD`. Untuk mode `F` (dinding kanan, `sisi = −1`) hasilnya **+0,60 = berputar ke kiri**. Persis yang terlihat.
+
+`wall.hantu` (v8) tidak menolong: ia hanya dipasang di jalur sensor **samping**. Sensor depan tidak pernah terlindungi.
+
+**Perbaikannya pindah satu lapis ke bawah,** ke `LidarArray`, lewat `LIDAR_MIN_CM[]` di `config.h` — batas bawah **per arah**, diturunkan dari jangkauan kaki:
+
+| arah | ujung kaki | dudukan sensor | mustahil di bawah | `LIDAR_MIN_CM` |
+|---|---|---|---|---|
+| samping (ch0,1,3,4) | 160 mm | 50 mm | 110 mm | 10 cm |
+| depan (ch5) | 139 mm | 62 mm | 77 mm | 7 cm |
+| belakang (ch2) | 139 mm | 66 mm | 73 mm | 7 cm |
+
+Bacaan di bawah batas itu dipetakan ke **`LIDAR_JAUH`**, bukan ditolak begitu saja — karena di sensor ini bacaan pendek memang **berarti** kosong. Ini bukan "menyaring pakai ambang jarak" seperti kode VL53L0X lama yang sudah dibuang: ambangnya menyatakan sesuatu yang **mustahil secara fisik**, bukan sesuatu yang sekadar tampak aneh.
+
+Gerbangnya sama dengan gerbang median: butuh **tiga sampel berturut-turut** sebelum keadaan "jauh" diumumkan. Tanpa itu, satu bacaan pendek yang menyimpang saat dinding sungguhan sedang terlihat bisa membalik sensor jadi "kosong" — arah kesalahan yang paling berbahaya untuk sensor depan.
+
+`LIDAR_MAX_CM` ikut turun **120 → 70 cm**, sesuai jangkauan akurat yang terukur. Angka lama tidak pernah menolong, karena mekanisme gagalnya memang bukan "angka membesar".
+
+Diuji di `sim_depan`:
+
+| uji | hasil |
+|---|---|
+| lorong depan kosong (hantu 5 cm) | depan = jauh, `turn` **+0,000**, maju penuh 0,80 |
+| halangan sungguhan 15 cm | depan = 15 cm, `turn` +0,599, maju 0,000 — **tetap menghindar** |
+| satu sampel pendek menyimpang saat dinding 40 cm | bertahan di 40 cm |
+| hantu menetap | baru berubah jadi "jauh" |
+| dinding 45 / 65 / 75 / 90 cm | terbaca / terbaca / jauh / jauh |
+
+`wall.hantu` **dibuang** (`CALIB_VERSION` → 9): pekerjaannya sudah diambil alih dan menyimpannya di dua tempat hanya mengundang keduanya berbeda.
+
+#### Akibat lanjutan yang ikut ketemu: mencari dinding tanpa batas waktu
+
+Sesudah perubahan di atas, hantu di sensor **samping** juga jadi `LIDAR_JAUH` = "dinding hilang", yang menjalankan pencarian `turn = sisi × NAV_CARI_CMD`. Kalau dindingnya tidak pernah muncul lagi — sensor samping macet di hantu, misalnya — perintah putar tetap itu membuat robot **berjalan melingkar selamanya** di tengah arena. Ditangkap oleh uji 4 `sim_dinding`, bukan oleh pembacaan kode.
+
+`NAV_CARI_BATAS_MS` (10 detik ≈ 86 cm perjalanan) menghentikannya dengan pesan yang menyebut sensornya. Hanya berlaku di mode `f`/`F` polos — di mode arena `kemudiHeading()` yang mengunci arah, jadi dinding hilang di sana tidak membuatnya melingkar.
+
+#### Bisakah LiDAR belakang dipakai sebagai odometri?
+
+Bisa, tapi terbatas, dan **bukan** pengganti odometri gait:
+
+* **Jangkauannya cuma 70 cm.** Sesudah berjalan 70 cm dari dinding belakang, sensornya jatuh ke hantu dan angkanya habis. Jadi ia mengukur "sudah berapa jauh dari dinding di belakang", bukan "sudah berapa jauh berjalan".
+* **Butuh dinding di belakang.** Di tengah lorong panjang tidak ada acuan.
+* **`ch2` tercatat rusak fisik** (Agustus 2026). Selama belum diperbaiki, ide ini tidak bisa diuji sama sekali.
+
+Yang sudah tersedia dan lebih murah: **odometri gait**. `GerakStore` menyimpan `maju` mm/siklus hasil ukur `TES_GERAK` (dicetak `G`), dan rumusnya sudah diverifikasi di `sim_laju`:
+
+```
+jarak = 2 x step_length x perintah_maju x (waktu / cycle_time)
+```
+
+Itu berlaku di mana saja, tanpa dinding, tanpa batas 70 cm. Kelemahannya slip — dan justru di situlah LiDAR belakang berguna: sebagai **koreksi absolut jarak dekat** saat dinding belakang masih terlihat, mis. untuk tahu sudah berapa jauh melewati satu tikungan. Peran itu wajar; peran "odometer utama" tidak.
 
 ---
 
@@ -530,7 +905,7 @@ Hadapkan robot ke Utara, hidupkan aliran `y`, tunggu angkanya tenang, baru `c0`.
 `o1` lalu amati kolom simpang di aliran `y`. Harus di dalam 6°.
 
 **Langkah 7 — navigasi.**
-Letakkan robot **~13 cm dari dinding** dan kira-kira sejajar lorong. `F` untuk ikut dinding kanan. Tangan tetap di `x` — tidak ada sensor tabrakan samping.
+Setel dulu jarak dindingnya (§7.9): berdirikan robot di samping dinding, atur dengan tangan sampai celah ujung kaki tengah ~8 cm, baca `L`, lalu `Qwall.setpoint <angka sensor samping>` dan `W`. Baru letakkan robot **di jarak setpoint itu** dan kira-kira sejajar lorong. `F` untuk ikut dinding kanan. Tangan tetap di `x` — tidak ada sensor tabrakan samping.
 
 ---
 
@@ -543,6 +918,14 @@ Letakkan robot **~13 cm dari dinding** dan kira-kira sejajar lorong. `F` untuk i
 | `d` | Dump diagnostik: status PWM, sumber ServoMap & zOff, panjang link, profil gait, lalu per kaki `zOff`, input IK, sudut, flag invert, sudut servo, pulse akhir, dan status jangkauan |
 | `h` | Bantuan |
 | `M` | Peta EEPROM + kapasitas chip sebenarnya |
+
+### Parameter kalibrasi
+| | |
+|---|---|
+| `q` | Daftar semua parameter: nilai, default, rentang sah, kapan berlaku |
+| `q<nama>` | Lihat satu parameter (nama boleh disingkat, mis. `qwall.kp`) |
+| `Q<nama> <nilai>` | Ubah parameter — berlaku di RAM seketika |
+| `W` | Simpan seluruh blok ke EEPROM 0 |
 
 ### Gerak dasar
 | | |
@@ -561,6 +944,8 @@ Letakkan robot **~13 cm dari dinding** dan kira-kira sejajar lorong. `F` untuk i
 | `t<x> <y> <z>` | Set geser badan, mm |
 | `0` | Nolkan pose badan |
 | `B` | Demo sapuan 6 sumbu (18 detik) |
+| `z` | Goyang roll bergelombang, terus-menerus — untuk pajangan |
+| `z<amp> <periode> <fase>` | Amplitudo derajat, periode detik, fase pitch derajat |
 
 ### LiDAR
 | | |
@@ -600,6 +985,74 @@ Letakkan robot **~13 cm dari dinding** dan kira-kira sejajar lorong. `F` untuk i
 
 ---
 
+## 12b. Menyetel parameter tanpa kompilasi ulang
+
+`Calib::setParam()`, `findParam()`, dan `save()` sudah lama ada tapi **tidak pernah dipanggil siapa pun**. Akibatnya tiap penyetelan gain menuntut edit `PARAM_DEFS`, kompilasi ulang, **dan** kenaikan `CALIB_VERSION`. Sekarang ketiganya tersambung ke `q` / `Q` / `W`.
+
+```
+>>> qwall
+Awalan 'wall' ambigu:
+   wall.kp
+   wall.kd
+   wall.setpoint
+   wall.min
+
+>>> Qwall.kp 0.012
+wall.kp : 0.008 -> 0.012
+  Masih di RAM. Ketik 'W' supaya bertahan sesudah reset.
+```
+
+Nama boleh disingkat selama awalannya unik — kalau ambigu, kandidatnya dicetak.
+
+### Kapan sebuah parameter benar-benar berlaku
+
+Ini yang paling mudah membingungkan: tidak semua parameter berpengaruh seketika. `ParamDef` sekarang membawa kolom `berlaku`, dan `Q` mencetaknya:
+
+| Golongan | Isi | Perilaku |
+|---|---|---|
+| `langsung` | `wall.*`, `heading.*`, `gait.duty`, `gait.slew_rate`, `gait.*_tau` | dibaca tiap loop — efeknya seketika |
+| `ketik 'b'` | `gait.step_height`, `gait.step_length`, `gait.cycle_time` | baru masuk lewat `profileFlat()` |
+| `servo lemas` | `pulse.min/max`, `arm.pulse.min/max` | lihat di bawah |
+| `belum dipakai` | `stab.*`, `head.*`, `arena.mirror` | slotnya ada, kodenya belum membaca |
+
+Tanpa kolom ini, mengubah `gait.step_height` lalu melihat robot tidak berubah apa-apa terlihat seperti perintahnya gagal.
+
+### Dua penjaga
+
+**Clamp tidak lagi diam-diam.** `setParam()` memangkas ke `[lo,hi]` tanpa memberi tahu. Perintahnya sekarang membandingkan yang diminta dengan yang tersimpan:
+
+```
+>>> Qwall.kp 99
+wall.kp : 0.012 -> 0.100
+  (diminta 99.000, DI-CLAMP ke rentang sah 0.000 .. 0.100)
+```
+
+**`pulse.*` ditolak selagi servo aktif.** Mengubah pemetaan sudut→pulse menggeser 18 servo sekaligus tanpa ramp — kelas bahaya yang sama dengan lonjakan pose badan di bagian 5, dan di sini tidak ada peredam apa pun:
+
+```
+>>> Qpulse.min 700
+Ditolak: 'pulse.min' menggeser semua servo sekaligus tanpa ramp.
+        Ketik 'x' (lemas) dulu, ubah, lalu 'b' lagi.
+```
+
+### Bug yang baru ketahuan gara-gara ini
+
+Menguji `W` membuka sesuatu yang lebih besar: **blok kalibrasi di EEPROM 0 tidak pernah sekali pun berhasil dimuat.**
+
+```cpp
+gCalib.crc = crc16(&gCalib, sizeof(CalibBlob) - sizeof(gCalib.crc));   // SALAH
+```
+
+`sizeof(CalibBlob)` = 272, tapi field `crc` ada di byte **268–269** — ada 2 byte padding di ekor struct. Jadi `272 − 2 = 270` berarti hash ikut **menelan field `crc` itu sendiri**. `save()` mem-hash crc lama lalu menimpanya dengan crc baru; `load()` mem-hash rentang yang sama yang kini berisi crc baru, mendapat angka berbeda, dan **selalu menolak**.
+
+Gejalanya cuma satu baris di boot — `"Calib: EEPROM kosong/rusak/versi beda -> default dipakai & ditulis ulang"` — yang gampang dikira normal. Padahal artinya tiap boot jatuh ke `applyDefaults()` lalu menulis ulang 272 byte, dan seluruh disiplin `CALIB_VERSION` selama ini tidak pernah sempat teruji karena blob-nya memang tak pernah dimuat.
+
+Perbaikannya `offsetof(CalibBlob, crc)`. `ServoMap` kebetulan lolos (sizeof 126, crc di 124 — pas tanpa padding), tapi bentuknya ikut disamakan supaya kekeliruan yang sama tidak menular saat struct berubah.
+
+Tidak perlu menaikkan `CALIB_VERSION`: blob lama memang tak pernah sah, jadi boot pertama sesudah perbaikan menolaknya, menulis ulang dengan CRC benar, dan sembuh sendiri.
+
+---
+
 ## 13. Harness simulasi PC
 
 Di `../test-pc/` ada stub `Arduino.h`, `EEPROM.h`, `Wire.h`, `Adafruit_PWMServoDriver.h`, dan `VL53L0X.h` yang memungkinkan **`Navigation`, `Hexapod`, `Imu`, dan `LidarArray` yang asli** dikompilasi dan dijalankan di PC. Yang dipalsukan hanya jam, bus I2C, EEPROM, dan aliran byte sensor — logikanya tidak disalin, jadi yang diuji benar-benar kode yang di-upload ke robot.
@@ -610,15 +1063,26 @@ Jam bisa dimajukan sesuka hati, yaw disuapkan lewat frame WIT `0x55 0x53` sunggu
 |---|---|
 | `sim_pivot` | Pivot non-blokir: kembali seketika, sampai target, bisa dibatalkan, timeout |
 | `sim_body` | Besar lonjakan pose badan per commit — angka di bagian 5 |
-| `sim_lidar` | Tiga keadaan LiDAR benar-benar terbedakan |
+| `sim_lidar` | Tiga keadaan LiDAR dari kesembilan `range_status` VL53L1X, termasuk perilaku fail-safe |
 | `sim_open` | Perilaku saat dinding samping hilang vs sensor putus |
 | `sim_reinit` | Pemulihan lewat `I` pada skenario gejala nyata |
 | `sim_wall` | Sweep gain ikut-dinding — tabel di bagian 7.6 dan 7.7 |
+| `sim_dinding` | Celah ujung kaki ke dinding: geometri, tabel setpoint, dan lingkar tertutup dari posisi terlalu dekat — bagian 7.9 |
+| `sim_yaw` | Lima arsitektur kendali dibandingkan: PD jarak, koreksi kosinus, kaskade jarak→heading, giro saja, PD+giro — bagian 7.10 |
+| `sim_depan` | Hantu sensor depan: lorong kosong vs halangan nyata, gerbang tiga sampel, batas atas 70 cm — bagian 7.11 |
+| `sim_boot` | Demo `DEMO_BOOT`: urutan, waktu, dan jalur pembatalannya — bagian 3 |
+| `sim_laju` | Laju maju vs `step_length`/`cycle_time`/`duty`, diukur dari `HexaGait` asli |
+| `sim_servolaju` | Tuntutan kecepatan sudut servo per commit pada tiap setelan gait |
 | `sim_peta` | `f` ditolak & `F` jalan dengan dua sensor rusak |
+| `sim_param` | `q`/`Q`/`W` lewat parser asli, termasuk clamp, penolakan, dan persistensi EEPROM |
+| `sim_goyang` | Bentuk gelombang `z` sesudah melewati ramp — sinus utuh atau segitiga terpotong |
+| `sim_hantu` | Hantu pendek sesekali di tengah keadaan "tak ada target" — sebelum vs sesudah gerbang median |
+| `sim_jejak` | `j` memisahkan hantu menetap, ruang kosong, dan pantulan berubah-ubah |
+| `sim_isolasi` | `u` memisahkan crosstalk antar-sensor dari pantulan yang melekat |
 
 Dua kegunaan yang terbukti: **pemeriksaan sintaks** (`g++ -fsyntax-only -Wall -Wextra` atas seluruh sketsa, menangkap typo dan `switch` yang kurang case sebelum menyentuh papan), dan **perbandingan perilaku** sebelum/sesudah perubahan.
 
-> **Batasnya jujur:** model gerak robot di `sim_wall` kasar — perintah putar → laju yaw → laju lateral. Itu memang lingkar umpan balik yang dominan, jadi *perbandingan* antar gain bermakna; angka mutlaknya tetap harus disetel di robot sungguhan.
+> **Batasnya jujur:** model gerak robot di `sim_wall` dan `sim_dinding` kasar — perintah putar → laju yaw → laju lateral. Itu memang lingkar umpan balik yang dominan, jadi *perbandingan* antar gain bermakna; angka mutlaknya tetap harus disetel di robot sungguhan.
 
 Perlu `g++` (WSL, MinGW, atau Linux). Lihat `../test-pc/README.md`.
 
@@ -655,6 +1119,9 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 
 ### LiDAR
 
+* **Gerbang median-3**: keadaan "jauh" hanya ditinggalkan sesudah tiga sampel dalam jangkauan berturut-turut. Dulu sampel pertama sesudah "jauh" melewati median mentah-mentah dan langsung membalik keadaan sensor, sehingga satu bacaan hantu cukup untuk memunculkan "dinding" 5–10 cm yang tidak ada.
+* **`l` mencetak jawaban mentah + `range_status`**, supaya bacaan yang tak masuk akal bisa dilacak ke sumbernya tanpa menebak.
+* **Pindah dari VL53L0X ke VL53L1X.** Pustaka terpisah; `setSignalRateLimit()` dan `setVcselPulsePeriod()` tidak ada lagi dan diganti `setDistanceMode()`; `startContinuous()` argumennya kini jeda antar pengukuran (bukan "0 = secepatnya"); polling register `0x13` diganti `dataReady()`; dan kesahihan dibaca dari `range_status`, bukan dari ambang jarak. Mode Short dipilih karena di arena bercahaya justru lebih jauh daripada Long.
 * `LidarArray` dulu **tidak pernah diinstansiasi** — kodenya ikut dikompilasi tapi tak satu instruksi pun dieksekusi.
 * Tiga keadaan (`cm` / `JAUH` / `MATI`) menggantikan `-1` yang menyamakan "tak ada objek" dengan "sensor rusak".
 * **Bug 8190 mm**: jawaban "tak ada target" dibuang sebelum `_lastResp` disegarkan, sehingga ruang terbuka terbaca sebagai sensor putus — membatalkan seluruh desain tiga keadaan.
@@ -671,7 +1138,11 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 * **`pivotLangkah()` menyatukan** pivot manual dengan fase belok arena; `PIVOT_KP`/`PIVOT_KD` dihapus dari `config.h`.
 * **Turunan PD dihitung pada laju sampel LiDAR**, dari nilai EMA float.
 * **`NAV_WALL_TURN_MAX` berlaku di semua mode**, bukan hanya mode arena.
-* **Gain disetel ulang** — `wall.kp` 0,030 → 0,008, `wall.kd` 0,010 → 0,030, `CALIB_VERSION` → 7.
+* **Gain disetel ulang** — `wall.kp` 0,030 → 0,008, `wall.kd` 0,010 → 0,030.
+* **Kemudi dinding jadi dua pita** (§7.2, §7.9): `wall.setpoint` 13 → 19 cm, plus parameter baru `wall.min` (15 cm, pita "terlalu dekat"). Sebabnya fisik: ujung kaki tengah menjulur 160 mm dari pusat badan sedangkan sensor sampingnya duduk di ~50 mm, jadi setpoint 13 cm menyisakan celah kaki hanya 2 cm.
+* **`LIDAR_MIN_CM` — batas bawah geometri per arah** (§7.11). Bacaan di bawahnya dipetakan ke `LIDAR_JAUH`, karena di sensor ini bacaan pendek justru berarti "tak ada objek dalam jangkauan". Memperbaiki robot yang berbelok sendiri di lorong depan yang kosong. Menggantikan `wall.hantu` yang hanya melindungi sensor samping; `CALIB_VERSION` → 9.
+* **`LIDAR_MAX_CM` 120 → 70 cm**, sesuai jangkauan akurat yang terukur.
+* **`NAV_CARI_BATAS_MS`**: berhenti kalau dinding samping hilang lebih dari 10 detik, supaya robot tidak berjalan melingkar selamanya mencari dinding yang tak akan muncul.
 * `navMulai()` memeriksa sensor yang dipakai sebelum melangkah.
 * `navBerhenti()` tidak lagi mencetak "Navigasi BERHENTI" saat tidak ada yang berjalan.
 * `navMulai()`, `pivotKe()`, dan `kalibrasiPivot()` saling menghentikan dengan pesan jelas, bukan menimpa mode diam-diam.
@@ -699,6 +1170,9 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 * `GerakStore` diverifikasi checksum, bukan hanya magic + versi.
 * Blok bantuan `h` yang tercetak dua kali dibersihkan.
 * `Navigation::majuKini()` / `turnKini()` dibuka untuk telemetri dan uji otomatis.
+* **CRC `CalibBlob` dihitung sampai `offsetof(crc)`**, bukan `sizeof - sizeof(crc)` — rumus lama ikut menelan field crc sendiri karena padding di ekor, sehingga blok EEPROM 0 tidak pernah sekali pun berhasil dimuat.
+* **Perintah `z`** ditambahkan: goyang roll bergelombang non-blokir untuk pajangan, dengan penjaga yang menaikkan periode supaya ramp pose badan tidak memotong sinusnya jadi segitiga.
+* **`Calib::setParam()` / `findParam()` / `save()` disambungkan** ke perintah `q` / `Q` / `W`; `ParamDef` diberi kolom `berlaku`; clamp dilaporkan; `pulse.*` ditolak selagi servo aktif.
 
 ---
 
@@ -709,6 +1183,9 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 * **`kalibrasiPivot()` masih memblokir**, tapi memang tidak ada yang perlu disela. Ini satu-satunya jalur pemblokir yang tersisa.
 * **Menggabungkan kompas arena dengan ikut-dinding** — "ikut dinding sampai lorong habis, lalu pivot ke Utara" — belum ada, tapi sekarang jauh lebih dekat: keduanya sudah jadi mode di state machine yang sama.
 * **Deteksi korban** belum ada sama sekali.
-* **Jalur yang tidak terhubung ke perintah apa pun:** `profileStairs()` / `profileCrouch()` / `profileNarrow()`, `Hexapod::jog()` beserta `TUNE_PIN_MAP`, `Calib::setParam()` / `findParam()` / `save()`, `Imu::tare()`, dan parameter `head.*` serta `arena.mirror` di `Calib`. Yang paling terasa: **gain PD belum bisa disetel dari Serial Monitor** karena `setParam()` belum dipanggil siapa pun — setiap perubahan gain masih menuntut kompilasi ulang **dan** kenaikan `CALIB_VERSION`.
+* **Jalur yang tidak terhubung ke perintah apa pun:** `profileStairs()` / `profileCrouch()` / `profileNarrow()`, `Hexapod::jog()` beserta `TUNE_PIN_MAP`, `Calib::begin()`, `Hexapod::legAngles()` (dipakai harness), `Imu::tare()` / `rollDeg()` / `pitchDeg()` / `accelZ()` / `magMagnitude()`, `Hexapod::armDepan()` / `armBelakang()`, dan `Navigation::degCCW()` / `degCW()` / `mmMaju()` / `pivotTerkalibrasi()`.
+* **Konstanta mati:** `STAB_MAX_DEG`, `STAB_DEADBAND_DEG`, `STAB_TAU`, `CONTROL_HZ`, `PROFILE_LOOP`, `SERVO_FREQ`, `HEAD_UTARA`/`TIMUR`/`SELATAN`/`BARAT`, plus slot `K_STAB_SIGN_ROLL` / `K_STAB_SIGN_PITCH` / `K_ARENA_MIRROR`. Menghapus slot `K_*` menuntut kenaikan `CALIB_VERSION`, jadi biarkan sampai stabilisasi disambung.
+* **`Imu::_ax` dan `_ay`** diisi tiap frame akselerometer lalu tidak pernah dibaca siapa pun.
+* Belum ada perintah **reset ke default**. `Calib::applyDefaults()` juga mereset `offset`/`trim`/`invert`, jadi memanggilnya saat berjalan akan membuang data ServoMap sampai boot berikutnya — perlu dipasangkan dengan `loadServoMap()` bila mau dibuka.
 * **`CONTROL_HZ` dan `PROFILE_LOOP`** di `config.h` tidak diimplementasikan. `loop()` berjalan bebas, bukan laju tetap; `dt` diambil dari `millis()` di dalam `HexaGait` sendiri.
 * **`HexaGait` memakai `millis()` internal**, sedangkan `Motion` di TES_GERAK menerima `dt` dari pemanggil. Versi TES_GERAK bisa disimulasikan kering tanpa menggerakkan servo; firmware belum bisa (walaupun harness di bagian 13 sudah menutup sebagian kebutuhan itu).
