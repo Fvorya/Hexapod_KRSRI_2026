@@ -36,7 +36,12 @@ void Hexapod::loadServoMap() {
     ServoMap m;
     EEPROM.get(EE_SERVOMAP_ADDR, m);
 
-    uint16_t want = Calib::crc16((const uint8_t*)&m, sizeof(ServoMap) - sizeof(m.crc));
+    // offsetof, bukan sizeof - sizeof(crc): rumus kedua ikut menelan field crc
+    // sendiri begitu struct punya padding di ekor. Di ServoMap keduanya
+    // kebetulan bernilai sama (124), tapi di CalibBlob tidak -- dan di sana ia
+    // membuat blob EEPROM tidak pernah bisa dimuat. Samakan bentuknya supaya
+    // kekeliruan itu tidak menular saat struct berubah.
+    uint16_t want = Calib::crc16((const uint8_t*)&m, offsetof(ServoMap, crc));
     if (m.magic[0] != 'S' || m.magic[1] != 'M' || m.version != 1 || m.crc != want) {
         Serial.println("Hexapod: ServoMap EEPROM 1024 kosong/rusak -> pakai default Calib.");
         _mapLoaded = false;
@@ -318,9 +323,10 @@ void Hexapod::debugDump() {
     Serial.print("  pitch ");           Serial.print(bodyPitchDeg(), 2);
     Serial.print("  yaw ");             Serial.print(bodyYawDeg(), 2);
     Serial.println(" der");
-    Serial.print("Geser badan: x "); Serial.print(_trans.x, 1);
-    Serial.print("  y ");            Serial.print(_trans.y, 1);
-    Serial.print("  z ");            Serial.print(_trans.z, 1);
+    Vec3 tr = bodyTranslation();
+    Serial.print("Geser badan: x "); Serial.print(tr.x, 1);
+    Serial.print("  y ");            Serial.print(tr.y, 1);
+    Serial.print("  z ");            Serial.print(tr.z, 1);
     Serial.println(" mm");
     Serial.println("             (roll+ = miring KANAN, pitch+ = MENDONGAK, yaw+ = belok KIRI)");
     Serial.print("Jangkauan  : ");

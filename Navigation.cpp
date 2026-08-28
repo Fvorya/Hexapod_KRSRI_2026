@@ -161,7 +161,6 @@ void Navigation::pivotKe(float targetYaw) {
     _pivotTarget = targetYaw;
     _tPivot      = millis();
     _diamSejak   = 0;
-    _tPrev       = 0;
     _majuKini    = _turnKini = 0.0f;
 
     Serial.print("Pivot MULAI menuju "); Serial.print(targetYaw, 1);
@@ -430,7 +429,8 @@ void Navigation::navMulai(ModeNav m) {
     _mode = m;
     _fase = FASE_JALAN;
     _errAda = false; _errPrev = 0.0f; _errTurunan = 0.0f; _errStempel = 0;
-    _tPrev = 0; _tBelok = 0; _tPivot = 0; _diamSejak = 0;
+    _pitaDekat = false;
+    _tBelok = 0; _tCari = 0; _tPivot = 0; _diamSejak = 0;
 
     Serial.print("Navigasi MULAI: ikut dinding ");
     Serial.print((m == NAV_DINDING_KIRI || m == NAV_ARENA_KIRI) ? "KIRI" : "KANAN");
@@ -482,10 +482,9 @@ void Navigation::navUpdate() {
 
     if (!_lidar.muxTerdeteksi()) { navBerhenti("LiDAR hilang."); return; }
 
-    // Waktu loop tidak lagi dipakai untuk turunan PD -- itu sumber masalahnya.
-    // _tPrev disimpan hanya sebagai penanda "sudah pernah jalan".
+    // Waktu loop TIDAK dipakai untuk turunan PD -- itu sumber masalahnya dulu.
+    // Turunan memakai stempel sampel LiDAR (lihat blok kemudi di bawah).
     uint32_t now = millis();
-    _tPrev = now;
 
     const bool    ikutKiri  = (_mode == NAV_DINDING_KIRI || _mode == NAV_ARENA_KIRI);
     // sisi = +1 mengikuti dinding KIRI (yaw+ = belok kiri), -1 untuk kanan
@@ -564,37 +563,91 @@ void Navigation::navUpdate() {
         maju = NAV_FWD_SPEED * clampf(k, NAV_MAJU_MIN, 1.0f);
     }
 
-    // 4) Kemudi PD terhadap dinding samping.
+    // 4) Kemudi terhadap dinding samping. DUA PITA, bukan satu rumus PD.
+    //
+    // Satu gain proporsional tidak bisa memenuhi dua kebutuhan yang berlawanan:
+    // lembut saat dinding jauh (supaya kemudi tidak menjenuh dan robot tidak
+    // memutar menghadap dinding) DAN tegas saat terlalu dekat. Dengan
+    // wall.kp 0,008, berada 10 cm terlalu dekat hanya menghasilkan koreksi
+    // 0,08 dari 1,00 -- itulah sebabnya kaki sempat menggesek dinding.
+    // Karena itu pita dekat dipisah jadi aturannya sendiri.
+    //
+    //   jarak < wall.min  -> TERLALU DEKAT: putar menjauh dengan kekuatan tetap
+    //                        + kurangi laju maju.
+    //   selebihnya        -> PD normal terhadap wall.setpoint.
+    //
+    // Dulu ada pita KETIGA di sini (wall.hantu) untuk membuang bacaan yang
+    // mustahil. Itu sudah pindah ke LidarArray lewat LIDAR_MIN_CM, karena
+    // masalahnya bukan milik ikut-dinding saja: sensor DEPAN punya hantu yang
+    // sama dan tidak pernah terlindungi di sini. Sekarang bacaan mustahil
+    // sampai ke mari sebagai LIDAR_JAUH, dan ditangani cabang "dinding hilang".
     float turn;
+    _pitaDekat = false;
     if (samping == LIDAR_MATI) {
         navBerhenti("sensor SAMPING tidak merespons.");
         return;
     } else if (samping == LIDAR_JAUH) {
-        // Dinding hilang: tikungan keluar atau mulut lorong. Membelok ke arah
-        // dinding dengan kekuatan tetap sampai ketemu lagi. Turunan di-reset
-        // supaya tidak melonjak saat dinding muncul kembali.
+        // Dinding hilang: tikungan keluar, mulut lorong, atau -- di robot ini --
+        // sensor yang jatuh ke bacaan hantu. Membelok ke arah dinding dengan
+        // kekuatan tetap sampai ketemu lagi. Turunan di-reset supaya tidak
+        // melonjak saat dinding muncul kembali.
         turn = sisi * NAV_CARI_CMD;
         _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+
+        // Jangan mencari SELAMANYA. Perintah putar tetap tanpa dinding yang
+        // pernah muncul lagi = robot berjalan melingkar di tengah arena, dan
+        // itu terlihat persis seperti "robot jalan sendiri tanpa alasan".
+        // Di mode arena tidak perlu: kemudiHeading() yang mengunci arah, jadi
+        // dinding hilang di sana tidak membuatnya melingkar.
+        if (!arenaTerkunci()) {
+            if (_tCari == 0) _tCari = now;
+            else if (now - _tCari > NAV_CARI_BATAS_MS) {
+                navBerhenti("dinding samping hilang terlalu lama -- cek sensor samping ('l').");
+                return;
+            }
+        }
     } else {
         // Jarak float (belum dibulatkan ke cm) + stempel waktu sampelnya.
+        _tCari = 0;                                    // dinding ketemu lagi
         float jarak = _lidar.jarakHalus(idSamping);
         if (jarak < 0.0f) jarak = (float)samping;      // jaga-jaga, tak boleh terjadi
         uint32_t stempel = _lidar.stempelSampel(idSamping);
 
-        float err = jarak - (float)WALL_SETPOINT_CM;   // + = terlalu jauh
+        if (jarak < WALL_MIN_CM) {
+            // TERLALU DEKAT. Kekuatan menjauh naik dari separuh di ambang
+            // wall.min sampai PENUH tepat di LIDAR_MIN_CM sensor itu -- yaitu
+            // di jarak saat kaki sudah menyentuh dinding, batas bawah yang
+            // sama yang dipakai LidarArray. Lebar ramp-nya menyesuaikan sendiri
+            // kalau wall.min disetel, jadi tidak ada angka ketiga yang bisa
+            // lupa ikut diubah. Hasilnya tetap dibatasi NAV_WALL_TURN_MAX --
+            // ini koreksi lateral, bukan izin untuk berputar di tempat.
+            float lebar = WALL_MIN_CM - (float)LIDAR_MIN_CM[idSamping];
+            if (lebar < 1.0f) lebar = 1.0f;         // jaga-jaga bila disetel rapat
+            float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
+            turn = -sisi * NAV_WALL_TURN_MAX * (0.5f + 0.5f * dalam);
+            _pitaDekat = true;
+            // Melambat supaya kemudi sempat bekerja sebelum kaki sampai ke
+            // dinding. Tanpa ini robot menyeret kakinya sambil mengoreksi.
+            maju *= (1.0f - 0.5f * dalam);
+            // PD dimulai bersih saat keluar dari pita ini, kalau tidak turunan
+            // melonjak dari lompatan error antar-pita.
+            _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+        } else {
+            float err = jarak - WALL_SETPOINT_CM;   // + = terlalu jauh
 
-        if (!_errAda) {
-            _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
-        } else if (stempel != _errStempel) {
-            // Sampel BARU -> perbarui turunan, memakai jarak waktu antar sampel
-            // yang sebenarnya. Dulu pembaginya dt loop, yang dijepit di 0,001 s
-            // -- satu lompatan pembulatan 1 cm jadi bernilai 10,0 satuan putar.
-            float dts = (float)(uint32_t)(stempel - _errStempel) / 1000.0f;
-            _errTurunan = (dts > 0.005f && dts < 0.5f) ? (err - _errPrev) / dts : 0.0f;
-            _errPrev = err; _errStempel = stempel;
+            if (!_errAda) {
+                _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
+            } else if (stempel != _errStempel) {
+                // Sampel BARU -> perbarui turunan, memakai jarak waktu antar sampel
+                // yang sebenarnya. Dulu pembaginya dt loop, yang dijepit di 0,001 s
+                // -- satu lompatan pembulatan 1 cm jadi bernilai 10,0 satuan putar.
+                float dts = (float)(uint32_t)(stempel - _errStempel) / 1000.0f;
+                _errTurunan = (dts > 0.005f && dts < 0.5f) ? (err - _errPrev) / dts : 0.0f;
+                _errPrev = err; _errStempel = stempel;
+            }
+            // di antara sampel: _errTurunan ditahan, bukan dinolkan
+            turn = sisi * (WALL_KP * err + WALL_KD * _errTurunan);
         }
-        // di antara sampel: _errTurunan ditahan, bukan dinolkan
-        turn = sisi * (WALL_KP * err + WALL_KD * _errTurunan);
     }
 
     // Sumbangan dinding dibatasi di SEMUA mode, bukan hanya mode arena.
@@ -658,7 +711,15 @@ void Navigation::navStatus() {
         else if (val[i] == LIDAR_JAUH) Serial.println("jauh");
         else { Serial.print(val[i]); Serial.println(" cm"); }
     }
-    Serial.print("  setpoint    : "); Serial.print(WALL_SETPOINT_CM); Serial.println(" cm");
+    // Ketiga ambang dicetak bersama supaya bacaan samping di atas bisa langsung
+    // dibandingkan tanpa mengingat-ingat isi 'q'.
+    Serial.print("  pita dinding: dekat <"); Serial.print(WALL_MIN_CM, 1);
+    Serial.print(" | setpoint ");             Serial.print(WALL_SETPOINT_CM, 1);
+    Serial.println(" cm");
+    Serial.print("  batas mustahil: samping <"); Serial.print(LIDAR_MIN_CM[LIDAR_FRONT_R]);
+    Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
+    Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
+    if (_pitaDekat) Serial.println("  !! TERLALU DEKAT -- sedang memutar menjauhi dinding");
     Serial.print("  berhenti di : "); Serial.print(FRONT_STOP_CM);    Serial.println(" cm");
     Serial.print("  perintah    : maju "); Serial.print(_majuKini, 2);
     Serial.print("  putar ");              Serial.println(_turnKini, 2);
