@@ -17,6 +17,7 @@ bool __simJalan[8] = {false};
 bool __simCrosstalkAntar = false;
 uint16_t __simHantuMm[8] = {40,40,40,40,40,40,40,40};
 __SerialStub Serial, Serial2;
+uint8_t __EE[8192];
 __EEStub EEPROM;
 __WireStub Wire, Wire1, Wire2;
 

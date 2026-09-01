@@ -59,9 +59,18 @@ static void suapYaw(float yaw) {
 // Imu::update() MENOLAK lompatan > IMU_MAX_YAW_JUMP sampai beberapa kali
 // berturut-turut. Untuk memindahkan yaw jauh (menyusun kompas, menaruh robot
 // di arah acak) frame harus disuapkan berulang sampai penolakannya menyerah.
+static void suapLidar();   // didefinisikan di bawah; paksaYaw perlu memanggilnya
+
 static void paksaYaw(float y) {
     simYaw = y;
-    for (int i = 0; i < 20; i++) { suapYaw(simYaw); imu.update(); __nowMs += 10; }
+    // LiDAR ikut disuapi: di firmware sungguhan waktu tidak pernah berjalan
+    // tanpa lidar.update(). Kalau di sini hanya IMU yang jalan, 200 ms tanpa
+    // sampel baru membuat sensor terlihat MATI dan 'm1' menolak berangkat.
+    for (int i = 0; i < 20; i++) {
+        suapYaw(simYaw); suapLidar();
+        imu.update();    lidar.update();
+        __nowMs += 10;
+    }
 }
 
 // --- LiDAR palsu: lorong terbuka di depan, dinding kanan di jarak setpoint ---
