@@ -2,7 +2,7 @@
 
 Firmware Teensy 4.1 untuk robot hexapod berkaki enam: gait tripod, kinematika invers kaki dan lengan, IMU 10-axis, enam LiDAR ToF **VL53L1X**, dan navigasi otonom ikut-dinding. Semua kalibrasi permanen di EEPROM.
 
-**Status singkat (Agustus 2026).** Kaki, gait, body kinematics, pivot, dan navigasi ikut-dinding sudah jalan. Lengan belum terpasang fisik sehingga IK-nya belum teruji. Dua dari enam LiDAR rusak fisik — akibatnya mode ikut-dinding **kiri** belum bisa dipakai, mode **kanan** bisa.
+**Status singkat (Agustus 2026).** Kaki, gait, body kinematics, pivot, dan navigasi ikut-dinding sudah jalan. Lengan belum terpasang fisik sehingga IK-nya belum teruji. Keenam LiDAR hidup sejak September 2026, jadi mode ikut-dinding **kiri** dan **kanan** dua-duanya bisa dipakai — dengan catatan arah fisik ch0 dan ch2 masih perlu dikonfirmasi dengan `l` (lihat bagian peta channel).
 
 ---
 
@@ -329,21 +329,21 @@ Kode lama menganggap channel 0 menghadap depan. Uji fisik menunjukkan urutan kab
 
 | Channel mux | Arah fisik sebenarnya | Dikira kode lama |
 |---|---|---|
-| 0 | **kiri depan** — rusak fisik | depan |
+| 0 | **kiri depan** — dari pola, belum diuji | depan |
 | 1 | kiri belakang | kanan depan |
-| 2 | **belakang** — rusak fisik | kanan belakang |
+| 2 | **belakang** — dari pola, belum diuji | kanan belakang |
 | 3 | kanan belakang | belakang |
 | 4 | kanan depan | kiri belakang |
 | 5 | **depan** | kiri depan |
 
-Empat baris diperiksa satu per satu di robot; pola yang sama meramalkan dua sisanya, dan ramalan itu cocok dengan dua sensor yang memang rusak — jadi keenamnya konsisten.
+Empat baris diperiksa satu per satu di robot; pola yang sama meramalkan dua sisanya, ch0 dan ch2. Waktu itu ramalannya tidak bisa diuji karena kedua sensor itu justru yang rusak fisik — konsistensinya bersifat kebetulan, bukan bukti. Sejak September 2026 keenamnya hidup, jadi **ch0 dan ch2 sekarang perlu diverifikasi langsung dengan `l`** sebelum mode `f` / `F` dipercaya di lapangan.
 
 **Ini yang membuat navigasi tak pernah bisa dites.** `LIDAR_FRONT` menunjuk channel 0, dan channel 0 justru salah satu sensor yang mati. Jadi `f`/`F` selalu berhenti seketika dengan *"sensor DEPAN tidak merespons"* — gain, turunan PD, dan batas kemudi sama sekali tidak relevan selama itu belum benar.
 
 `LIDAR_NAMA[]` ikut diurutkan menurut arah fisik. Keduanya dijaga saat kompilasi:
 
 ```cpp
-static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_FRONT_R) | ... ) == 0x3Fu,
+static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_KANAN_D) | ... ) == 0x3Fu,
               "LIDAR_* di config.h harus enam channel BERBEDA dalam 0..5");
 ```
 
@@ -352,9 +352,9 @@ static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_FRONT_R) | ... ) == 0x3Fu,
 Gejala lapangan: tak ada apa pun di depan sensor, tapi `l` sering menunjukkan **5–10 cm**. Ada dua sebab yang sama sekali berbeda, dan perintah `l` sekarang memisahkannya karena ikut mencetak jawaban **mentah** dari sensor:
 
 ```
-0 DEPAN-KI  : jauh (di atas 120 cm)   [mentah 90 mm, wrap target fail]
-1 BLKG-KI   : MATI -- tidak merespons [mentah 700 mm, sigma fail]
-4 DEPAN-KA  : 8 cm                    [mentah 80 mm, range valid]
+0 KIRI-DPN  : jauh (di atas 120 cm)   [mentah 90 mm, wrap target fail]
+1 KIRI-BLK  : MATI -- tidak merespons [mentah 700 mm, sigma fail]
+4 KANAN-DPN : 8 cm                    [mentah 80 mm, range valid]
 5 DEPAN     : 60 cm                   [mentah 600 mm, range valid]
 ```
 
@@ -426,8 +426,8 @@ u<ch> <detik>  satu sensor saja, mis. u5 4
 ```
 --- TABEL UJI ISOLASI ---
   channel        A: semua   B: sendiri   kesimpulan
-  ch0 DEPAN-KI     750 mm     750 mm    target NYATA, bukan hantu
-  ch1 BLKG-KI       29 mm    -kosong-   hantu HILANG -> crosstalk antar-sensor
+  ch0 KIRI-DPN     750 mm     750 mm    target NYATA, bukan hantu
+  ch1 KIRI-BLK      29 mm    -kosong-   hantu HILANG -> crosstalk antar-sensor
   ch5 DEPAN         45 mm    -kosong-   hantu HILANG -> crosstalk antar-sensor
 
   KESIMPULAN: crosstalk ANTAR-SENSOR di semua yang bermasalah.
@@ -453,8 +453,8 @@ Bacaan menetap di atas 150 mm dianggap benda sungguhan — tanpa batas itu, sens
 Baris kedua mudah terlewat: sensor yang lolos init lalu berhenti mengirim tetap ber-`_isReady` true.
 
 ```
-ch0 (DEPAN-KI ) : VL53L0X @0x29 ADA -> INIT ULANG BERHASIL (tadinya MATI)
-ch1 (BLKG-KI  ) : VL53L0X @0x29 ADA tapi INIT ULANG GAGAL
+ch0 (KIRI-DPN ) : VL53L0X @0x29 ADA -> INIT ULANG BERHASIL (tadinya MATI)
+ch1 (KIRI-BLK ) : VL53L0X @0x29 ADA tapi INIT ULANG GAGAL
 ch5 (DEPAN    ) : VL53L0X @0x29 ADA, sudah aktif
   1 sensor dipulihkan tanpa reset papan. Ketik 'l' untuk memastikan.
   1 sensor menjawab di bus tapi menolak init -- curigai daya/kabel, bukan program.
@@ -478,7 +478,7 @@ navUpdate()  ->  robot.walk(maju, 0, turn)  ->  HexaGait  ->  IK  ->  servo
 
 Non-blokir: satu langkah per pemanggilan, tidak ada loop tunggu. Perintah serial tetap terproses, dan `s` / `x` / Enter selalu bisa menyela.
 
-Sensor yang dipakai: **depan** (`LIDAR_FRONT`) selalu, plus **satu** sensor samping — `LIDAR_FRONT_L` untuk mode `f`, `LIDAR_FRONT_R` untuk mode `F`.
+Sensor yang dipakai: **depan** (`LIDAR_FRONT`) selalu, plus **satu** sensor samping — `LIDAR_KIRI_D` untuk mode `f`, `LIDAR_KANAN_D` untuk mode `F`.
 
 ### 7.1 Kecepatan maju, dari sensor depan
 
@@ -774,7 +774,7 @@ Bisa, tapi terbatas, dan **bukan** pengganti odometri gait:
 
 * **Jangkauannya cuma 70 cm.** Sesudah berjalan 70 cm dari dinding belakang, sensornya jatuh ke hantu dan angkanya habis. Jadi ia mengukur "sudah berapa jauh dari dinding di belakang", bukan "sudah berapa jauh berjalan".
 * **Butuh dinding di belakang.** Di tengah lorong panjang tidak ada acuan.
-* **`ch2` tercatat rusak fisik** (Agustus 2026). Selama belum diperbaiki, ide ini tidak bisa diuji sama sekali.
+* **`ch2` sudah hidup** sejak September 2026, jadi ide ini akhirnya bisa diuji — tapi dua keberatan di atas tetap berlaku.
 
 Yang sudah tersedia dan lebih murah: **odometri gait**. `GerakStore` menyimpan `maju` mm/siklus hasil ukur `TES_GERAK` (dicetak `G`), dan rumusnya sudah diverifikasi di `sim_laju`:
 
@@ -1178,7 +1178,7 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 
 ## 15. Yang masih menunggu
 
-* **Dua LiDAR rusak fisik** — kiri depan (ch0) dan belakang (ch2). Mode `f` belum bisa dipakai sampai ch0 diperbaiki. Setelah diperbaiki, konfirmasi arah fisik keduanya dengan `l`: pemetaannya berasal dari ramalan pola, bukan uji langsung.
+* **Verifikasi arah ch0 dan ch2 dengan `l`.** Keenam LiDAR sudah hidup (September 2026), tapi pemetaan arah kedua channel ini berasal dari ramalan pola dan belum pernah diuji langsung — dulu tidak bisa, karena keduanya yang rusak. Mode `f` / `F` mengemudi dari ch0, jadi ini yang pertama diperiksa.
 * **Stabilisasi badan dari IMU** (`setStabilization`) masih dikomentari. Body kinematics-nya sudah siap dan ter-ramp — tinggal menyambungkan roll/pitch IMU ke `setBodyRotation()` (jangan menulis `_roll`/`_pitch` langsung; ramp sudah menangani perataan, jadi low-pass `STAB_TAU` tidak perlu). Dua hal **harus diuji fisik dulu**: (a) sumbu IMU belum tentu sejajar dengan frame robot — cocokkan dengan `r`/`B`; (b) `stab.sign_roll` / `stab.sign_pitch` di `Calib` belum dipakai sama sekali.
 * **`kalibrasiPivot()` masih memblokir**, tapi memang tidak ada yang perlu disela. Ini satu-satunya jalur pemblokir yang tersisa.
 * **Menggabungkan kompas arena dengan ikut-dinding** — "ikut dinding sampai lorong habis, lalu pivot ke Utara" — belum ada, tapi sekarang jauh lebih dekat: keduanya sudah jadi mode di state machine yang sama.

@@ -104,6 +104,11 @@ int8_t Navigation::arahTerdekat(float yawDeg, float& selisihDeg) const {
     return terbaik;
 }
 
+bool Navigation::diArah(uint8_t arah) const {
+    if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return false;
+    return fabsf(wrap180(_headArah[arah] - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
+}
+
 bool Navigation::kompasLengkap() const {
     for (uint8_t i = 0; i < 4; i++) if (_headArah[i] < 0) return false;
     return true;
@@ -377,7 +382,7 @@ void Navigation::navMulai(ModeNav m) {
     // iterasi kemudian -- dari luar terlihat seperti "menolak jalan tanpa
     // sebab", dan pesannya tidak menyebut sensor mana yang bermasalah.
     const bool    kiri     = (m == NAV_DINDING_KIRI || m == NAV_ARENA_KIRI);
-    const uint8_t idSisiCk = kiri ? LIDAR_FRONT_L : LIDAR_FRONT_R;
+    const uint8_t idSisiCk = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
 
     if (_lidar.getDistance(LIDAR_FRONT) == LIDAR_MATI) {
         Serial.print("Gagal: sensor DEPAN (channel "); Serial.print(LIDAR_FRONT);
@@ -489,7 +494,7 @@ void Navigation::navUpdate() {
     const bool    ikutKiri  = (_mode == NAV_DINDING_KIRI || _mode == NAV_ARENA_KIRI);
     // sisi = +1 mengikuti dinding KIRI (yaw+ = belok kiri), -1 untuk kanan
     const int8_t  sisi      = ikutKiri ? +1 : -1;
-    const uint8_t idSamping = ikutKiri ? LIDAR_FRONT_L : LIDAR_FRONT_R;
+    const uint8_t idSamping = ikutKiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
 
     // ---- FASE BELOK (hanya mode terkunci arena) ----
     // Berbelok ke mata angin berikutnya dengan kendali tertutup, bukan
@@ -701,8 +706,8 @@ void Navigation::navStatus() {
     }
 
     int depan = _lidar.getDistance(LIDAR_FRONT);
-    int kiri  = _lidar.getDistance(LIDAR_FRONT_L);
-    int kanan = _lidar.getDistance(LIDAR_FRONT_R);
+    int kiri  = _lidar.getDistance(LIDAR_KIRI_D);
+    int kanan = _lidar.getDistance(LIDAR_KANAN_D);
     const char* lbl[3] = {"depan", "kiri ", "kanan"};
     int val[3] = {depan, kiri, kanan};
     for (uint8_t i = 0; i < 3; i++) {
@@ -716,7 +721,7 @@ void Navigation::navStatus() {
     Serial.print("  pita dinding: dekat <"); Serial.print(WALL_MIN_CM, 1);
     Serial.print(" | setpoint ");             Serial.print(WALL_SETPOINT_CM, 1);
     Serial.println(" cm");
-    Serial.print("  batas mustahil: samping <"); Serial.print(LIDAR_MIN_CM[LIDAR_FRONT_R]);
+    Serial.print("  batas mustahil: samping <"); Serial.print(LIDAR_MIN_CM[LIDAR_KANAN_D]);
     Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
     Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
     if (_pitaDekat) Serial.println("  !! TERLALU DEKAT -- sedang memutar menjauhi dinding");

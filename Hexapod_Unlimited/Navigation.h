@@ -56,6 +56,12 @@ public:
     // Arah arena terdekat dari sebuah heading. return -1 bila belum ada satu
     // pun arah dicatat. selisihDeg = simpangan ke arah itu (-180..180).
     int8_t arahTerdekat(float yawDeg, float& selisihDeg) const;
+
+    // Apakah robot SEDANG menghadap arah arena ini (dalam HEADING_TOLERANCE_DEG)?
+    // Dipakai misi untuk memeriksa hasil pivot awalnya: pivot yang SELESAI dan
+    // pivot yang GAGAL sama-sama berakhir di NAV_DIAM, jadi satu-satunya yang
+    // membedakan keduanya dari luar adalah heading akhirnya.
+    bool diArah(uint8_t arah) const;
     const char* namaArah(uint8_t i) const { return (i < 4) ? _arahNama[i] : "?"; }
 
     // --- 2. Pivot Tertutup (PD) -- NON-BLOKIR ---

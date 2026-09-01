@@ -6,6 +6,7 @@
 #include "Hexapod.h"
 #include "Navigation.h"
 #include "LidarArray.h"
+#include "Mission.h"
 
 // ====================================================================
 // DEKLARASI OBJEK GLOBAL
@@ -14,6 +15,8 @@ Imu imu;
 Hexapod robot;                // Digunakan oleh Navigation
 LidarArray lidar;              // 6x VL53L0X lewat mux TCA9548A di bus Wire
 Navigation nav(imu, robot, lidar);  // Menyuntikkan referensi IMU, Motion, LiDAR
+// Lapisan misi. Ia MENYETIR nav, tidak menggantikannya -- lihat Mission.h.
+Mission misi(robot, nav, lidar);
 
 // ====================================================================
 // DEMO BODY KINEMATICS (non-blokir)
@@ -351,6 +354,35 @@ static void handleCmd(char* s) {
             nav.navMulai(NAV_ARENA_KANAN);
             break;
 
+        // --- MISI (lapisan di atas navigasi) ---
+        case 'm': {
+            if (!hasNum) { misi.status(); break; }
+            switch (s[1]) {
+                case '0': misi.batal("dihentikan pengguna."); break;
+                case '1': misi.mulai();      break;
+                case '2': misi.jawab(true);  break;
+                case '3': misi.jawab(false); break;
+                case '8': {
+                    float p[2] = {0, 0};
+                    if (argFloats(s, p, 2) >= 2) misi.setAmbangBlk(p[1]);
+                    else Serial.println("Format: m8 <cm>, misal m8 40");
+                    break;
+                }
+                case '9': {
+                    // argFloats() membaca mulai s+1, jadi angka PERTAMA yang
+                    // terbaca adalah '9' itu sendiri; nilainya ada di p[1].
+                    float p[2] = {0, 0};
+                    if (argFloats(s, p, 2) >= 2) misi.setAmbang(p[1]);
+                    else Serial.println("Format: m9 <cm>, misal m9 28");
+                    break;
+                }
+                default:
+                    Serial.println("m=status  m1=mulai  m0=batal  m2=korban  m3=bukan");
+                    Serial.println("m8<cm>=jarak tempuh ke korban 1   m9<cm>=ambang depan");
+            }
+            break;
+        }
+
         case 'v':   // status navigasi + jarak sekitar
             nav.navStatus();
             break;
@@ -630,7 +662,8 @@ static void handleCmd(char* s) {
 
         // --- 6. KESELAMATAN SERVO ---
         case 'x': // Lemas darurat: PWM mati, servo bebas
-            nav.navBerhenti("servo dilemaskan.");
+            misi.batal("servo dilemaskan.");   // WAJIB sebelum nav: kalau tidak,
+            nav.navBerhenti("servo dilemaskan.");  // misi menyalakan navigasi lagi
             if (demoOn) demoStop("servo dilemaskan.");
             if (goyangOn) goyangStop("servo dilemaskan.");
             robot.disarm();
@@ -677,6 +710,7 @@ static void handleCmd(char* s) {
         }
 
         case 's': // Stop
+            misi.batal("dihentikan pengguna.");
             nav.navBerhenti("dihentikan pengguna.");   // WAJIB: kalau tidak,
             robot.stop();                              // navUpdate() menyalakannya lagi
             Serial.println("Robot berhenti.");
@@ -746,6 +780,13 @@ static void handleCmd(char* s) {
             Serial.println("  g<0-100>     : Grip depan (0=menutup, 100=membuka)");
             Serial.println("  G<0-100>     : Grip belakang");
             Serial.println("  n            : Matikan servo kedua lengan");
+            Serial.println("MISI (lapisan di atas navigasi):");
+            Serial.println("  m      : Status misi");
+            Serial.println("  m1     : MULAI misi -- menuju korban 1 (dinding kanan + kunci arena)");
+            Serial.println("  m0     : Batalkan misi");
+            Serial.println("  m2/m3  : Saat berhenti -> 'm2' benar korban, 'm3' bukan (jalan lagi)");
+            Serial.println("  m8<cm> : Jarak TEMPUH dari garis start ke korban 1 (misal m8 40)");
+            Serial.println("  m9<cm> : Setel ambang jarak korban (RAM saja, misal m9 28)");
             Serial.println("KESELAMATAN & DIAGNOSTIK:");
             Serial.println("  x      : LEMAS -- PWM mati, servo bebas");
             Serial.println("  d      : Dump kalibrasi + hasil IK per kaki");
@@ -919,7 +960,12 @@ void loop() {
     yawStreamUpdate();
     lidarStreamUpdate();
 
-    // 3. NAVIGASI OTONOM (non-blokir; diam saja bila mode NAV_DIAM)
+    // 3. MISI lalu NAVIGASI OTONOM (keduanya non-blokir).
+    //    URUTAN PENTING: misi lebih dulu. Keduanya membaca sampel LiDAR
+    //    yang sama, dan yang lebih dulu berhak memutuskan -- itu yang
+    //    membuat misi sempat menghentikan navigasi sebelum navigasi keburu
+    //    berbelok menghindari benda yang justru sedang dicari.
+    misi.update();
     nav.navUpdate();
 
     // 4. KENDALI GERAK & SERVO (Diatur internal oleh Hexapod)
@@ -955,6 +1001,7 @@ void loop() {
                 handleCmd(buf); // Masuk ke parser
             } else {
                 // Fitur Keselamatan: Tekan Enter kosong untuk rem darurat
+                misi.batal("rem darurat.");
                 nav.navBerhenti("rem darurat.");
                 if (demoOn) demoStop("rem darurat.");
                 if (goyangOn) goyangStop("rem darurat.");
