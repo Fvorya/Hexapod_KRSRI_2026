@@ -170,7 +170,10 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // ternyata TERBALIK terhadap urutan yang diasumsikan kode lama: channel n
 // memegang arah yang dulu diberi indeks (5 - n). Keempat arah yang sempat
 // diperiksa satu per satu semuanya cocok dengan pola itu, dan pola yang sama
-// meramalkan dua sisanya -- yang ternyata memang dua sensor yang rusak.
+// meramalkan dua sisanya (ch0 dan ch2), yang waktu itu rusak fisik sehingga
+// tidak bisa diuji. Sejak September 2026 keenam sensor hidup -- jadi arah ch0
+// dan ch2 SEKARANG BISA, dan PERLU, diuji langsung dengan 'l'. Sampai itu
+// dilakukan keduanya masih berstatus ramalan pola, bukan hasil ukur.
 //
 //   ch0 = KIRI DEPAN     ch1 = KIRI BELAKANG    ch2 = BELAKANG
 //   ch3 = KANAN BELAKANG ch4 = KANAN DEPAN      ch5 = DEPAN
@@ -195,12 +198,18 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // Akibat pemetaan lama: navigasi membaca channel 0 sebagai "depan", padahal
 // channel 0 justru salah satu sensor yang mati -- jadi 'f'/'F' selalu langsung
 // berhenti dengan "sensor DEPAN tidak merespons", berapa pun gain-nya.
-#define LIDAR_FRONT      5
-#define LIDAR_FRONT_R    4
-#define LIDAR_BACK_R     3
-#define LIDAR_BACK       2   // rusak fisik per Agustus 2026 (tidak dipakai navigasi)
-#define LIDAR_BACK_L     1
-#define LIDAR_FRONT_L    0   // rusak fisik per Agustus 2026 -> mode 'f' belum bisa
+// Nama = ARAH BERKAS dulu, posisi dudukan belakangan. Nama lama (FRONT_R,
+// BACK_R, ...) terbaca seperti "menghadap depan / menghadap belakang" padahal
+// keempatnya menghadap ke SAMPING -- salah baca yang sudah terjadi berkali-kali.
+//   _D = duduk di paruh depan badan, _B = duduk di paruh belakang.
+#define LIDAR_FRONT      5   // satu-satunya yang menghadap DEPAN
+#define LIDAR_KANAN_D    4   // menghadap kanan, dudukan depan
+#define LIDAR_KANAN_B    3   // menghadap kanan, dudukan belakang
+#define LIDAR_BACK       2   // satu-satunya yang menghadap BELAKANG
+                             // hidup sejak Sept 2026; belum dipakai navigasi
+#define LIDAR_KIRI_B     1   // menghadap kiri, dudukan belakang
+#define LIDAR_KIRI_D     0   // menghadap kiri, dudukan depan
+                             // hidup sejak Sept 2026; arah fisik belum diuji ('l')
 
 // --- IMU --- //
 #define IMU_MAX_YAW_JUMP 30.0f   // derajat/sample; lonjakan > ini ditolak (gangguan magnet)

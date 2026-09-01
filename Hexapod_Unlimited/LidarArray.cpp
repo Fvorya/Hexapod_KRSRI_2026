@@ -18,15 +18,15 @@ static_assert(LIDAR_PERIOD_MS * 1000L >= (long)LIDAR_BUDGET_US,
 // kalau tidak, perintah 'l' akan melabeli sensor dengan arah yang keliru dan
 // pencarian kesalahan jadi menyesatkan.
 static const char* const LIDAR_NAMA[NUM_LIDAR] = {
-    "DEPAN-KI", "BLKG-KI", "BELAKANG", "BLKG-KA", "DEPAN-KA", "DEPAN"
+    "KIRI-DPN", "KIRI-BLK", "BELAKANG", "KANAN-BLK", "KANAN-DPN", "DEPAN"
 };
 
 // Enam LIDAR_* wajib menunjuk enam channel BERBEDA di 0..NUM_LIDAR-1. Salah
 // ketik saat memetakan ulang (mis. dua arah menunjuk channel yang sama) dulu
 // hanya ketahuan sebagai perilaku navigasi yang aneh di lapangan.
 static_assert(NUM_LIDAR == 6, "Tabel LIDAR_NAMA & penjaga di bawah menganggap 6 sensor");
-static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_FRONT_R) | (1u << LIDAR_BACK_R) |
-               (1u << LIDAR_BACK)  | (1u << LIDAR_BACK_L)  | (1u << LIDAR_FRONT_L)) == 0x3Fu,
+static_assert(((1u << LIDAR_FRONT) | (1u << LIDAR_KANAN_D) | (1u << LIDAR_KANAN_B) |
+               (1u << LIDAR_BACK)  | (1u << LIDAR_KIRI_B)  | (1u << LIDAR_KIRI_D)) == 0x3Fu,
               "LIDAR_* di config.h harus enam channel BERBEDA dalam 0..5");
 
 const char* LidarArray::nama(uint8_t id) {
