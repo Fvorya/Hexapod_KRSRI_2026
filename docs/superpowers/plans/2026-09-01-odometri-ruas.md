@@ -652,7 +652,7 @@ git commit -m "feat(odometri): rem jarak dan perintah serial D"
 Sesudah kedua task lulus dan firmware di-flash — inilah gunanya seluruh pekerjaan ini:
 
 1. `b` — robot berdiri.
-2. `Ds1.0` — pastikan skala netral.
+2. `Ds1.0` — pastikan skala netral. `qgait.duty` — pastikan 0,50 (koefisien odometer mengasumsikan `fminf(2.0, 1/duty)`; kalau duty pernah disetel lain lewat `Q`/`W` di sesi sebelumnya, jarak yang dilaporkan tidak lagi 2x langsung).
 3. Tandai posisi kaki tengah di lantai.
 4. `D80` lalu `w` — robot maju dan berhenti sendiri.
 5. Ukur jarak sebenarnya dengan meteran.

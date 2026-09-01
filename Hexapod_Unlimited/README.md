@@ -776,13 +776,20 @@ Bisa, tapi terbatas, dan **bukan** pengganti odometri gait:
 * **Butuh dinding di belakang.** Di tengah lorong panjang tidak ada acuan.
 * **`ch2` sudah hidup** sejak September 2026, jadi ide ini akhirnya bisa diuji — tapi dua keberatan di atas tetap berlaku.
 
-Yang sudah tersedia dan lebih murah: **odometri gait**. `GerakStore` menyimpan `maju` mm/siklus hasil ukur `TES_GERAK` (dicetak `G`), dan rumusnya sudah diverifikasi di `sim_laju`:
+Yang sudah tersedia dan lebih murah: **odometri gait**, sudah berjalan di firmware ini (`HexaGait::_jarakMm`, dibaca lewat perintah `D` — lihat §12), bukan lagi sekadar ide dengan rumus lurus sederhana. Tiap tick gait, `HexaGait::update()` menambah:
 
 ```
-jarak = 2 x step_length x perintah_maju x (waktu / cycle_time)
+jarak += skala x min(2, 1/duty) x maju x step_length x f x (dt / cycle_time)
 ```
 
-Itu berlaku di mana saja, tanpa dinding, tanpa batas 70 cm. Kelemahannya slip — dan justru di situlah LiDAR belakang berguna: sebagai **koreksi absolut jarak dekat** saat dinding belakang masih terlihat, mis. untuk tahu sudah berapa jauh melewati satu tikungan. Peran itu wajar; peran "odometer utama" tidak.
+* **`maju`** — komponen maju perintah (`_curY`, sudah di-slew, bukan `_tgtY` mentah).
+* **`min(2, 1/duty)`** — koefisien 2,0 dari rumus lama HANYA benar saat `gait.duty` = 0,5 (jendela tumpu kedua tripod pas menutupi satu siklus tanpa celah/tindih). Di atas 0,5 jendela tumpunya saling tindih, jadi badan sungguh maju `sy/duty` per siklus, bukan `2 x sy` — dan `gait.duty` bisa disetel operator kapan saja lewat `Qgait.duty` (rentang sah 0,3 .. 0,7), jadi koefisiennya harus ikut duty, bukan angka tetap.
+* **`f`** — faktor normalisasi langkah yang sama dipakai saat badan maju sambil berputar (bagian 4 di `HexaGait::update()`, mencegah servo terbakar); tanpa ini jarak susur-dinding terhitung lebih jauh dari jarak lurus padahal bukan slip.
+* **`dt / cycle_time`** — dihitung dari `dt` dan `cycleTime` yang SAMA (dengan clamp yang sama) yang dipakai fase gait itu sendiri untuk melangkah, jadi odometer tak pernah berselisih dari seberapa jauh kaki sungguh maju.
+
+Angka mentah itu adalah geometri, bukan jarak sebenarnya — selisihnya dengan meteran adalah slip mekanis, dan itu disetel lewat **faktor skala** `Ds<faktor>` (0,5 .. 1,5, default 1,0). Faktor ini sengaja **hanya di RAM**, bukan `Calib`: menambah satu `float` ke `CalibBlob` menaikkan `CALIB_VERSION` dan membuang seluruh gain yang sudah disetel di EEPROM, harga yang tidak sepadan sebelum angkanya diketahui dari lapangan. Begitu diketahui, tulis sebagai konstanta di `config.h`.
+
+`D<cm>` memasang **rem jarak**: begitu jarak tempuh melewati `<cm>`, navigasi berhenti otomatis (mode manapun, termasuk `w` manual dan `f`/`F` — cocok untuk mengukur slip jalan lurus maupun slip susur-dinding dengan alat yang sama). Itu berlaku di mana saja, tanpa dinding, tanpa batas 70 cm. Kelemahannya tetap slip — dan justru di situlah LiDAR belakang berguna: sebagai **koreksi absolut jarak dekat** saat dinding belakang masih terlihat, mis. untuk tahu sudah berapa jauh melewati satu tikungan. Peran itu wajar; peran "odometer utama" tidak.
 
 ---
 
@@ -961,6 +968,10 @@ Setel dulu jarak dindingnya (§7.9): berdirikan robot di samping dinding, atur d
 | `p` / `P` | Ikut dinding KIRI / KANAN + terkunci kompas arena |
 | `v` | Status navigasi/pivot + jarak sekitar |
 | `s` / `x` / Enter | Hentikan |
+| `D` | Cetak jarak tempuh (odometer gait), status rem jarak, dan skala slip |
+| `D<cm>` | Pasang rem jarak — berhenti otomatis (dan misi gagal dengan bersih bila sedang berjalan) begitu jarak tempuh melewati `<cm>`. Berlaku di mode manapun, termasuk `w` manual dan `f`/`F` |
+| `D0` | Lepas rem jarak dan nolkan jarak tempuh |
+| `Ds<faktor>` | Setel faktor skala slip odometri, RAM saja (0,5 .. 1,5) — lihat §7 |
 
 ### Kompas & pivot
 | | |

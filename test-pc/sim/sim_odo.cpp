@@ -36,10 +36,10 @@ static const float STEP_LEN   = 60.0f;    // mm
 static const float CYCLE_MS   = 900.0f;
 static const float TICK_MS    = 10;
 
-static void siapkan(float cmdMaju, float cmdPutar) {
+static void siapkan(float cmdMaju, float cmdPutar, float duty = 0.5f) {
     gParam[K_GAIT_STEP_LENGTH] = STEP_LEN;
     gParam[K_GAIT_CYCLE_TIME]  = CYCLE_MS;
-    gParam[K_GAIT_DUTY]        = 0.5f;
+    gParam[K_GAIT_DUTY]        = duty;
     gait = HexaGait();
     gait.begin();
     gait.setProfile({ GAIT_STEP_HEIGHT, STEP_LEN, CYCLE_MS, STAND_HEIGHT, STAND_RADIUS });
@@ -72,6 +72,43 @@ static float ukurAcuanMm(int tick) {
     return maju;
 }
 
+// Jarak tempuh badan menurut legTargets, TAPI sah juga saat berputar (yaw).
+// Suku yaw dalam sya[] itu proporsional dengan rx = _footHome[leg].x tiap
+// kaki (lihat HexaGait.cpp), dan Sigma(rx) = 0 di dalam SETIAP tripod --
+// dihitung dari config.h (BODY_LEG_ORIGINS, BODY_LEG_ANGLE) lewat
+// computeHome(): {0,2,4} -> 80+80-160=0, {1,3,5} -> 160-80-80=0 -- jadi
+// merata-ratakan -delta y TIGA kaki tripod yang sedang menapak membatalkan
+// suku yaw dan menyisakan komponen maju murni, persis seperti klaim "yaw
+// batal sendiri" yang dipakai odometer.
+static float ukurAcuanTripodMm(int tick) {
+    const float zHome = -STAND_HEIGHT;
+    static const int GRP_A[3] = {0, 2, 4};
+    static const int GRP_B[3] = {1, 3, 5};
+    Vec3 prev[6];
+    for (int i = 0; i < 6; i++) prev[i] = gait.legTargets[i];
+    float maju = 0.0f;
+    for (int t = 0; t < tick; t++) {
+        __nowMs += (uint32_t)TICK_MS;
+        gait.update();
+        bool stA = (fabsf(gait.legTargets[GRP_A[0]].z - zHome) < 0.001f) &&
+                   (fabsf(prev[GRP_A[0]].z - zHome) < 0.001f);
+        bool stB = (fabsf(gait.legTargets[GRP_B[0]].z - zHome) < 0.001f) &&
+                   (fabsf(prev[GRP_B[0]].z - zHome) < 0.001f);
+        // Sama seperti ukurAcuanMm: kalau kedua tripod menapak bersamaan
+        // (duty > 0.5), utamakan grup A supaya tak terhitung dobel.
+        const int* grp = stA ? GRP_A : (stB ? GRP_B : nullptr);
+        if (grp) {
+            float dySum = 0.0f;
+            for (int k = 0; k < 3; k++) {
+                dySum += -(gait.legTargets[grp[k]].y - prev[grp[k]].y);
+            }
+            maju += dySum / 3.0f;
+        }
+        for (int i = 0; i < 6; i++) prev[i] = gait.legTargets[i];
+    }
+    return maju;
+}
+
 static int jalanSaja(int tick) {
     for (int i = 0; i < tick; i++) { __nowMs += (uint32_t)TICK_MS; gait.update(); }
     return tick;
@@ -92,22 +129,32 @@ int main() {
         printf("  OK\n");
     }
 
-    printf("\n== UJI 2: normalisasi langkah ikut terhitung ==\n");
+    printf("\n== UJI 2: normalisasi langkah ikut terhitung, dan tetap akurat sambil berputar ==\n");
     // Maju sambil berputar membuat gait memangkas panjang langkah
     // (HexaGait.cpp: magMax > stepLength -> f < 1). Kalau odometer
-    // mengabaikan f, kedua angka di bawah akan IDENTIK.
+    // mengabaikan f, kedua angka di bawah akan IDENTIK -- itu cek arah.
+    // Tapi arah saja lolos walau 'f' terpakai DUA KALI (208 mm, bukan
+    // 333 mm) -- jadi acuan tripod (yang sah di bawah yaw) dipakai untuk
+    // menguji NILAINYA juga, bukan cuma arahnya.
     {
         siapkan(0.8f, 0.0f);
         jalanSaja(500);
         float lurus = gait.jarakMm();
 
         siapkan(0.8f, 0.5f);
-        jalanSaja(500);
+        float acuanBelok = ukurAcuanTripodMm(500);
         float belok = gait.jarakMm();
 
-        printf("  lurus %.1f mm, sambil putar %.1f mm\n", lurus, belok);
+        printf("  lurus %.1f mm, sambil putar %.1f mm (acuan tripod %.1f mm)\n",
+               lurus, belok, acuanBelok);
         if (belok >= lurus * 0.95f) {
             printf("  GAGAL: jarak saat berputar tidak dipangkas -- faktor f tidak dipakai\n");
+            return 1;
+        }
+        float galat = (acuanBelok > 0.001f) ? fabsf(belok - acuanBelok) / acuanBelok * 100.0f : 999.0f;
+        printf("  galat vs acuan tripod %.2f%%\n", galat);
+        if (galat > 2.0f) {
+            printf("  GAGAL: odometer sambil berputar meleset di luar 2%% dari acuan tripod\n");
             return 1;
         }
         printf("  OK\n");
@@ -212,6 +259,14 @@ int main() {
             printf("  GAGAL: meluncur lebih jauh dari yang bisa dijelaskan ramp\n");
             return 1;
         }
+        // Batas bawah juga: meluncur adalah keputusan desain (spec S7), bukan
+        // kebetulan. Kalau regresi membuat stop() seketika (tanpa ramp),
+        // luncurannya akan mendekati nol dan lolos begitu saja tanpa batas
+        // bawah ini.
+        if (sesudahRamp - akhir < 1.0f) {
+            printf("  GAGAL: nyaris tidak meluncur -- ramp perlambatan sepertinya hilang\n");
+            return 1;
+        }
 
         for (int i = 0; i < 200; i++) {
             __nowMs += (uint32_t)TICK_MS;
@@ -234,6 +289,24 @@ int main() {
         if (nav.remJarakAda()) { printf("  GAGAL: rem 0 cm diterima\n"); return 1; }
         nav.remJarakPasang(-5.0f);
         if (nav.remJarakAda()) { printf("  GAGAL: rem negatif diterima\n"); return 1; }
+        printf("  OK\n");
+    }
+
+    printf("\n== UJI 7: odometer vs jarak nyata pada duty > 0,5 (tripod tumpang tindih) ==\n");
+    // gait.duty punya rentang legal 0,3..0,7 (Calib.cpp) dan bisa diubah
+    // operator saat robot jalan (Qgait.duty). Di atas duty 0,5 jendela
+    // tumpu kedua tripod tindih, jadi total waktu tumpu per siklus adalah
+    // SATU siklus (bukan 2 x duty x T) dan badan sungguh maju sy/duty per
+    // siklus, bukan 2*sy. UJI 1 memakai duty 0,5 sehingga buta terhadap
+    // ini -- UJI ini memakai duty 0,6 supaya tidak buta lagi.
+    {
+        siapkan(1.0f, 0.0f, 0.6f);
+        int tick = (int)(10.0f * CYCLE_MS / TICK_MS);
+        float acuan = ukurAcuanMm(tick);
+        float odo   = gait.jarakMm();
+        float galat = (acuan > 0.001f) ? fabsf(odo - acuan) / acuan * 100.0f : 999.0f;
+        printf("  acuan gait %.1f mm, odometer %.1f mm, galat %.2f%%\n", acuan, odo, galat);
+        if (galat > 2.0f) { printf("  GAGAL: galat di luar 2%%\n"); return 1; }
         printf("  OK\n");
     }
 
