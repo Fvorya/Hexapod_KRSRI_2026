@@ -15,8 +15,10 @@
 - **Jangan menambah dependensi atau file sumber firmware baru.** Semua perubahan firmware adalah modifikasi file yang sudah ada.
 - **`build.sh` mengkompilasi seluruh sketsa dengan `-Wall -Wextra` dan `set -e`.** Peringatan apa pun menggagalkan build. Variabel yang tidak terpakai termasuk.
 - **Komentar ditulis dalam bahasa Indonesia**, mengikuti gaya berkas sekitarnya: jelaskan *kenapa*, bukan *apa*.
-- **`g++` diperlukan** (WSL, MinGW, atau Linux) dan **tidak terpasang di mesin pengembangan saat rencana ini ditulis**. Pasang lebih dulu; tanpa itu tidak ada satu langkah verifikasi pun yang bisa dijalankan.
-- **Folder ini bukan repositori git.** Jalankan `git init` sekali sebelum Task 1, atau lewati semua langkah commit.
+- **`g++` ada tapi TIDAK di PATH bawaan shell.** MSYS2 memasangnya di `/c/msys64/ucrt64/bin`. Awali tiap perintah build dengan:
+  `export PATH="/c/msys64/ucrt64/bin:$PATH"` — tanpa itu `build.sh` berhenti di `g++: command not found`.
+- **Akar repositori adalah folder `Hexapod/`**, bukan `Hexapod_Unlimited/`. Semua jalur di rencana ini relatif terhadap akar itu. `legacy-2026/` di-ignore dan bukan urusan rencana ini.
+- **Kondisi awal sudah hijau.** `./build.sh` lulus seluruhnya di commit `738d9e7` (19 sim). Kalau ada sim yang gagal sesudah suntingan Anda, itu suntingan Anda.
 
 ## Deviasi dari spec, disengaja
 
