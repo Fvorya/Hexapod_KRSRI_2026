@@ -66,6 +66,12 @@ public:
     void profileNarrow();
     void setGaitProfile(const GaitProfile& p) { _gait.setProfile(p); }
 
+    // Odometri gait. Lihat HexaGait untuk arti dan batasnya.
+    float jarakCm() const      { return _gait.jarakMm() * 0.1f; }
+    void  jarakNol()           { _gait.jarakNol(); }
+    void  setSkalaOdo(float s) { _gait.setSkalaOdo(s); }
+    float skalaOdo() const     { return _gait.skalaOdo(); }
+
     HexaArm* armDepan()    { return &_armF; }
     HexaArm* armBelakang() { return &_armB; }
 

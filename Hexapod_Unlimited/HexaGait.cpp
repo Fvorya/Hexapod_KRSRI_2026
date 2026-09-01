@@ -86,7 +86,8 @@ void HexaGait::update() {
 
     // 3. Fase Diakumulasi (kebal terhadap transisi cycleTime)
     if (_prof.cycleTime < 100.0f) _prof.cycleTime = 100.0f;
-    _phase += dt * 1000.0f / _prof.cycleTime;
+    float dPhase = dt * 1000.0f / _prof.cycleTime;
+    _phase += dPhase;
     while (_phase >= 1.0f) {
         _phase -= 1.0f;
     }
@@ -105,13 +106,25 @@ void HexaGait::update() {
     }
 
     // Pangkas (Normalisasi) bersama-sama jika ada kaki yang melampaui stepLength
+    float f = 1.0f;
     if (magMax > _prof.stepLength && magMax > 0.001f) {
-        float f = _prof.stepLength / magMax;
-        for (int leg = 0; leg < 6; leg++) { 
-            sxa[leg] *= f; 
-            sya[leg] *= f; 
+        f = _prof.stepLength / magMax;
+        for (int leg = 0; leg < 6; leg++) {
+            sxa[leg] *= f;
+            sya[leg] *= f;
         }
     }
+
+    // ODOMETRI. Dihitung DI SINI, sesudah normalisasi, karena hanya di sini
+    // 'f' diketahui -- dan tanpa 'f' jarak saat menyusuri dinding akan
+    // terhitung lebih jauh daripada saat lurus karena bug rumus, lalu
+    // disalahartikan sebagai slip mekanis.
+    //
+    // Suku yaw batal sendiri saat dirata-rata enam kaki (rx simetris
+    // kiri-kanan), jadi cukup _curY; tidak perlu merata-rata sya[].
+    // Memakai dPhase, bukan dt, dengan alasan yang sama seperti turunan PD
+    // dinding memakai stempel sampel LiDAR: kebal terhadap loop tersendat.
+    _jarakMm += _skalaOdo * 2.0f * _curY * _prof.stepLength * f * dPhase;
 
     // 5. Eksekusi Gerakan
     for (int leg = 0; leg < 6; leg++) {
