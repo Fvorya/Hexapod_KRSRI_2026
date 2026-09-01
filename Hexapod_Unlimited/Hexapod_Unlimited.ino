@@ -383,6 +383,43 @@ static void handleCmd(char* s) {
             break;
         }
 
+        case 'T': {   // profil medan: T = cetak, T0..T3 = pilih
+            // Empat profil sudah lama ada di Hexapod (datar/tangga/merunduk/
+            // sempit) lengkap dengan ramp GAIT_PROFILE_TAU yang menghaluskan
+            // pergantiannya, tapi hanya profileFlat() yang pernah tersambung
+            // (lewat 'b'). Tiga sisanya tidak bisa dipanggil dari mana pun.
+            // Ini pemicunya: mesinnya sudah ada, tinggal saklarnya.
+            //
+            // Huruf 'T' bertabrakan dengan 't' (geser badan) -- tidak ada
+            // pasangan besar-kecil yang benar-benar kosong lagi di firmware
+            // ini. Tabrakan ini yang paling tidak berbahaya: 'T' tidak
+            // menggerakkan robot, hanya mengganti profil, dan pergantiannya
+            // di-ramp sehingga salah ketik pun tidak menyentak.
+            if (!hasNum) {
+                GaitProfile p = robot.gaitProfile();
+                Serial.println("\n--- PROFIL MEDAN (yang BERLAKU, hasil ramp) ---");
+                Serial.print("  tinggi langkah : "); Serial.print(p.stepHeight, 1);  Serial.println(" mm");
+                Serial.print("  panjang langkah: "); Serial.print(p.stepLength, 1);  Serial.println(" mm");
+                Serial.print("  waktu siklus   : "); Serial.print(p.cycleTime, 0);   Serial.println(" ms");
+                Serial.print("  tinggi badan   : "); Serial.print(p.standHeight, 1); Serial.println(" mm");
+                Serial.print("  radius kaki    : "); Serial.print(p.standRadius, 1); Serial.println(" mm");
+                Serial.println("  T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit");
+                break;
+            }
+            switch ((int)v) {
+                case 0: robot.profileFlat();   Serial.println("Profil -> 0 DATAR");              break;
+                case 1: robot.profileStairs(); Serial.println("Profil -> 1 TANGGA");             break;
+                case 2: robot.profileCrouch(); Serial.println("Profil -> 2 MERUNDUK / TURUNAN"); break;
+                case 3: robot.profileNarrow(); Serial.println("Profil -> 3 SEMPIT");             break;
+                default:
+                    Serial.println("T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit");
+                    break;
+            }
+            Serial.println("  Berlaku SAMBIL BERJALAN dan di-ramp; tidak perlu 'b'.");
+            Serial.println("  'T' tanpa angka mencetak profil yang sedang berlaku.");
+            break;
+        }
+
         case 'v':   // status navigasi + jarak sekitar
             nav.navStatus();
             break;
@@ -782,6 +819,9 @@ static void handleCmd(char* s) {
             Serial.println("  F      : Jalan mengikuti dinding KANAN");
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
             Serial.println("  v      : Status navigasi + jarak sekitar");
+            Serial.println("  T      : Cetak profil medan yang sedang berlaku");
+            Serial.println("  T[0-3] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
+            Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit");
             Serial.println("  D      : Jarak tempuh, keadaan rem, dan skala odometri");
             Serial.println("  D<cm>  : Nolkan jarak lalu pasang rem di <cm> (misal D80)");
             Serial.println("  D0     : Nolkan jarak dan lepas rem");

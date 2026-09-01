@@ -211,9 +211,26 @@ void Hexapod::profileStairs() {
 }
 
 void Hexapod::profileCrouch() {
-    // 2 MERUNDUK: { 40, 55, 1100, 80, 70 }
-    // Perubahan: Langkah(-5), Siklus(+200), Tinggi Badan(-20)
-    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 5.0f, 
+    // 2 MERUNDUK / TURUNAN: { 40, 45, 1100, 80, 70 }
+    // Perubahan: Langkah(-15), Siklus(+200), Tinggi Badan(-20)
+    //
+    // Langkah 45 mm dipilih untuk turunan 1:4 (14,04 der) di arena. Tiap
+    // langkah, tanah di bawah kaki yang MENAPAK turun sebesar
+    // panjang_langkah x tan(14,04 der) = panjang_langkah x 0,25 -- 15 mm pada
+    // langkah baku 60 mm, 11 mm pada 45 mm. Trayektori ayun kembali ke
+    // z = -standHeight di kerangka BADAN, jadi selisih itu persis seberapa
+    // jauh kaki menggantung di udara sebelum badan jatuh menimpanya. Ia
+    // LINEAR terhadap panjang langkah, jadi memendekkan langkah menyerang
+    // tepat di sumbernya. Angka -5 sebelumnya tidak pernah diuji terhadap
+    // kemiringan apa pun.
+    //
+    // Badan -20 mm menolong dua kali. Titik berat lebih rendah mengurangi
+    // kecenderungan terjungkal ke depan, yang merupakan mode jatuh di
+    // turunan. Dan kaki jadi lebih TERLIPAT, sehingga sisa jangkauan ke
+    // bawahnya bertambah -- itu yang dibutuhkan di PUNCAK turunan, saat kaki
+    // depan melangkah ke tanah yang jatuh sementara kaki belakang masih di
+    // lantai datar.
+    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 15.0f, 
                        GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT - 20.0f, STAND_RADIUS });
 }
 
