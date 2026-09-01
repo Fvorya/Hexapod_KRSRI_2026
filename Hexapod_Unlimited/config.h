@@ -148,15 +148,41 @@ const uint8_t LIDAR_MIN_CM[6] = {
      7,  // ch2 belakang
     10,  // ch3 kanan blkg   (samping)
     10,  // ch4 kanan depan  (samping)
-     7   // ch5 depan
+    11   // ch5 depan -- TAMBALAN TRIAL, lihat catatan di bawah
 };
+
+// ponytail: ch5 dinaikkan 7 -> 11 cm sebagai TAMBALAN, bukan perbaikan.
+// Sensor depan melaporkan hantu menetap berstatus 'range valid' yang sudah
+// berpindah 3,2 cm -> 9 cm; pada 9 cm ia lolos batas geometri lama dan dibaca
+// sebagai halangan sungguhan, sehingga mode arena langsung berbelok dan robot
+// berputar di tempat sampai batas waktu misi.
+//
+// Yang dikorbankan: 11 cm DI ATAS geometri sebenarnya (139 mm ujung kaki
+// depan - 62 mm dudukan sensor = 77 mm). Artinya dinding NYATA pada 9-10 cm
+// sekarang dibaca sebagai ruang kosong dan robot maju 0,8 ke arahnya. Yang
+// membatasi kerusakannya cuma FRONT_STOP_CM 20: dalam operasi normal navigasi
+// sudah berbelok jauh sebelum 11 cm, jadi pita ini hanya tersentuh kalau ada
+// yang sudah gagal lebih dulu.
+//
+// PLAFONNYA: jangan pernah dinaikkan lagi. Hantu itu sudah terbukti berpindah;
+// menaikkannya tiap kali ia bergeser berakhir di 20 cm, dan di situ sensor
+// depan mati fungsi. Kalau 11 tidak cukup, masalahnya optik dan harus
+// diselesaikan di sana ('u5 4' memisahkan crosstalk antar-sensor dari benda
+// nyata di sumbu).
+//
+// CABUT KE 7 begitu hantunya hilang secara fisik.
 
 // ROI 4x4 menyempitkan bidang pandang dari ~27 der ke ~15 der. Berguna kalau
 // dicurigai sensor tetangga saling melihat (crosstalk) -- dua sensor sisi yang
 // sama menghadap arah yang SAMA di robot ini, jadi kerucut 27 der keduanya
 // benar-benar tumpang tindih. MATI secara default: bidang pandang sempit juga
 // membuat dinding lebih mudah luput saat robot menyerongi dinding.
-#define LIDAR_ROI_SEMPIT 0       // 1 = setROISize(4,4)
+#define LIDAR_ROI_SEMPIT 1       // 1 = setROISize(4,4)
+// Dinyalakan saat trial: hantu menetap di sensor depan. Ini yang menyerang
+// SEBABNYA (kerucut yang menangkap kaki, braket, atau pancaran tetangga),
+// sedangkan LIDAR_MIN_CM di atas cuma menutup gejalanya. Kalau sesudah ini
+// 'j5 10' bersih, kembalikan LIDAR_MIN_CM ch5 ke 7 dan biarkan yang ini tetap
+// hidup -- itu keadaan yang benar, bukan tambalan.
 
 // Tiga keadaan yang dikembalikan getDistance(). Membedakan "tak ada objek
 // dalam jangkauan" dari "sensor putus" itu penting: untuk wall-follow,
