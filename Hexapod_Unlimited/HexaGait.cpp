@@ -122,9 +122,20 @@ void HexaGait::update() {
     //
     // Suku yaw batal sendiri saat dirata-rata enam kaki (rx simetris
     // kiri-kanan), jadi cukup _curY; tidak perlu merata-rata sya[].
-    // Memakai dPhase, bukan dt, dengan alasan yang sama seperti turunan PD
-    // dinding memakai stempel sampel LiDAR: kebal terhadap loop tersendat.
-    _jarakMm += _skalaOdo * 2.0f * _curY * _prof.stepLength * f * dPhase;
+    // Memakai dPhase, bukan dt: bukan supaya kebal loop tersendat (dt sudah
+    // di-clamp sama seperti dPhase), melainkan supaya odometer tak pernah
+    // berselisih dengan seberapa jauh kaki sungguh maju -- dPhase dihitung
+    // dari dt yang sama dan cycleTime yang sama (dengan floor yang sama)
+    // yang dipakai fase gait itu sendiri untuk melangkah.
+    //
+    // Koefisien 2.0 mengasumsikan jendela tumpu (stance) kedua tripod pas
+    // menutupi satu siklus penuh tanpa celah maupun tindih -- itu hanya
+    // benar saat GAIT_DUTY = 0.5. Untuk duty > 0.5 jendela tumpu kedua
+    // tripod saling tindih, sehingga total waktu tumpu per siklus jadi
+    // SATU siklus (bukan 2 x duty x T), dan badan sungguh maju sejauh
+    // sy / duty per siklus, bukan 2*sy. fminf(2.0, 1/duty) mengoreksi ini;
+    // pada duty <= 0.5 hasilnya tetap 2.0 seperti semula.
+    _jarakMm += _skalaOdo * fminf(2.0f, 1.0f / GAIT_DUTY) * _curY * _prof.stepLength * f * dPhase;
 
     // 5. Eksekusi Gerakan
     for (int leg = 0; leg < 6; leg++) {
