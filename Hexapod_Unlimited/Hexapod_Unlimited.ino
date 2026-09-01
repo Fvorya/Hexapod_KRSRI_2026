@@ -387,6 +387,44 @@ static void handleCmd(char* s) {
             nav.navStatus();
             break;
 
+        case 'D': {   // odometri: D=cetak, D<cm>=pasang rem, D0=lepas+nolkan
+            if (s[1] == 's') {
+                // argFloats() membaca mulai s+1, jadi s+1 di sini menaruh
+                // titik baca tepat sesudah huruf 's'.
+                float p[1] = {0};
+                if (argFloats(s + 1, p, 1) >= 1) {
+                    robot.setSkalaOdo(p[0]);
+                    Serial.print("Skala odometri -> "); Serial.print(robot.skalaOdo(), 3);
+                    if (fabsf(robot.skalaOdo() - p[0]) > 1e-3f)
+                        Serial.print("  (diminta belum sah, DI-CLAMP ke 0,5 .. 1,5)");
+                    Serial.println();
+                    Serial.println("  Hanya di RAM. Kalau sudah pasti, tulis ke config.h.");
+                } else {
+                    Serial.println("Format: Ds<faktor>, misal Ds1.05");
+                }
+                break;
+            }
+            float p[1] = {0};
+            if (argFloats(s, p, 1) < 1) {                 // 'D' polos
+                Serial.print("Jarak tempuh : "); Serial.print(robot.jarakCm(), 1);
+                Serial.println(" cm sejak terakhir dinolkan");
+                Serial.print("  rem       : ");
+                if (nav.remJarakAda()) { Serial.print(nav.remJarakSasaran(), 1);
+                                         Serial.println(" cm"); }
+                else Serial.println("tidak terpasang");
+                Serial.print("  skala     : "); Serial.println(robot.skalaOdo(), 3);
+                break;
+            }
+            if (p[0] <= 0.0f) {                            // 'D0'
+                nav.remJarakLepas();
+                robot.jarakNol();
+                Serial.println("Jarak dinolkan, rem dilepas.");
+                break;
+            }
+            nav.remJarakPasang(p[0]);
+            break;
+        }
+
         case 'j': {  // Jejak statistik LiDAR: j (semua) atau j<channel>
             if (lidar.jejakJalan()) { Serial.println("Jejak sedang berjalan, tunggu selesai."); break; }
             float p[2] = {-1, 5};
@@ -664,6 +702,7 @@ static void handleCmd(char* s) {
         case 'x': // Lemas darurat: PWM mati, servo bebas
             misi.batal("servo dilemaskan.");   // WAJIB sebelum nav: kalau tidak,
             nav.navBerhenti("servo dilemaskan.");  // misi menyalakan navigasi lagi
+            nav.remJarakLepas();
             if (demoOn) demoStop("servo dilemaskan.");
             if (goyangOn) goyangStop("servo dilemaskan.");
             robot.disarm();
@@ -713,6 +752,7 @@ static void handleCmd(char* s) {
             misi.batal("dihentikan pengguna.");
             nav.navBerhenti("dihentikan pengguna.");   // WAJIB: kalau tidak,
             robot.stop();                              // navUpdate() menyalakannya lagi
+            nav.remJarakLepas();                       // jangan menyala di perjalanan berikutnya
             Serial.println("Robot berhenti.");
             break;
 
@@ -742,6 +782,10 @@ static void handleCmd(char* s) {
             Serial.println("  F      : Jalan mengikuti dinding KANAN");
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
             Serial.println("  v      : Status navigasi + jarak sekitar");
+            Serial.println("  D      : Jarak tempuh, keadaan rem, dan skala odometri");
+            Serial.println("  D<cm>  : Nolkan jarak lalu pasang rem di <cm> (misal D80)");
+            Serial.println("  D0     : Nolkan jarak dan lepas rem");
+            Serial.println("  Ds<f>  : Faktor slip odometri, RAM saja (misal Ds1.05)");
             Serial.println("  s/x/Enter : Hentikan navigasi");
             Serial.println("  y<ms>  : Aliran yaw dengan jeda tertentu (50-5000, misal y100)");
             Serial.println("EEPROM & KALIBRASI GERAK:");
@@ -1006,6 +1050,7 @@ void loop() {
                 if (demoOn) demoStop("rem darurat.");
                 if (goyangOn) goyangStop("rem darurat.");
                 robot.stop();
+                nav.remJarakLepas();
                 Serial.println("!! REM DARURAT (Vektor = 0) !!");
             }
             len = 0; // Bersihkan buffer untuk perintah berikutnya
