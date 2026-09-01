@@ -20,7 +20,7 @@ g++ $FLAGS -fsyntax-only -Wall -Wextra -Wno-unused-parameter "$HX"/*.cpp "$OUT/_
 rm -f "$OUT/_sketch.cpp"
 echo "    OK -- tidak ada peringatan."
 
-DAFTAR="${1:-sim_pivot sim_body sim_lidar sim_open sim_reinit sim_peta sim_hantu sim_jejak sim_isolasi sim_param sim_goyang sim_wall sim_laju sim_servolaju sim_dinding sim_yaw sim_depan sim_boot sim_misi}"
+DAFTAR="${1:-sim_pivot sim_body sim_lidar sim_open sim_reinit sim_peta sim_hantu sim_jejak sim_isolasi sim_param sim_goyang sim_wall sim_laju sim_servolaju sim_dinding sim_yaw sim_depan sim_boot sim_misi sim_odo}"
 for t in $DAFTAR; do
     echo; echo "=== $t ==="
     # sim_param butuh parser serial dari .ino, jadi sketsanya ikut dikompilasi
