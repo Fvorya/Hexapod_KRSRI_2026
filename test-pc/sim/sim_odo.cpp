@@ -188,19 +188,43 @@ int main() {
             printf("  GAGAL: berhenti di luar 80..81 cm\n"); return 1;
         }
 
-        // Sesudah rem menyala, robot harus benar-benar diam dan TETAP diam.
-        float diamDi = robot.jarakCm();
+        // Rem TIDAK menghentikan robot seketika, dan itu disengaja.
+        // robot.stop() hanya menaruh vektor gerak target di nol; HexaGait
+        // menurunkannya dengan laju GAIT_SLEW_RATE (3,0/detik) supaya kaki
+        // tidak menyentak di tengah langkah. Dari maju penuh itu ~330 ms
+        // perlambatan, dan odometer ikut menghitung selama itu -- robot
+        // meluncur sekitar 2 cm melewati sasaran.
+        //
+        // Untuk pengukuran slip ini tidak merugikan: angka odometri akhir
+        // DAN jarak meteran sama-sama sudah termasuk luncuran itu, jadi
+        // perbandingannya tetap setara. Yang diuji di sini dua hal:
+        // luncurannya terbatas, lalu jaraknya BENAR-BENAR beku -- rem tidak
+        // menyala lagi dan navigasi tidak menghidupkan robot kembali.
+        for (int i = 0; i < 100; i++) {          // 1 detik: biarkan ramp habis
+            __nowMs += (uint32_t)TICK_MS;
+            nav.navUpdate();
+            robot.update();
+        }
+        float sesudahRamp = robot.jarakCm();
+        printf("  sesudah ramp perlambatan: %.2f cm (meluncur %.2f cm)\n",
+               sesudahRamp, sesudahRamp - akhir);
+        if (sesudahRamp - akhir > 3.0f) {
+            printf("  GAGAL: meluncur lebih jauh dari yang bisa dijelaskan ramp\n");
+            return 1;
+        }
+
         for (int i = 0; i < 200; i++) {
             __nowMs += (uint32_t)TICK_MS;
             nav.navUpdate();
             robot.update();
         }
-        if (fabsf(robot.jarakCm() - diamDi) > 0.5f) {
-            printf("  GAGAL: masih maju sesudah direm (%.2f -> %.2f cm)\n",
-                   diamDi, robot.jarakCm());
+        if (fabsf(robot.jarakCm() - sesudahRamp) > 0.1f) {
+            printf("  GAGAL: masih maju sesudah ramp habis (%.2f -> %.2f cm)\n",
+                   sesudahRamp, robot.jarakCm());
             return 1;
         }
-        printf("  OK -- berhenti dan tetap berhenti.\n");
+        printf("  OK -- rem menyala di %.2f cm, meluncur %.2f cm, lalu beku.\n",
+               akhir, sesudahRamp - akhir);
     }
 
     printf("\n== UJI 6: rem menolak sasaran <= 0 ==\n");
