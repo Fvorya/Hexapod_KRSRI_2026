@@ -1,0 +1,14 @@
+# Keluaran build simulasi PC (dibuat ulang oleh test-pc/build.sh)
+test-pc/bin/
+
+# Ruang kerja subagent-driven-development (scratch, bukan riwayat)
+.superpowers/
+
+# legacy-2026 punya repositori sendiri dengan riwayatnya sendiri.
+# Sengaja TIDAK diserap ke sini supaya tidak jadi gitlink kosong.
+legacy-2026/
+
+# Sampah OS & editor
+Thumbs.db
+desktop.ini
+*.swp

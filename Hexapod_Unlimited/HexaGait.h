@@ -18,6 +18,7 @@ struct GaitProfile {
     float stepLength;   // mm
     float cycleTime;    // ms
     float standHeight;  // mm (foot z = -standHeight)
+    float standRadius;
 };
 
 class HexaGait {
@@ -29,6 +30,20 @@ public:
     void setProfile(const GaitProfile& p) { _tgtProf = p; }  // di-ramp di update()
     GaitProfile profile() const { return _prof; }
 
+    // ODOMETRI. Jarak bertanda yang sudah ditempuh badan sejak jarakNol();
+    // mundur mengurangi. Dihitung dari fase gait dan vektor gerak yang sudah
+    // di-slew DAN dinormalisasi, jadi ia mengukur apa yang benar-benar
+    // dilakukan kaki -- bukan apa yang diperintahkan.
+    float jarakMm() const { return _jarakMm; }
+    void  jarakNol()      { _jarakMm = 0.0f; }
+
+    // Faktor slip. Dikalikan pada tiap PENAMBAHAN, bukan saat dibaca, supaya
+    // menyetelnya di tengah jalan tidak menulis ulang jarak yang sudah
+    // terkumpul. Hanya di RAM: menambah parameter Calib akan menaikkan
+    // CALIB_VERSION dan membuang seluruh gain yang sudah disetel.
+    void  setSkalaOdo(float s) { _skalaOdo = clampf(s, 0.5f, 1.5f); }
+    float skalaOdo() const     { return _skalaOdo; }
+
     Vec3 legTargets[6];
 
 private:
@@ -37,7 +52,10 @@ private:
     float _tgtX, _tgtY, _tgtYaw;     // vektor gerak target
     float _curX, _curY, _curYaw;     // vektor gerak aktual (di-slew)
     bool _running;
-    unsigned long _cycleStart, _lastUpdate;
+    float _phase;
+    float _jarakMm  = 0.0f;   // odometri, mm, bertanda
+    float _skalaOdo = 1.0f;   // faktor slip, disetel 'Ds'
+    unsigned long _lastUpdate;
     void computeHome();
     float dtSeconds();
 };
