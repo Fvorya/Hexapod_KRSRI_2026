@@ -121,6 +121,7 @@ Maka faktor skala hidup di RAM, disetel lewat `Ds<faktor>`, default `1.0` — me
 | Profil medan berubah (`profileCrouch`/`profileStairs`) | Rumus membaca `_prof.stepLength` tiap tick, jadi ramp-nya terikuti sendiri tanpa kode tambahan. |
 | Servo lemas | Gait tidak `moving`, cabang `!moving` `return` sebelum akumulasi. Tidak ada yang bertambah. |
 | Rem tertinggal terpasang | Rem dilepas otomatis saat menyala, dan ikut dilepas oleh `s`, `x`, Enter, dan `m0`. |
+| Robot meluncur sesudah rem menyala | Disengaja, bukan cacat. `robot.stop()` hanya menaruh vektor gerak target di nol; `HexaGait` menurunkannya dengan laju `GAIT_SLEW_RATE` (3,0/detik) supaya kaki tidak menyentak di tengah langkah. Dari maju penuh itu ~330 ms dan sekitar 2 cm, yang ikut terhitung odometer. Perbandingan odometri lawan meteran tetap setara karena keduanya sama-sama mencakup luncuran itu. Rem yang memotong ramp DITOLAK: berhenti mendadak di fase swing bisa membuat badan terhuyung, dan itu perilaku baru yang belum teruji di robot. |
 | Robot tersangkut | Odometer terus menghitung dan rem menyala terlalu cepat. Ini batas mati semua *dead reckoning* dan tidak bisa diperbaiki tanpa sensor luar; batas waktu misi tetap jadi jaring terakhir. |
 
 ## 8. Uji

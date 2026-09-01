@@ -46,6 +46,18 @@ public:
     void navStatus();
     ModeNav navMode() const { return _mode; }
 
+    // REM JARAK. Menghentikan robot sesudah menempuh jarak tertentu, di mode
+    // gerak APA PUN -- termasuk 'w' manual, karena pemeriksaannya duduk di
+    // atas jalan keluar NAV_DIAM di navUpdate(). Dipakai untuk mengukur slip
+    // gait: jalankan sejauh N cm menurut odometri, lalu ukur dengan meteran.
+    //
+    // Rem HANYA menolkan; ia tidak pernah menulis vektor gerak, jadi doktrin
+    // satu-penulis yang dijaga navBerhenti() tetap utuh.
+    void  remJarakPasang(float cm);   // nolkan jarak lalu pasang; cm <= 0 ditolak
+    void  remJarakLepas();
+    bool  remJarakAda() const     { return _remJarakCm > 0.0f; }
+    float remJarakSasaran() const { return _remJarakCm; }
+
     // --- 1. Kompas Arena ---
     void kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
     void kompasSimpan();
@@ -125,6 +137,7 @@ private:
     int8_t   _arahKini = -1;    // indeks arah arena yang sedang dituju (0..3)
     uint32_t _tPivot   = 0;     // awal fase berjalan (belok arena / pivot / settle)
     uint32_t _diamSejak = 0;    // sejak kapan heading berada di dalam toleransi
+    float _remJarakCm = 0.0f;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }

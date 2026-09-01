@@ -474,7 +474,37 @@ float Navigation::kemudiHeading(float targetHeading) const {
     return clampf(_pivotSign * turn, -1.0f, 1.0f);
 }
 
+void Navigation::remJarakPasang(float cm) {
+    if (cm <= 0.0f) {
+        Serial.println("Rem jarak: sasaran harus lebih dari 0 cm. Tidak dipasang.");
+        return;
+    }
+    _robot.jarakNol();
+    _remJarakCm = cm;
+    Serial.print("Rem jarak DIPASANG di "); Serial.print(cm, 1);
+    Serial.println(" cm. Jarak dinolkan.");
+    Serial.println("  Berlaku di mode gerak apa pun, termasuk 'w' manual.");
+}
+
+void Navigation::remJarakLepas() {
+    if (_remJarakCm <= 0.0f) return;    // tidak terpasang -> jangan mencetak apa-apa
+    _remJarakCm = 0.0f;
+    Serial.println("Rem jarak DILEPAS.");
+}
+
 void Navigation::navUpdate() {
+    // REM JARAK diperiksa SEBELUM jalan keluar NAV_DIAM di bawah. Kalau
+    // ditaruh sesudahnya, 'w' manual tidak akan pernah terkena rem -- dan
+    // justru jalan manual itulah satu-satunya cara berjalan lurus tanpa
+    // dinding, yaitu pengukuran slip yang paling bersih.
+    if (_remJarakCm > 0.0f && _robot.jarakCm() >= _remJarakCm) {
+        _remJarakCm = 0.0f;              // sekali pakai; jangan menyala lagi nanti
+        navBerhenti("rem jarak tercapai.");   // mengurus mode navigasi
+        _robot.stop();                        // mengurus 'w' manual
+        Serial.print("Rem jarak: berhenti di "); Serial.print(_robot.jarakCm(), 1);
+        Serial.println(" cm.");
+    }
+
     if (_mode == NAV_DIAM) return;
 
     // Penjaga yang berlaku untuk SEMUA mode.

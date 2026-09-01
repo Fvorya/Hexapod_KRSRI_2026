@@ -15,8 +15,22 @@
 
 #include "Calib.h"
 #include "HexaGait.h"
+#include <Wire.h>
+#include <VL53L1X.h>
+#include "Imu.h"
+#include "Hexapod.h"
+#include "LidarArray.h"
+#include "Navigation.h"
 
 static HexaGait gait;
+
+// UJI 5 memakai Hexapod/Navigation yang asli. Objeknya berdiri sendiri dari
+// 'gait' di atas -- uji 1..4 menguji generator gait langsung, uji 5 menguji
+// rem lewat fasad yang benar-benar dipakai firmware.
+static Imu        imu;
+static Hexapod    robot;
+static LidarArray lidar;
+static Navigation nav(imu, robot, lidar);
 
 static const float STEP_LEN   = 60.0f;    // mm
 static const float CYCLE_MS   = 900.0f;
@@ -139,6 +153,63 @@ int main() {
             return 1;
         }
         gait.setSkalaOdo(1.0f);
+        printf("  OK\n");
+    }
+
+    printf("\n== UJI 5: rem jarak menghentikan robot yang berjalan MANUAL ==\n");
+    // Jalur 'w' manual: robot.walk() dipanggil langsung, mode navigasi tetap
+    // NAV_DIAM. Inilah kasus yang hilang kalau rem ditaruh sesudah
+    // 'if (_mode == NAV_DIAM) return;' -- dan justru inilah cara mengukur
+    // slip jalan lurus di lantai terbuka tanpa dinding.
+    {
+        robot.begin();
+        robot.arm();
+        robot.setSkalaOdo(1.0f);
+
+        nav.remJarakPasang(80.0f);
+        if (!nav.remJarakAda()) { printf("  GAGAL: rem tidak terpasang\n"); return 1; }
+        if (fabsf(robot.jarakCm()) > 0.001f) {
+            printf("  GAGAL: memasang rem tidak menolkan jarak\n"); return 1;
+        }
+
+        robot.walk(1.0f, 0.0f, 0.0f);
+        int n = 0;
+        while (nav.remJarakAda() && n < 20000) {
+            __nowMs += (uint32_t)TICK_MS;
+            nav.navUpdate();
+            robot.update();
+            n++;
+        }
+        float akhir = robot.jarakCm();
+        printf("  berhenti pada %.2f cm sesudah %d ms\n", akhir, n * (int)TICK_MS);
+
+        if (nav.remJarakAda()) { printf("  GAGAL: rem tidak pernah menyala\n"); return 1; }
+        if (akhir < 80.0f || akhir > 81.0f) {
+            printf("  GAGAL: berhenti di luar 80..81 cm\n"); return 1;
+        }
+
+        // Sesudah rem menyala, robot harus benar-benar diam dan TETAP diam.
+        float diamDi = robot.jarakCm();
+        for (int i = 0; i < 200; i++) {
+            __nowMs += (uint32_t)TICK_MS;
+            nav.navUpdate();
+            robot.update();
+        }
+        if (fabsf(robot.jarakCm() - diamDi) > 0.5f) {
+            printf("  GAGAL: masih maju sesudah direm (%.2f -> %.2f cm)\n",
+                   diamDi, robot.jarakCm());
+            return 1;
+        }
+        printf("  OK -- berhenti dan tetap berhenti.\n");
+    }
+
+    printf("\n== UJI 6: rem menolak sasaran <= 0 ==\n");
+    {
+        nav.remJarakLepas();
+        nav.remJarakPasang(0.0f);
+        if (nav.remJarakAda()) { printf("  GAGAL: rem 0 cm diterima\n"); return 1; }
+        nav.remJarakPasang(-5.0f);
+        if (nav.remJarakAda()) { printf("  GAGAL: rem negatif diterima\n"); return 1; }
         printf("  OK\n");
     }
 
