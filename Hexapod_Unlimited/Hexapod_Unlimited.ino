@@ -362,6 +362,18 @@ static void handleCmd(char* s) {
                 case '1': misi.mulai();      break;
                 case '2': misi.jawab(true);  break;
                 case '3': misi.jawab(false); break;
+                case '6': {
+                    float p[2] = {0, 0};
+                    if (argFloats(s, p, 2) >= 2) misi.setTurunCm(p[1]);
+                    else Serial.println("Format: m6 <cm>, misal m6 60");
+                    break;
+                }
+                case '7': {
+                    float p[2] = {0, 0};
+                    if (argFloats(s, p, 2) >= 2) misi.setLantaiCm(p[1]);
+                    else Serial.println("Format: m7 <cm>, misal m7 80");
+                    break;
+                }
                 case '8': {
                     float p[2] = {0, 0};
                     if (argFloats(s, p, 2) >= 2) misi.setAmbangBlk(p[1]);
@@ -379,6 +391,7 @@ static void handleCmd(char* s) {
                 default:
                     Serial.println("m=status  m1=mulai  m0=batal  m2=korban  m3=bukan");
                     Serial.println("m8<cm>=jarak korban 1 (sensor BELAKANG)   m9<cm>=ambang depan");
+                    Serial.println("m7<cm>=lebar lantai pecah   m6<cm>=panjang turunan (odometri)");
             }
             break;
         }
@@ -869,6 +882,8 @@ static void handleCmd(char* s) {
             Serial.println("  m1     : MULAI misi -- menuju korban 1 (dinding kanan + kunci arena)");
             Serial.println("  m0     : Batalkan misi");
             Serial.println("  m2/m3  : Saat berhenti -> 'm2' benar korban, 'm3' bukan (jalan lagi)");
+            Serial.println("  m6<cm> : Panjang bidang miring, odometri (misal m6 60)");
+            Serial.println("  m7<cm> : Lebar rintangan lantai pecah, odometri (misal m7 80)");
             Serial.println("  m8<cm> : Jarak garis start -> korban 1, diukur sensor BELAKANG");
             Serial.println("           (misal m8 40). Misi TIDAK memakai odometri 'D'.");
             Serial.println("  m9<cm> : Setel ambang jarak korban (RAM saja, misal m9 28)");

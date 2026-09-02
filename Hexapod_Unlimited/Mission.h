@@ -45,6 +45,9 @@ enum StatMisi : uint8_t {
     MISI_KE_KORBAN1,     // ikut dinding KANAN + kunci arena, mengamati sensor depan
     MISI_PIVOT_KORBAN1,  // sudah di samping korban 1, memutar badan menghadapnya
     MISI_KONFIRM1,       // berhenti di depan sesuatu, MENUNGGU keputusan operator
+    MISI_PIVOT_LANTAI,   // sesudah korban dikonfirmasi, memutar balik ke UTARA
+    MISI_LANTAI_PECAH,   // menyeberangi lantai pecah dengan profil TANGGA
+    MISI_TURUN,          // menuruni bidang miring dengan profil MERUNDUK
     MISI_SELESAI,        // irisan ini habis (langkah ambil korban belum ada)
     MISI_GAGAL           // berhenti karena sebab yang dicetak & disimpan
 };
@@ -60,6 +63,8 @@ public:
     void jawab(bool korban);            // 'm2' = benar korban, 'm3' = bukan
     void setAmbang(float cm);           // 'm9 <cm>'  -- ambang sensor DEPAN
     void setAmbangBlk(float cm);        // 'm8 <cm>'  -- JARAK TEMPUH dari START ke korban 1
+    void setLantaiCm(float cm);         // 'm7 <cm>'  -- lebar rintangan lantai pecah
+    void setTurunCm(float cm);          // 'm6 <cm>'  -- panjang bidang miring
 
     StatMisi stat() const { return _stat; }
     bool berjalan() const {
@@ -95,12 +100,42 @@ private:
     uint8_t  _jauhN     = 0;      // sampel berturut-turut di atas ambang
     uint32_t _stempelBlk = 0;     // stempel sampel belakang yang terakhir dihitung
     bool     _blkSiap   = true;   // SEKALI pakai: melewati garis korban 1 hanya terjadi sekali
+    // RUAS BERJARAK sesudah korban 1: lantai pecah lalu turunan. Keduanya
+    // memakai ODOMETRI GAIT, bukan LiDAR -- di ruas itu tidak ada acuan mutlak
+    // yang searah jalan. Dinding START sudah lama hilang, dan LiDAR depan
+    // menghadap mendatar sehingga tidak melihat lantai pecah maupun bibir
+    // turunan. Odometri diukur di lantai arena 2026-09-02 dan cocok dalam 1%
+    // (lihat ODO_SKALA_DEF), jadi ia layak dipercaya untuk ruas sependek ini.
+    //
+    // Keduanya WAJIB diisi operator ('m7', 'm6') dan tidak punya default.
+    // Menebak lebar rintangan yang belum pernah diukur berarti mengganti
+    // profil gait di tempat yang salah -- di bibir turunan, itu jatuh.
+    float    _lantaiCm  = -1.0f;  // lebar lantai pecah, cm (<0 = belum disetel)
+    float    _turunCm   = -1.0f;  // panjang turunan, cm (<0 = belum disetel)
+    float    _ruasAwal  = 0.0f;   // odometer saat ruas berjalan dimulai, cm
+    uint32_t _serongT0  = 0;      // sejak kapan heading keluar toleransi (0 = tidak)
+
     const char* _sebab = nullptr; // sebab MISI_GAGAL, dicetak ulang oleh 'm'
 
     void     masuk(StatMisi s);
     bool     mulaiJalan();        // navMulai + verifikasi ia BENAR-BENAR jalan
     void     mulaiSusurDinding(); // dipakai sesudah pivot awal selesai
     void     gagal(const char* sebab);
+
+    // Menunggu pivot yang sedang berjalan, lalu memeriksa hasilnya.
+    // Dipakai tiga kali (pivot awal, pivot ke korban, pivot balik ke UTARA),
+    // dan ketiganya butuh pemeriksaan yang sama: pivot yang SELESAI dan pivot
+    // yang timeout/dibatalkan sama-sama berakhir di NAV_DIAM, jadi heading
+    // akhir yang membedakannya.
+    //   0 = masih berputar, 1 = sudah menghadap, -1 = gagal (sudah dilaporkan)
+    int8_t   tungguPivot(uint8_t arah, const char* sebabGagal);
+
+    // Sudah berapa cm sejak ruas ini dimulai, menurut odometri gait.
+    float    ruasTempuh() const { return _robot.jarakCm() - _ruasAwal; }
+
+    // Selama ruas berjarak: navigasi masih milik kita DAN masih menghadap
+    // arah yang benar? return false berarti sudah dilaporkan gagal.
+    bool     ruasSehat(uint8_t arah);
     uint32_t lewat() const { return millis() - _t0; }
 };
 

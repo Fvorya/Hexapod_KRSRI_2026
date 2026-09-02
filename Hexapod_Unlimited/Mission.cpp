@@ -44,6 +44,18 @@ static const uint8_t MISI_ARAH_AWAL = 0;
 // K-1 ada di sisi BARAT lintasan, jadi badan diputar seperempat menghadapnya.
 static const uint8_t MISI_ARAH_KORBAN1 = 3;   // 3 = BARAT
 
+// Batas waktu satu RUAS BERJARAK (lantai pecah / turunan). Lebih longgar dari
+// batas menuju korban 1 karena kedua ruas itu dilalui dengan profil lambat:
+// TANGGA menaikkan cycleTime dari 900 ke 1800 ms, MERUNDUK ke 1100 ms.
+static const uint32_t MISI_RUAS_BATAS_MS = 90000;
+
+// Berapa lama heading boleh keluar toleransi sebelum ruas dinyatakan rusak.
+// Bukan nol: mode arena mengoreksi terus, jadi heading wajar melintas keluar
+// sesaat. Yang ditangkap adalah robot yang BENAR-BENAR berbelok -- mis. mode
+// arena menemukan halangan depan lalu pindah ke mata angin berikutnya, yang
+// membuat sisa ruas diukur ke arah yang salah.
+static const uint32_t MISI_SERONG_BATAS_MS = 2000;
+
 // JARAK dari garis start sampai robot berada di samping korban 1, diukur
 // SENSOR BELAKANG (ch2) -- bukan odometri gait. Misi tidak pernah menyentuh
 // Hexapod::jarakCm() maupun rem jarak 'D'.
@@ -175,6 +187,38 @@ void Mission::gagal(const char* sebab) {
     Serial.println("   'm' untuk status, 'm1' untuk mengulang, 'x' untuk melemaskan.");
 }
 
+int8_t Mission::tungguPivot(uint8_t arah, const char* sebabGagal) {
+    if (_nav.pivotSedangJalan()) return 0;
+    if (!_nav.diArah(arah)) { gagal(sebabGagal); return -1; }
+    return 1;
+}
+
+bool Mission::ruasSehat(uint8_t arah) {
+    if (_nav.navMode() != NAV_ARENA_KANAN) {
+        gagal("navigasi berhenti atau diambil alih di tengah ruas -- sebabnya tercetak di atas.");
+        return false;
+    }
+    if (lewat() > MISI_RUAS_BATAS_MS) {
+        _nav.navBerhenti("batas waktu ruas.");
+        gagal("ruas tidak selesai dalam batas waktu.");
+        return false;
+    }
+    // Odometri hanya berarti kalau arahnya masih benar. Robot yang berbelok
+    // ke mata angin lain tetap menambah jarak, dan sisa ruasnya diukur ke
+    // arah yang salah -- itu mengganti profil gait di tempat yang keliru.
+    if (_nav.diArah(arah)) {
+        _serongT0 = 0;
+    } else {
+        if (_serongT0 == 0) _serongT0 = millis();
+        else if (millis() - _serongT0 > MISI_SERONG_BATAS_MS) {
+            _nav.navBerhenti("heading menyimpang di tengah ruas.");
+            gagal("robot tidak lagi menghadap arah ruas -- jarak tempuh tidak bisa dipercaya.");
+            return false;
+        }
+    }
+    return true;
+}
+
 void Mission::update() {
     switch (_stat) {
 
@@ -184,11 +228,10 @@ void Mission::update() {
         // Yang tersisa cuma menunggu ia berhenti lalu MEMERIKSA hasilnya:
         // pivot yang selesai dan pivot yang dibatalkan/timeout sama-sama
         // berakhir di NAV_DIAM, jadi heading akhir yang membedakannya.
-        if (_nav.pivotSedangJalan()) return;
-
-        if (!_nav.diArah(MISI_ARAH_AWAL)) {
-            gagal("pivot awal tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
-            return;
+        {
+            int8_t p = tungguPivot(MISI_ARAH_AWAL,
+                        "pivot awal tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
+            if (p <= 0) return;
         }
         // Titik nol jarak tempuh, dicatat SEKARANG: badan sudah lurus
         // menghadap UTARA, jadi berkas ch2 tegak lurus dinding START dan
@@ -356,11 +399,10 @@ void Mission::update() {
     case MISI_PIVOT_KORBAN1:
         // Pola yang sama dengan MISI_PIVOT_AWAL: Navigation punya timeout
         // sendiri, jadi tinggal menunggu ia berhenti lalu memeriksa headingnya.
-        if (_nav.pivotSedangJalan()) return;
-
-        if (!_nav.diArah(MISI_ARAH_KORBAN1)) {
-            gagal("pivot ke arah korban 1 tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
-            return;
+        {
+            int8_t p = tungguPivot(MISI_ARAH_KORBAN1,
+                        "pivot ke arah korban 1 tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
+            if (p <= 0) return;
         }
         masuk(MISI_KONFIRM1);
         Serial.print("\n=== BERHENTI MENGHADAP ");
@@ -377,6 +419,59 @@ void Mission::update() {
         Serial.println("    'm2' = benar korban   -> misi lanjut");
         Serial.println("    'm3' = bukan korban   -> jalan lagi");
         Serial.println("    'm0' = batalkan misi  |  'x' = lemas darurat");
+        break;
+
+    case MISI_PIVOT_LANTAI: {
+        int8_t p = tungguPivot(MISI_ARAH_AWAL,
+                    "pivot balik ke arah lorong tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
+        if (p <= 0) return;
+
+        // Profil TANGGA: kaki +35 mm supaya tidak menyangkut bibir ubin pecah,
+        // badan +10 mm supaya sasis tidak mengandas, siklus +900 ms sehingga
+        // tiap langkah punya waktu untuk mendarat. Pergantian profil di-ramp
+        // GAIT_PROFILE_TAU, jadi aman dipanggil sambil robot berjalan.
+        _robot.profileStairs();
+
+        if (!mulaiJalan()) {
+            gagal("gagal memulai ikut dinding untuk ruas lantai pecah.");
+            return;
+        }
+        _ruasAwal = _robot.jarakCm();
+        _serongT0 = 0;
+        masuk(MISI_LANTAI_PECAH);
+        Serial.println("\n=== RUAS LANTAI PECAH ===");
+        Serial.print("  profil TANGGA, ikut dinding kanan, berhenti sesudah ");
+        Serial.print(_lantaiCm, 0); Serial.println(" cm menurut odometri.");
+        break;
+    }
+
+    case MISI_LANTAI_PECAH:
+        if (!ruasSehat(MISI_ARAH_AWAL)) return;
+        if (ruasTempuh() < _lantaiCm) return;
+
+        // Sampai di ujung lantai pecah. Profil MERUNDUK untuk turunan 1:4:
+        // langkah 45 mm memangkas jarak jatuh kaki tiap langkah (langkah x
+        // tan 14 der), badan -20 mm menurunkan titik berat DAN melipat kaki
+        // sehingga sisa jangkauan ke bawah bertambah di bibir turunan.
+        _robot.profileCrouch();
+        _ruasAwal = _robot.jarakCm();
+        _serongT0 = 0;
+        masuk(MISI_TURUN);
+        Serial.println("\n=== RUAS TURUNAN ===");
+        Serial.print("  profil MERUNDUK, berhenti sesudah ");
+        Serial.print(_turunCm, 0); Serial.println(" cm menurut odometri.");
+        break;
+
+    case MISI_TURUN:
+        if (!ruasSehat(MISI_ARAH_AWAL)) return;
+        if (ruasTempuh() < _turunCm) return;
+
+        _nav.navBerhenti("ujung turunan tercapai.");
+        _robot.profileFlat();
+        masuk(MISI_SELESAI);
+        Serial.println("\n=== SELESAI: DI BAWAH TURUNAN ===");
+        Serial.println("  Profil dikembalikan ke DATAR.");
+        Serial.println("  Irisan misi ini habis di sini. 'm1' untuk mengulang dari awal.");
         break;
 
     case MISI_KONFIRM1:
@@ -397,11 +492,28 @@ void Mission::jawab(bool korban) {
     }
 
     if (korban) {
-        masuk(MISI_SELESAI);
         Serial.println("Dicatat: KORBAN.");
-        Serial.println("  Irisan misi ini berhenti di sini -- langkah 'ambil korban' belum ada");
-        Serial.println("  (lengan belum terpasang fisik, IK-nya belum teruji).");
-        Serial.println("  'm1' untuk mengulang dari awal.");
+        Serial.println("  Langkah 'ambil korban' DILEWATI -- lengan belum terpasang fisik.");
+
+        // Kedua ruas berikutnya diukur odometri, dan angkanya harus datang
+        // dari meteran. Menebak lebar lantai pecah berarti mengganti profil
+        // gait di tempat yang salah, dan di bibir turunan itu jatuh.
+        if (_lantaiCm < 0.0f || _turunCm < 0.0f) {
+            masuk(MISI_SELESAI);
+            Serial.println("  Misi berhenti di sini: jarak ruas berikutnya belum disetel.");
+            if (_lantaiCm < 0.0f) Serial.println("    'm7 <cm>' = lebar rintangan lantai pecah");
+            if (_turunCm  < 0.0f) Serial.println("    'm6 <cm>' = panjang bidang miring");
+            Serial.println("  Ukur dengan meteran, setel, lalu 'm1' lagi.");
+            return;
+        }
+
+        Serial.print("  Memutar badan kembali ke ");
+        Serial.print(_nav.namaArah(MISI_ARAH_AWAL));
+        Serial.println(" untuk menghadap lantai pecah.");
+
+        _nav.pivotKompas(MISI_ARAH_AWAL);
+        if (!_nav.pivotSedangJalan()) { gagal("pivot balik ke arah lorong tidak mau jalan."); return; }
+        masuk(MISI_PIVOT_LANTAI);
         return;
     }
 
@@ -423,6 +535,29 @@ void Mission::jawab(bool korban) {
     Serial.print(_ambang + (float)MISI_REARM_CM, 0);
     Serial.println(" cm, atau 'jauh'.");
 }
+
+// Kedua setter ini sengaja TIDAK punya default. Nilai <0 berarti "belum
+// diukur", dan 'm2' menolak melanjutkan ke ruas berjarak selama masih begitu.
+static void setRuas(const char* nama, float& tujuan, float cm, const char* perintah) {
+    const float lo = 5.0f, hi = 400.0f;
+    float v = clampf(cm, lo, hi);
+    Serial.print(nama); Serial.print(": ");
+    if (tujuan < 0.0f) Serial.print("belum disetel"); else Serial.print(tujuan, 1);
+    Serial.print(" -> "); Serial.print(v, 1); Serial.println(" cm");
+    if (fabsf(v - cm) > 1e-3f) {
+        Serial.print("  (diminta "); Serial.print(cm, 1);
+        Serial.print(", DI-CLAMP ke "); Serial.print(lo, 0);
+        Serial.print(" .. "); Serial.print(hi, 0); Serial.println(")");
+    }
+    Serial.print("  Diukur ODOMETRI GAIT, bukan LiDAR -- di ruas itu tidak ada acuan");
+    Serial.println(" mutlak yang searah jalan.");
+    Serial.print("  Hanya di RAM. Setel ulang dengan '"); Serial.print(perintah);
+    Serial.println("' tiap robot menyala.");
+    tujuan = v;
+}
+
+void Mission::setLantaiCm(float cm) { setRuas("lebar lantai pecah", _lantaiCm, cm, "m7 <cm>"); }
+void Mission::setTurunCm (float cm) { setRuas("panjang turunan",    _turunCm,  cm, "m6 <cm>"); }
 
 void Mission::setAmbangBlk(float cm) {
     // Jarak TEMPUH, bukan bacaan sensor. Batas atasnya menyisakan ruang untuk
@@ -474,6 +609,13 @@ void Mission::status() {
         case MISI_DIAM:        Serial.println("DIAM (ketik 'm1' untuk mulai)"); break;
         case MISI_PIVOT_AWAL:  Serial.print("PIVOT -- menghadapkan badan ke ");
                                Serial.println(_nav.namaArah(MISI_ARAH_AWAL)); break;
+        case MISI_PIVOT_LANTAI: Serial.println("PIVOT -- memutar balik ke UTARA"); break;
+        case MISI_LANTAI_PECAH: Serial.print("LANTAI PECAH -- profil TANGGA, tempuh ");
+                               Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
+                               Serial.print(_lantaiCm, 0); Serial.println(" cm"); break;
+        case MISI_TURUN:       Serial.print("TURUNAN -- profil MERUNDUK, tempuh ");
+                               Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
+                               Serial.print(_turunCm, 0); Serial.println(" cm"); break;
         case MISI_PIVOT_KORBAN1: Serial.print("PIVOT -- memutar menghadap korban 1 (");
                                Serial.print(_nav.namaArah(MISI_ARAH_KORBAN1));
                                Serial.println(")"); break;
@@ -490,7 +632,13 @@ void Mission::status() {
     Serial.print("  jarak korban: "); Serial.print(_ambangBlk, 1);
     Serial.print(" cm dari garis start, diukur SENSOR BELAKANG -- ");
     Serial.println(_blkSiap ? "pemicu aktif" : "SUDAH terlewati");
-    Serial.println("                 (odometri gait 'D' TIDAK dipakai misi)");
+    Serial.println("                 (pemicu korban 1 TIDAK memakai odometri)");
+    Serial.print("  lantai pecah: ");
+    if (_lantaiCm < 0.0f) Serial.println("BELUM disetel -- 'm7 <cm>'");
+    else { Serial.print(_lantaiCm, 1); Serial.println(" cm, odometri gait"); }
+    Serial.print("  turunan     : ");
+    if (_turunCm < 0.0f) Serial.println("BELUM disetel -- 'm6 <cm>'");
+    else { Serial.print(_turunCm, 1); Serial.println(" cm, odometri gait"); }
     Serial.print("  titik nol   : ");
     if (_blkAwal < 0.0f) Serial.println("belum dicatat (dicatat 'm1' sesudah pivot ke UTARA)");
     else { Serial.print(_blkAwal, 1); Serial.print(" cm -> berhenti di bacaan ");
