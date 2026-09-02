@@ -256,24 +256,28 @@ const uint8_t LIDAR_MIN_CM[6] = {
 #define NAV_FWD_SPEED     0.8f     // Kecepatan maju normal (0..1) (const)
 
 // FAKTOR SLIP ODOMETRI -- diukur di lantai arena, 2026-09-02.
-// Odometer menghitung jarak GEOMETRIS dari fase gait; kaki selip, jadi jarak
-// fisiknya lebih pendek. Faktor ini yang menjembatani keduanya.
+// Hasilnya: TIDAK ADA slip yang perlu dikoreksi. Faktornya 1,0.
 //
-// Cara pengukurannya (dua lari lurus, area terbuka arena, profil datar):
-//   Ds1.0, D50, w  -> odometer berhenti di 51,4 cm, meteran 46,0 cm
-//                     => k = 46,0 / 51,4 = 0,895
-//   Ds0.89, D50, w -> odometer 51,4 cm, meteran 51,4 cm  (cocok)
-// Slip robot ini sekitar 10,5%.
+// Tiga lari, semuanya D50 dengan skala 1,0, diukur meteran:
 //
-// MASIH TERBUKA: angka di atas dari jalan LURUS. Misi menyusuri dinding, dan
-// tiap koreksi kemudi memangkas langkah lewat faktor normalisasi, jadi slip
-// menyusur-dinding belum tentu sama. Ukur ulang dengan 'P' lalu 'D50'; kalau
-// berbeda jauh, angka ITU yang berlaku untuk misi.
+//   lurus 'w',  kemarin  : meteran 46,0  odometer 51,4  -> 0,895
+//   dinding 'P', hari ini: meteran 51,5  odometer 51,4  -> 1,002
+//   lurus 'w',  hari ini : meteran 52,0  odometer 51,4  -> 1,012
 //
-// Disimpan di sini, bukan di tabel Calib, karena menambah baris parameter
-// menaikkan CALIB_VERSION dan membuang seluruh gain dinding yang sudah
-// disetel. 'Ds<faktor>' tetap bisa menimpanya saat jalan, tapi hanya di RAM.
-#define ODO_SKALA_DEF     0.89f    // 1.0 = tanpa koreksi; rentang sah 0,5..1,5
+// Dua yang terakhir sepakat dalam 1%. Yang pertama sendirian, dan selisihnya
+// 6 cm -- kira-kira jarak antara ujung kaki tengah dan tepi badan, jadi
+// hampir pasti titik acuan awal dan akhir tidak sama. Ia dibuang.
+//
+// Lengkungan lintasan sempat dicurigai sebagai penyebab, karena 'w' berjalan
+// terbuka tanpa koreksi arah apa pun. Diperiksa dan DITOLAK: yaw hanya
+// bergeser 175,7 -> 170,6 der selama lari itu, dan untuk busur dengan total
+// belok 5,1 der rasio tali-busur terhadap busur adalah 2*sin(t/2)/t = 0,9997.
+// Lengkungan sebesar itu memendekkan jarak 0,03%, bukan 10,5%.
+//
+// Kalau suatu saat mengukur ulang: pakai SATU titik badan yang sama untuk
+// tanda awal dan pengukuran akhir. Itu satu-satunya sumber galat yang pernah
+// benar-benar muncul di sini, dan besarnya sekelas dengan slip yang dicari.
+#define ODO_SKALA_DEF     1.0f     // tanpa koreksi; 'Ds' menimpanya di RAM (0,5..1,5)
 
 // --- Wall-following & penghindaran halangan (non-blokir) --- //
 #define NAV_PELAN_CM       50    // mulai melambat bila halangan depan di bawah ini
