@@ -54,7 +54,7 @@ private:
     bool _running;
     float _phase;
     float _jarakMm  = 0.0f;   // odometri, mm, bertanda
-    float _skalaOdo = 1.0f;   // faktor slip, disetel 'Ds'
+    float _skalaOdo = ODO_SKALA_DEF;   // faktor slip terukur; ditimpa 'Ds'
     unsigned long _lastUpdate;
     void computeHome();
     float dtSeconds();
