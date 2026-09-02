@@ -91,6 +91,18 @@ public:
     // pivot yang GAGAL sama-sama berakhir di NAV_DIAM, jadi satu-satunya yang
     // membedakan keduanya dari luar adalah heading akhirnya.
     bool diArah(uint8_t arah) const;
+
+    // Simpangan heading sekarang terhadap satu arah arena, -180..180.
+    // NAN bila arah itu belum dicatat atau IMU belum punya data. Dipakai misi
+    // untuk menilai odometri: simpang theta memendekkan jarak sesungguhnya
+    // dengan faktor cos(theta), jadi yang penting besarnya, bukan lulus/tidak
+    // terhadap satu ambang sempit milik pivot.
+    float simpangArah(uint8_t arah) const;
+
+    // Arah arena yang SEDANG dituju mode arena (0..3), -1 bila tidak ada.
+    // Berubahnya nilai ini berarti navigasi memilih mata angin lain -- 90 der
+    // sekaligus, bukan goyangan.
+    int8_t arahDituju() const { return _arahKini; }
     const char* namaArah(uint8_t i) const { return (i < 4) ? _arahNama[i] : "?"; }
 
     // --- 2. Pivot Tertutup (PD) -- NON-BLOKIR ---

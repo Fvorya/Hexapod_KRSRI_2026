@@ -49,12 +49,25 @@ static const uint8_t MISI_ARAH_KORBAN1 = 3;   // 3 = BARAT
 // TANGGA menaikkan cycleTime dari 900 ke 1800 ms, MERUNDUK ke 1100 ms.
 static const uint32_t MISI_RUAS_BATAS_MS = 90000;
 
-// Berapa lama heading boleh keluar toleransi sebelum ruas dinyatakan rusak.
-// Bukan nol: mode arena mengoreksi terus, jadi heading wajar melintas keluar
-// sesaat. Yang ditangkap adalah robot yang BENAR-BENAR berbelok -- mis. mode
-// arena menemukan halangan depan lalu pindah ke mata angin berikutnya, yang
-// membuat sisa ruas diukur ke arah yang salah.
-static const uint32_t MISI_SERONG_BATAS_MS = 2000;
+// SEBERAPA SERONG masih boleh, untuk ruas berjarak. SENGAJA jauh lebih longgar
+// dari HEADING_TOLERANCE_DEG (6 der): angka itu milik pemeriksaan "pivot sudah
+// sampai", tempat robot berdiri diam. Di sini robot BERJALAN di atas ubin
+// pecah, tempat kaki tergelincir dan badan tersentak tiap langkah.
+//
+// Ambangnya diturunkan dari kerugian odometri, bukan dari selera: simpang
+// theta membuat odometer mengukur sepanjang badan sementara ruas diukur
+// sepanjang lorong, jadi jarak nyata = terbaca x cos(theta). Pada 25 der itu
+// 9%, yaitu 7 cm dari ruas 77 cm -- masih di bawah galat pengukuran meteran
+// itu sendiri. Di atas itu ongkosnya menanjak cepat.
+static const float MISI_RUAS_SERONG_DEG = 25.0f;
+
+// Berapa lama boleh seserong itu sebelum ruas dinyatakan rusak. Diukur dalam
+// SIKLUS GAIT, bukan milidetik tetap: koreksi heading hanya bisa bekerja
+// selewat langkah, dan profil TANGGA memakai cycleTime 1800 ms -- dua kali
+// lipat DATAR. Batas tetap 2000 ms dulu memberi kurang dari dua siklus untuk
+// pulih, jadi satu sandungan wajar di lantai pecah sudah menggagalkan misi.
+static const uint8_t  MISI_SERONG_SIKLUS   = 3;
+static const uint32_t MISI_SERONG_MIN_MS   = 3000;
 
 // JARAK dari garis start sampai robot berada di samping korban 1, diukur
 // SENSOR BELAKANG (ch2) -- bukan odometri gait. Misi tidak pernah menyentuh
@@ -203,15 +216,41 @@ bool Mission::ruasSehat(uint8_t arah) {
         gagal("ruas tidak selesai dalam batas waktu.");
         return false;
     }
-    // Odometri hanya berarti kalau arahnya masih benar. Robot yang berbelok
-    // ke mata angin lain tetap menambah jarak, dan sisa ruasnya diukur ke
-    // arah yang salah -- itu mengganti profil gait di tempat yang keliru.
-    if (_nav.diArah(arah)) {
+    // Odometri hanya berarti kalau arahnya masih benar, tapi ada DUA kegagalan
+    // yang berbeda dan hanya satu yang butuh sabar.
+    //
+    // 1) Navigasi memilih mata angin LAIN. Itu 90 der sekaligus, bukan
+    //    goyangan, dan tiap langkah sesudahnya dihitung ke arah yang salah.
+    //    Tidak ada gunanya menunggu: gagalkan saat itu juga.
+    if (_nav.arahDituju() != (int8_t)arah) {
+        _nav.navBerhenti("navigasi berbelok ke mata angin lain di tengah ruas.");
+        gagal("navigasi berpindah arah -- sisa ruas akan diukur ke arah yang salah.");
+        return false;
+    }
+
+    // 2) Badan terserong sementara sambil tetap MENUJU arah yang sama. Di
+    //    lantai pecah itu normal: kaki tergelincir, mode arena menariknya
+    //    kembali selewat beberapa langkah. Yang ditangkap di sini hanya
+    //    serong BESAR yang BERTAHAN -- mis. robot menyangkut sehingga
+    //    koreksinya tidak pernah menang.
+    float simpang = _nav.simpangArah(arah);
+    if (isnan(simpang)) {
+        _nav.navBerhenti("IMU tidak memberi data di tengah ruas.");
+        gagal("acuan heading hilang -- jarak tempuh tidak bisa dipercaya.");
+        return false;
+    }
+
+    if (fabsf(simpang) <= MISI_RUAS_SERONG_DEG) {
         _serongT0 = 0;
     } else {
+        uint32_t batas = (uint32_t)(MISI_SERONG_SIKLUS * _robot.gaitProfile().cycleTime);
+        if (batas < MISI_SERONG_MIN_MS) batas = MISI_SERONG_MIN_MS;
         if (_serongT0 == 0) _serongT0 = millis();
-        else if (millis() - _serongT0 > MISI_SERONG_BATAS_MS) {
+        else if (millis() - _serongT0 > batas) {
             _nav.navBerhenti("heading menyimpang di tengah ruas.");
+            Serial.print("  serong "); Serial.print(simpang, 1);
+            Serial.print(" der bertahan lebih dari "); Serial.print(batas);
+            Serial.println(" ms.");
             gagal("robot tidak lagi menghadap arah ruas -- jarak tempuh tidak bisa dipercaya.");
             return false;
         }

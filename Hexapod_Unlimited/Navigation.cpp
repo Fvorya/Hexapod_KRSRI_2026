@@ -104,6 +104,11 @@ int8_t Navigation::arahTerdekat(float yawDeg, float& selisihDeg) const {
     return terbaik;
 }
 
+float Navigation::simpangArah(uint8_t arah) const {
+    if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return NAN;
+    return wrap180(_headArah[arah] - _imu.yawDeg());
+}
+
 bool Navigation::diArah(uint8_t arah) const {
     if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return false;
     return fabsf(wrap180(_headArah[arah] - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
