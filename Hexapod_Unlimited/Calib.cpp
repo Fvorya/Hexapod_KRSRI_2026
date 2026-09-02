@@ -83,11 +83,24 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     // 19 cm memberi 50 + 190 - 160 = 80 mm celah. Batas atas dinaikkan ke 45 cm
     // supaya lorong lebar juga terlayani.
     //
+    // 19 -> 17 SESUDAH LEBAR ARENA SUNGGUHAN DIUKUR: 45 cm, bukan 60 cm yang
+    // dipakai sim semula. Di lorong selebar itu KEDUA sisi mengikat sekaligus,
+    // jadi yang dicari bukan "sejauh mungkin dari dinding yang diikuti" tapi
+    // setpoint yang celah TERSEMPITNYA paling besar. Sapuan sim_dinding pada
+    // 45 cm, dengan wall.min ikut bergeser:
+    //
+    //     setpoint 15 -> tersempit 3,7 cm
+    //     setpoint 17 -> tersempit 5,2 cm   <- optimum
+    //     setpoint 19 -> tersempit -0,4 cm  (kaki menyentuh dinding SEBERANG)
+    //
+    // Pada 17 kedua pasangan gain memberi hasil yang praktis sama (5,21 vs
+    // 5,26), jadi wall.kp/wall.kd tidak perlu ikut diubah.
+    //
     // CARA MENYETEL YANG PALING TEPAT (tidak perlu menebak x_sensor):
     // berdirikan robot di samping dinding, atur dengan tangan sampai celah
     // ujung kaki tengah ke dinding sesuai selera (mis. 8 cm), lalu baca 'L'.
     // Angka sensor samping SAAT ITU adalah wall.setpoint yang benar.
-    { "wall.setpoint",     19.0f,    5.0f,   45.0f, P_LANGSUNG },
+    { "wall.setpoint",     17.0f,    5.0f,   45.0f, P_LANGSUNG },
     // AMBANG "TERLALU DEKAT". Di bawah ini kendali PD dilewati dan robot
     // memutar menjauh dengan kekuatan tetap. Perlu karena PD proporsional
     // dengan wall.kp 0,008 memang SENGAJA lembut supaya tidak menjenuh saat
@@ -95,7 +108,17 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     // cuma 0,08 dari 1,00. Satu gain tidak bisa memenuhi kedua kebutuhan itu,
     // jadi respons dekat dipisahkan jadi aturannya sendiri.
     // 15 cm = kaki masih 4 cm dari dinding saat penjaga ini mulai bekerja.
-    { "wall.min",          15.0f,    4.0f,   35.0f, P_LANGSUNG },
+    //
+    // 15 -> 13, MENGIKUTI setpoint. Selisih 4 cm terhadap setpoint itulah yang
+    // penting, bukan angka mutlaknya: kalau setpoint turun sementara wall.min
+    // tetap, robot duduk tepat di tepi pita "terlalu dekat" dan didorong
+    // menjauhi dinding yang diikuti terus-menerus -- yang di arena terlihat
+    // sebagai robot yang malah merapat ke dinding SEBERANG.
+    //
+    // 13 sudah dekat lantainya. Kaki menyentuh dinding saat sensor membaca
+    // 160 - 50 = 110 mm, jadi di 13 tersisa 2 cm peringatan. JANGAN turunkan
+    // di bawah 12: di situ pita dekat tidak sempat bekerja sebelum kaki kena.
+    { "wall.min",          13.0f,    4.0f,   35.0f, P_LANGSUNG },
     { "head.utara",         0.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
     { "head.timur",        90.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
     { "head.selatan",     180.0f,    0.0f,  360.0f, P_BELUM_DIPAKAI },
