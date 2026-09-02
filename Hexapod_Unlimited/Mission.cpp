@@ -454,6 +454,14 @@ void Mission::update() {
         // tan 14 der), badan -20 mm menurunkan titik berat DAN melipat kaki
         // sehingga sisa jangkauan ke bawah bertambah di bibir turunan.
         _robot.profileCrouch();
+
+        // Di turunan berkas sensor depan menembak lantai, bukan halangan --
+        // tanpa ini navigasi melambat lalu berbelok menjauhi dinding yang
+        // diikuti, persis di bibir turunan. Ruas ini dibatasi odometri, jadi
+        // ada yang menghentikannya selain sensor depan. navBerhenti() di ujung
+        // ruas memulihkannya sendiri.
+        _nav.abaikanDepan(true);
+
         _ruasAwal = _robot.jarakCm();
         _serongT0 = 0;
         masuk(MISI_TURUN);

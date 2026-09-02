@@ -433,6 +433,17 @@ static void handleCmd(char* s) {
             break;
         }
 
+        case 'i':   // i = keadaan, i1 = abaikan sensor depan, i0 = pakai lagi
+            if      (s[1] == '1') nav.abaikanDepan(true);
+            else if (s[1] == '0') nav.abaikanDepan(false);
+            else {
+                Serial.print("Sensor depan: ");
+                Serial.println(nav.depanDiabaikan() ? "DIABAIKAN (buta ke depan)"
+                                                    : "dipakai");
+                Serial.println("  i1 = abaikan (hanya untuk turunan), i0 = pakai lagi.");
+            }
+            break;
+
         case 'v':   // status navigasi + jarak sekitar
             nav.navStatus();
             break;
@@ -832,6 +843,7 @@ static void handleCmd(char* s) {
             Serial.println("  F      : Jalan mengikuti dinding KANAN");
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
             Serial.println("  v      : Status navigasi + jarak sekitar");
+            Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
             Serial.println("  T[0-3] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
             Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit");

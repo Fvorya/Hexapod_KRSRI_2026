@@ -58,6 +58,23 @@ public:
     bool  remJarakAda() const     { return _remJarakCm > 0.0f; }
     float remJarakSasaran() const { return _remJarakCm; }
 
+    // SENSOR DEPAN DIABAIKAN pada ruas ini.
+    //
+    // Di bidang miring TURUN berkas sensor depan menembak LANTAI, bukan
+    // halangan. Badan ikut miring, jadi berkasnya sejajar permukaan turunan
+    // dan berakhir di lantai datar di bawah: pada tinggi dudukan ~10 cm dan
+    // kemiringan 14 der, itu terbaca ~10/tan(14) = 40 cm, lalu MENGECIL
+    // sepanjang robot turun. Navigasi membacanya sebagai halangan yang
+    // mendekat: melambat di 50 cm, lalu berbelok di 20 cm.
+    //
+    // Saklar ini mematikan KETIGA aturan depan (mati / halangan / melambat)
+    // untuk satu ruas. Konsekuensinya nyata: robot berjalan buta ke depan,
+    // jadi ruasnya WAJIB dibatasi hal lain -- odometri misi, atau rem 'D'.
+    // navBerhenti() selalu mengembalikannya ke aman, sehingga tidak ada
+    // jalan untuk meninggalkannya menyala tanpa sengaja.
+    void abaikanDepan(bool ya);
+    bool depanDiabaikan() const { return _abaikanDepan; }
+
     // --- 1. Kompas Arena ---
     void kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
     void kompasSimpan();
@@ -137,7 +154,8 @@ private:
     int8_t   _arahKini = -1;    // indeks arah arena yang sedang dituju (0..3)
     uint32_t _tPivot   = 0;     // awal fase berjalan (belok arena / pivot / settle)
     uint32_t _diamSejak = 0;    // sejak kapan heading berada di dalam toleransi
-    float _remJarakCm = 0.0f;   // 0 = rem tidak terpasang
+    float _remJarakCm = 0.0f;
+    bool  _abaikanDepan = false;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }

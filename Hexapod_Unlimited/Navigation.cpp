@@ -384,7 +384,9 @@ void Navigation::navMulai(ModeNav m) {
     const bool    kiri     = (m == NAV_DINDING_KIRI || m == NAV_ARENA_KIRI);
     const uint8_t idSisiCk = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
 
-    if (_lidar.getDistance(LIDAR_FRONT) == LIDAR_MATI) {
+    // Saat sensor depan sengaja diabaikan, keadaannya tidak lagi menentukan:
+    // aturan yang akan memakainya sudah dimatikan semua.
+    if (!_abaikanDepan && _lidar.getDistance(LIDAR_FRONT) == LIDAR_MATI) {
         Serial.print("Gagal: sensor DEPAN (channel "); Serial.print(LIDAR_FRONT);
         Serial.println(") tidak merespons -- jangan pernah berjalan buta ke depan.");
         Serial.println("       Ketik 'I' untuk init ulang, lalu 'l' untuk memastikan.");
@@ -450,7 +452,24 @@ void Navigation::navMulai(ModeNav m) {
 // Satu-satunya jalan berhenti untuk SEMUA mode, pivot termasuk. Karena 's',
 // 'x', Enter dan 'w' di .ino sudah memanggil ini, pivot otomatis ikut bisa
 // dibatalkan tanpa kode khusus.
+void Navigation::abaikanDepan(bool ya) {
+    if (_abaikanDepan == ya) return;
+    _abaikanDepan = ya;
+    if (ya) {
+        Serial.println("Sensor DEPAN DIABAIKAN -- robot berjalan buta ke depan.");
+        Serial.println("  Hanya untuk bidang miring, tempat berkasnya menembak lantai.");
+        Serial.println("  Batasi ruasnya dengan odometri ('D<cm>') atau misi. Berhenti apa pun memulihkannya.");
+    } else {
+        Serial.println("Sensor DEPAN dipakai lagi.");
+    }
+}
+
 void Navigation::navBerhenti(const char* alasan) {
+    // DI ATAS jalan keluar NAV_DIAM: berhenti apa pun -- 's', 'x', Enter, rem
+    // jarak, misi gagal -- harus mengembalikan sensor depan, termasuk saat
+    // navigasi memang sudah diam.
+    abaikanDepan(false);
+
     // Sudah diam -> tidak ada yang perlu dihentikan. Dulu baris ini hanya
     // menyaring pemanggilan tanpa alasan, sehingga tiap 's'/'x'/Enter mencetak
     // "Navigasi BERHENTI: ..." walau tak ada navigasi yang berjalan. Pemanggil
@@ -561,6 +580,10 @@ void Navigation::navUpdate() {
 
     int depan   = _lidar.getDistance(LIDAR_FRONT);
     int samping = _lidar.getDistance(idSamping);
+
+    // Satu tempat, bukan tiga: dipaksa "jauh" sebelum aturan mana pun
+    // membacanya, sehingga mati/halangan/melambat semuanya ikut mati.
+    if (_abaikanDepan) depan = LIDAR_JAUH;
 
     // 1) Sensor depan putus -> jangan pernah berjalan buta ke depan.
     if (depan == LIDAR_MATI) { navBerhenti("sensor DEPAN tidak merespons."); return; }
@@ -755,6 +778,7 @@ void Navigation::navStatus() {
     Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
     Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
     if (_pitaDekat) Serial.println("  !! TERLALU DEKAT -- sedang memutar menjauhi dinding");
+    if (_abaikanDepan) Serial.println("  !! SENSOR DEPAN DIABAIKAN -- berjalan buta ke depan ('i0' memulihkan)");
     Serial.print("  berhenti di : "); Serial.print(FRONT_STOP_CM);    Serial.println(" cm");
     Serial.print("  perintah    : maju "); Serial.print(_majuKini, 2);
     Serial.print("  putar ");              Serial.println(_turnKini, 2);
