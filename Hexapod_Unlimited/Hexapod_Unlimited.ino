@@ -378,7 +378,7 @@ static void handleCmd(char* s) {
                 }
                 default:
                     Serial.println("m=status  m1=mulai  m0=batal  m2=korban  m3=bukan");
-                    Serial.println("m8<cm>=jarak tempuh ke korban 1   m9<cm>=ambang depan");
+                    Serial.println("m8<cm>=jarak korban 1 (sensor BELAKANG)   m9<cm>=ambang depan");
             }
             break;
         }
@@ -869,7 +869,8 @@ static void handleCmd(char* s) {
             Serial.println("  m1     : MULAI misi -- menuju korban 1 (dinding kanan + kunci arena)");
             Serial.println("  m0     : Batalkan misi");
             Serial.println("  m2/m3  : Saat berhenti -> 'm2' benar korban, 'm3' bukan (jalan lagi)");
-            Serial.println("  m8<cm> : Jarak TEMPUH dari garis start ke korban 1 (misal m8 40)");
+            Serial.println("  m8<cm> : Jarak garis start -> korban 1, diukur sensor BELAKANG");
+            Serial.println("           (misal m8 40). Misi TIDAK memakai odometri 'D'.");
             Serial.println("  m9<cm> : Setel ambang jarak korban (RAM saja, misal m9 28)");
             Serial.println("KESELAMATAN & DIAGNOSTIK:");
             Serial.println("  x      : LEMAS -- PWM mati, servo bebas");

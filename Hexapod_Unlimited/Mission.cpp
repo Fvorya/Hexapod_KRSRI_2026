@@ -44,10 +44,14 @@ static const uint8_t MISI_ARAH_AWAL = 0;
 // K-1 ada di sisi BARAT lintasan, jadi badan diputar seperempat menghadapnya.
 static const uint8_t MISI_ARAH_KORBAN1 = 3;   // 3 = BARAT
 
-// JARAK TEMPUH dari garis start sampai robot berada di samping korban 1.
-// Bukan bacaan sensor: titik nolnya (_blkAwal) dicatat sendiri oleh 'm1'
-// sesudah pivot ke UTARA, jadi angka yang diketik operator adalah angka yang
-// benar-benar bisa diukur dengan meteran di arena.
+// JARAK dari garis start sampai robot berada di samping korban 1, diukur
+// SENSOR BELAKANG (ch2) -- bukan odometri gait. Misi tidak pernah menyentuh
+// Hexapod::jarakCm() maupun rem jarak 'D'.
+//
+// Disebut "jarak" dan bukan "bacaan sensor" karena titik nolnya (_blkAwal)
+// dicatat sendiri oleh 'm1' sesudah pivot ke UTARA, lalu dikurangkan. Jadi
+// angka yang diketik operator adalah angka yang bisa diukur meteran di arena,
+// sementara yang dibandingkan di dalam kode tetap dua bacaan ch2.
 //
 // K-1 duduk di ceruk DI SAMPING lintasan, jadi sensor depan tidak akan pernah
 // melihatnya: kalau hanya mengandalkan ambang depan, robot melewati K-1 begitu
@@ -429,8 +433,10 @@ void Mission::setAmbangBlk(float cm) {
     const float hi = (float)LIDAR_MAX_CM - 15.0f;
     float v = clampf(cm, lo, hi);
 
-    Serial.print("jarak tempuh korban 1: "); Serial.print(_ambangBlk, 1);
+    Serial.print("jarak korban 1: "); Serial.print(_ambangBlk, 1);
     Serial.print(" -> "); Serial.print(v, 1); Serial.println(" cm dari garis start");
+    Serial.println("  DIUKUR SENSOR BELAKANG (ch2), bukan odometri gait.");
+    Serial.println("  = bacaan ch2 sekarang dikurangi bacaan ch2 di garis start.");
     if (fabsf(v - cm) > 1e-3f) {
         Serial.print("  (diminta "); Serial.print(cm, 1);
         Serial.print(", DI-CLAMP ke rentang sah "); Serial.print(lo, 1);
@@ -481,9 +487,10 @@ void Mission::status() {
     Serial.print("  ambang depan: "); Serial.print(_ambang, 1);
     Serial.print(" cm  (navigasi berbelok sendiri di "); Serial.print(FRONT_STOP_CM);
     Serial.println(" cm)");
-    Serial.print("  tempuh korban: "); Serial.print(_ambangBlk, 1);
-    Serial.print(" cm dari garis start -- ");
+    Serial.print("  jarak korban: "); Serial.print(_ambangBlk, 1);
+    Serial.print(" cm dari garis start, diukur SENSOR BELAKANG -- ");
     Serial.println(_blkSiap ? "pemicu aktif" : "SUDAH terlewati");
+    Serial.println("                 (odometri gait 'D' TIDAK dipakai misi)");
     Serial.print("  titik nol   : ");
     if (_blkAwal < 0.0f) Serial.println("belum dicatat (dicatat 'm1' sesudah pivot ke UTARA)");
     else { Serial.print(_blkAwal, 1); Serial.print(" cm -> berhenti di bacaan ");
