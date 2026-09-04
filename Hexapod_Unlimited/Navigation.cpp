@@ -629,8 +629,8 @@ void Navigation::setKemudiMode(uint8_t m) {
         Serial.println("  Sudut belum dikalibrasi? Beri 'Y0' saat robot sejajar lorong dulu.");
         Serial.println("  Bila sudutnya tidak tersedia, otomatis jatuh kembali ke selisih waktu.");
     }
-    Serial.println("  Hanya pita normal yang ditukar; pita 'terlalu dekat' sama untuk semuanya.");
-    Serial.println("  RAM saja -- 'W' tidak menyimpannya, reset kembali ke N0.");
+    Serial.println("  AKTIF sekarang. Hanya pita normal yang ditukar; pita 'terlalu dekat' sama untuk semuanya.");
+    Serial.println("  Mode ini hidup di RAM: reset Teensy mengembalikannya ke N0, dan 'W' tidak menyimpannya.");
     // Riwayat turunan milik pita PD; mulai bersih supaya hukum yang baru tidak
     // mewarisi turunan yang dihitung saat hukum lain sedang berjalan.
     _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
