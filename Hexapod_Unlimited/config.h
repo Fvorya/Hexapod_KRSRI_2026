@@ -120,12 +120,19 @@ const float ARM_ORIGINS[2][3] = {
 
 #define LIDAR_BUDGET_US  20000   // anggaran waktu per pengukuran (us)
 #define LIDAR_PERIOD_MS  25      // jeda antar pengukuran (ms), >= anggaran waktu
-// BATAS ATAS -- hasil uji fisik, bukan angka dari lembar data. Di robot ini
-// bacaan masih akurat sampai ~70 cm; di atas itu sensornya tidak melaporkan
-// angka besar, melainkan JATUH KE HANTU 5 cm (lihat LIDAR_MIN_CM di bawah).
-// Dulu 120 -- terlalu optimis, dan tak pernah menolong karena mekanisme
-// gagalnya memang bukan "angka membesar".
-#define LIDAR_MAX_CM      70     // di atas ini dianggap "jauh", bukan rusak
+// BATAS ATAS. Sempat 70 cm: hasil uji fisik saat bacaan di luar itu tidak
+// melaporkan angka besar melainkan JATUH KE HANTU 5 cm. Sesudah
+// LIDAR_ROI_SEMPIT dinyalakan, hantu itu hilang ('j5 10' -> 100% signal fail),
+// jadi mekanisme gagal yang membuat 70 masuk akal sudah tidak berlaku.
+//
+// 130 cm = batas mode SHORT menurut lembar data VL53L1X. Menaikkannya sampai
+// batas mode berarti dinding sejauh 1 meter terbaca sebagai ANGKA, bukan
+// sebagai "jauh" -- di mode arena itu bedanya antara mengemudi menuju dinding
+// yang terlihat dan menyalakan perintah cari karena dinding dianggap hilang.
+//
+// Kalau naik ke Medium/Long, angka ini ikut naik (Medium ~290, Long ~360) DAN
+// LIDAR_BUDGET_US harus >= 33000 -- static_assert di LidarArray.cpp menjaganya.
+#define LIDAR_MAX_CM     130     // di atas ini dianggap "jauh", bukan rusak
 
 // BATAS BAWAH PER ARAH -- bacaan di bawah ini MUSTAHIL berasal dari benda
 // sungguhan, karena kaki robot sudah menabraknya lebih dulu:
@@ -142,6 +149,15 @@ const float ARM_ORIGINS[2][3] = {
 //
 // Diambil sedikit di bawah angka geometri di atas supaya benda nyata yang
 // benar-benar mepet tetap terbaca. Urutan indeks = channel mux.
+//
+// SEMPAT DITURUNKAN KE 2 cm SEMUANYA, lalu dikembalikan: sim_depan langsung
+// merah. Dengan ambang 2, hantu 5 cm di sensor depan dibaca sebagai halangan
+// sungguhan, mode arena berbelok menghindari lorong yang kosong, dan maju
+// jatuh ke 0 -- persis gejala yang dulu membuat 'm1' berputar di tempat.
+//
+// Menurunkannya juga tidak menambah kemampuan ukur apa pun: kaki sudah
+// menabrak benda sebelum sensor bisa membacanya sedekat itu, jadi bacaan di
+// bawah angka geometri di atas TIDAK MUNGKIN berasal dari benda nyata.
 const uint8_t LIDAR_MIN_CM[6] = {
     10,  // ch0 kiri depan   (samping)
     10,  // ch1 kiri belakang(samping)
@@ -150,6 +166,28 @@ const uint8_t LIDAR_MIN_CM[6] = {
     10,  // ch4 kanan depan  (samping)
      7   // ch5 depan
 };
+
+// JARAK BACAAN SAAT KAKI SAMPING MENYENTUH DINDING. Bukan penyaring sensor --
+// ini geometri badan: ujung kaki tengah 160 mm - dudukan sensor 50 mm = 110 mm.
+//
+// Dipakai pita "terlalu dekat" di Navigation sebagai ujung rampnya: dorongan
+// menjauh separuh di wall.min, PENUH di sini. Dulu ia meminjam
+// LIDAR_MIN_CM[samping], yang kebetulan bernilai mirip -- dua makna menumpang
+// pada satu angka. Dipisah supaya menyetel penyaring sensor tidak diam-diam
+// menggeser titik dorongan penuh.
+#define WALL_KAKI_CM     11.0f
+
+// Berapa lama robot boleh BERTURUT-TURUT berada di pita "terlalu dekat"
+// sebelum navigasi menyerah. Pita itu dirancang sebagai keadaan SEMENTARA:
+// dorongan menjauh mengeluarkan robot darinya dalam hitungan detik. Bertahan
+// belasan detik berarti dorongannya tidak pernah menang -- sensor macet di
+// bacaan pendek, atau badan benar-benar tersangkut.
+//
+// Lubang yang ditutupnya nyata dan tidak bergantung pada LIDAR_MIN_CM: hantu
+// yang macet SEDIKIT DI ATAS ambang itu -- misal 11 cm di sensor samping --
+// bukan "dinding hilang", jadi NAV_CARI_BATAS_MS tidak pernah menyala, dan
+// robot berjalan terus sambil memutar menjauhi dinding yang tidak ada.
+#define NAV_DEKAT_BATAS_MS 10000
 
 // Sempat ditambal ke 11 cm saat trial, lalu DICABUT kembali ke angka
 // geometrinya. Riwayatnya layak diingat karena diagnosisnya yang berguna,

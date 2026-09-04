@@ -210,6 +210,7 @@ private:
     bool  _abaikanDepan = false;
     bool  _wallSamar = false;
     bool  _wallSudut = false;
+    uint32_t _dekatSejak = 0;   // millis() saat pita "terlalu dekat" mulai
     float _biasKiri = 0.0f, _biasKanan = 0.0f;   // cm, RAM saja   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 

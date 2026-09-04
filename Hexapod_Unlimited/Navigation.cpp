@@ -441,6 +441,7 @@ void Navigation::navMulai(ModeNav m) {
     _mode = m;
     _fase = FASE_JALAN;
     _errAda = false; _errPrev = 0.0f; _errTurunan = 0.0f; _errStempel = 0;
+    _dekatSejak = 0;
     _pitaDekat = false;
     _tBelok = 0; _tCari = 0; _tPivot = 0; _diamSejak = 0;
 
@@ -475,10 +476,12 @@ static void samarPartisi3(float x, float c1, float c2, float c3, float mu[3]) {
 // Pusat himpunan. err dalam cm, turunan dalam cm/detik.
 // Pusat sengaja LEBAR. Di luar pusat terjauh keluaran samar MENDATAR, dan
 // mendatar berarti kehilangan redaman justru saat simpangan paling besar --
-// percobaan dengan pusat +-6 cm / +-4 cm/det menghasilkan ayunan yang
-// memantul antara kedua dinding lorong 45 cm.
+// dua percobaan -- pusat +-6 cm / +-4 cm/det, lalu +-12 cm / +-10 cm/det --
+// sama-sama menghasilkan ayunan yang memantul antara kedua dinding lorong
+// 45 cm. Nilai singleton di luar +-0,50 memang melebihi NAV_WALL_TURN_MAX;
+// PD pun begitu, dan clamp di hilir yang mengurusnya.
 static const float SAMAR_E_C[3]  = { -12.0f, 0.0f, +12.0f };   // cm
-static const float SAMAR_DE_C[3] = { -10.0f, 0.0f, +10.0f };   // cm/detik
+static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
 
 // Keluaran tiap aturan (singleton Sugeno orde-0), dalam KERANGKA DINDING yang
 // sama dengan kurung PD: + = kemudikan MENDEKAT dinding, - = MENJAUH.
@@ -492,11 +495,11 @@ static const float SAMAR_DE_C[3] = { -10.0f, 0.0f, +10.0f };   // cm/detik
 //
 // DUA sudut yang berbeda adalah isi gagasannya:
 //
-//   (DEKAT, MENJAUH)  PD +0,204 -> samar +0,102  (separuh)
-//   (JAUH,  MENDEKAT) PD -0,204 -> samar -0,102
+//   (DEKAT, MENJAUH)  PD +0,504 -> samar +0,252  (separuh)
+//   (JAUH,  MENDEKAT) PD -0,504 -> samar -0,252
 //
 // Di kedua sudut itu robot sudah bergerak KE ARAH yang benar, dan suku D
-// milik PD justru melawannya: kd 0,030 x 10 cm/det = 0,30, cukup besar untuk
+// milik PD justru melawannya: kd 0,030 x 20 cm/det = 0,60, cukup besar untuk
 // mengalahkan suku P dan mengemudikan robot kembali ke sisi yang salah.
 // Tabel aturan bisa mengatakan "mendekat ke setpoint dari sisi yang benar itu
 // bukan masalah" -- kalimat yang canggung ditulis sebagai satu rumus linear.
@@ -508,9 +511,9 @@ static const float SAMAR_DE_C[3] = { -10.0f, 0.0f, +10.0f };   // cm/detik
 //
 //                    turunan:  MENDEKAT   TETAP   MENJAUH
 static const float SAMAR_Z[3][3] = {
-    /* err DEKAT (terlalu rapat) */ { -0.396f, -0.096f, +0.102f },
-    /* err PAS                   */ { -0.300f,  0.000f, +0.300f },
-    /* err JAUH  (terlalu lebar) */ { -0.102f, +0.096f, +0.396f },
+    /* err DEKAT (terlalu rapat) */ { -0.696f, -0.096f, +0.252f },
+    /* err PAS                   */ { -0.600f,  0.000f, +0.600f },
+    /* err JAUH  (terlalu lebar) */ { -0.252f, +0.096f, +0.696f },
 };
 
 // t-norm PERKALIAN, bukan minimum. Dengan dua partisi yang masing-masing
@@ -860,11 +863,25 @@ void Navigation::navUpdate() {
             // kalau wall.min disetel, jadi tidak ada angka ketiga yang bisa
             // lupa ikut diubah. Hasilnya tetap dibatasi NAV_WALL_TURN_MAX --
             // ini koreksi lateral, bukan izin untuk berputar di tempat.
-            float lebar = WALL_MIN_CM - (float)LIDAR_MIN_CM[idSamping];
+            float lebar = WALL_MIN_CM - WALL_KAKI_CM;
             if (lebar < 1.0f) lebar = 1.0f;         // jaga-jaga bila disetel rapat
             float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
             turn = -sisi * NAV_WALL_TURN_MAX * (0.5f + 0.5f * dalam);
             _pitaDekat = true;
+
+            // Pita ini SEMENTARA menurut rancangannya. Kalau robot tidak juga
+            // keluar, dorongannya tidak pernah menang -- sensor macet di
+            // bacaan pendek, atau badan tersangkut. Berjalan terus sambil
+            // memutar menjauh dari dinding yang tidak ada bukan jalan keluar.
+            if (_dekatSejak == 0) _dekatSejak = now;
+            else if (now - _dekatSejak > NAV_DEKAT_BATAS_MS) {
+                Serial.print("  sensor "); Serial.print(LidarArray::nama(idSamping));
+                Serial.print(" bertahan di "); Serial.print(jarak, 1);
+                Serial.print(" cm selama "); Serial.print(now - _dekatSejak);
+                Serial.println(" ms.");
+                navBerhenti("terlalu dekat ke dinding dan tidak bisa menjauh.");
+                return;
+            }
             // Melambat supaya kemudi sempat bekerja sebelum kaki sampai ke
             // dinding. Tanpa ini robot menyeret kakinya sambil mengoreksi.
             maju *= (1.0f - 0.5f * dalam);
@@ -872,6 +889,7 @@ void Navigation::navUpdate() {
             // melonjak dari lompatan error antar-pita.
             _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
         } else {
+            _dekatSejak = 0;
             float err = jarak - WALL_SETPOINT_CM;   // + = terlalu jauh
 
             if (!_errAda) {
