@@ -433,6 +433,11 @@ static void handleCmd(char* s) {
             break;
         }
 
+        case 'Y':   // Y = sudut dinding kedua sisi, Y0 = catat bias (robot sejajar)
+            if (s[1] == '0') nav.kalibrasiSudut();
+            else             nav.sudutTabel();
+            break;
+
         case 'N':   // N = keadaan, N1 = kemudi samar (fuzzy), N0 = kembali PD
             if      (s[1] == '1') nav.setKemudiSamar(true);
             else if (s[1] == '0') nav.setKemudiSamar(false);
@@ -855,6 +860,8 @@ static void handleCmd(char* s) {
             Serial.println("  v      : Status navigasi + jarak sekitar");
             Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
             Serial.println("  N1/N0  : Kemudi dinding SAMAR (fuzzy) / PD -- boleh ditukar saat jalan");
+            Serial.println("  Y      : Sudut badan terhadap dinding, dari SEPASANG sensor tiap sisi");
+            Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
             Serial.println("  T[0-3] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
             Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit");

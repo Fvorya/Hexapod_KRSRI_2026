@@ -228,6 +228,17 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // keempatnya menghadap ke SAMPING -- salah baca yang sudah terjadi berkali-kali.
 //   _D = duduk di paruh depan badan, _B = duduk di paruh belakang.
 #define LIDAR_FRONT      5   // satu-satunya yang menghadap DEPAN
+// JARAK MEMBUJUR antara dudukan sensor DEPAN dan BELAKANG di sisi yang sama,
+// diukur mistar dari tengah lensa ke tengah lensa. Ini yang mengubah selisih
+// dua bacaan jadi SUDUT: sudut = atan((d_belakang - d_depan) / jarak ini.
+//
+// Ia juga yang menentukan resolusinya. Dengan bacaan halus ~0,2 cm, dasar
+// 11 cm memberi atan(0,2/11) = 1,0 der per langkah. Di bawah ~8 cm sudutnya
+// tenggelam di derau sensor dan hasilnya tidak berguna.
+//
+// Ukuran mekanis, per-robot. Ganti bila dudukan sensor dipindah.
+#define WALL_BASE_CM     11.0f
+
 #define LIDAR_KANAN_D    4   // menghadap kanan, dudukan depan
 #define LIDAR_KANAN_B    3   // menghadap kanan, dudukan belakang
 #define LIDAR_BACK       2   // satu-satunya yang menghadap BELAKANG

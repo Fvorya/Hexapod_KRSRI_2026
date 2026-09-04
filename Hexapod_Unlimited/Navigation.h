@@ -85,6 +85,23 @@ public:
     void setKemudiSamar(bool ya);
     bool kemudiSamar() const { return _wallSamar; }
 
+    // SUDUT BADAN TERHADAP DINDING, dari SEPASANG sensor di sisi yang sama.
+    //
+    //     sudut = atan2((d_belakang - d_depan) - bias, WALL_BASE_CM)
+    //
+    // + = hidung MENYERONG MENDEKAT dinding itu. Berbeda dari _errTurunan yang
+    // dipakai PD: yang ini seketika dari satu tarikan bacaan, bukan hasil
+    // menyelisihkan satu sensor terhadap waktu.
+    //
+    // NAN bila salah satu sensor tidak memberi jarak yang bisa dipakai, atau
+    // bila kedua sampelnya terlalu jauh berjarak waktu -- pada robot yang
+    // berjalan, dua bacaan dari saat yang berbeda bukan satu segitiga.
+    float sudutDinding(bool kiri);
+    float bedaSisi(bool kiri);        // (d_belakang - d_depan) mentah, cm
+    void  kalibrasiSudut();           // robot SEJAJAR lorong -> catat bias
+    float biasSisi(bool kiri) const { return kiri ? _biasKiri : _biasKanan; }
+    void  sudutTabel();               // cetak sudut & bias kedua sisi
+
     // --- 1. Kompas Arena ---
     void kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
     void kompasSimpan();
@@ -178,7 +195,8 @@ private:
     uint32_t _diamSejak = 0;    // sejak kapan heading berada di dalam toleransi
     float _remJarakCm = 0.0f;
     bool  _abaikanDepan = false;
-    bool  _wallSamar = false;   // 0 = rem tidak terpasang
+    bool  _wallSamar = false;
+    float _biasKiri = 0.0f, _biasKanan = 0.0f;   // cm, RAM saja   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }

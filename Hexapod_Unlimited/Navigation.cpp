@@ -532,6 +532,80 @@ static float samarKemudi(float err, float derr) {
     return keluar;
 }
 
+// ==== SUDUT DINDING DARI SEPASANG SENSOR =================================
+//
+// Selisih waktu sampel terbesar yang masih boleh. Kedua sensor diambil giliran
+// oleh round-robin yang sama, jadi bacaannya TIDAK serentak; pada robot yang
+// berjalan ~10 cm/detik, 100 ms berarti 1 cm perjalanan -- seukuran dengan
+// selisih yang sedang diukur. Di luar batas ini angkanya bukan segitiga,
+// melainkan dua keadaan yang berbeda dikurangkan.
+static const uint32_t SUDUT_SKEW_MAKS_MS = 100;
+
+float Navigation::bedaSisi(bool kiri) {
+    const uint8_t idD = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
+    const uint8_t idB = kiri ? LIDAR_KIRI_B : LIDAR_KANAN_B;
+    float dD = _lidar.jarakHalus(idD);
+    float dB = _lidar.jarakHalus(idB);
+    if (dD < 0.0f || dB < 0.0f) return NAN;    // salah satu MATI/JAUH/mustahil
+
+    uint32_t tD = _lidar.stempelSampel(idD);
+    uint32_t tB = _lidar.stempelSampel(idB);
+    uint32_t skew = (tD > tB) ? (tD - tB) : (tB - tD);
+    if (skew > SUDUT_SKEW_MAKS_MS) return NAN;
+
+    return dB - dD;
+}
+
+float Navigation::sudutDinding(bool kiri) {
+    float beda = bedaSisi(kiri);
+    if (isnan(beda)) return NAN;
+    beda -= (kiri ? _biasKiri : _biasKanan);
+    return atan2f(beda, WALL_BASE_CM) * 57.2957795f;
+}
+
+void Navigation::kalibrasiSudut() {
+    // Dipanggil saat robot SEJAJAR lorong. Apa pun selisih yang terbaca saat
+    // itu adalah simpangan pemasangan, bukan sudut badan -- dan simpangan itu
+    // harus dikurangkan, kalau tidak robot mengira dirinya menyerong saat lurus.
+    float bk = bedaSisi(true);
+    float bn = bedaSisi(false);
+    if (isnan(bk) && isnan(bn)) {
+        Serial.println("Kalibrasi sudut GAGAL: tidak ada sisi yang memberi sepasang bacaan.");
+        Serial.println("  Periksa 'l' -- keempat sensor samping harus memberi angka, bukan MATI/jauh.");
+        return;
+    }
+    Serial.println("\n--- KALIBRASI SUDUT DINDING ---");
+    Serial.println("  Robot HARUS sedang sejajar lorong saat perintah ini diberikan.");
+    if (!isnan(bk)) { _biasKiri  = bk; Serial.print("  bias KIRI  : "); Serial.print(bk, 2); Serial.println(" cm"); }
+    else              Serial.println("  bias KIRI  : dilewati (sepasang bacaan tidak lengkap)");
+    if (!isnan(bn)) { _biasKanan = bn; Serial.print("  bias KANAN : "); Serial.print(bn, 2); Serial.println(" cm"); }
+    else              Serial.println("  bias KANAN : dilewati (sepasang bacaan tidak lengkap)");
+    Serial.println("  RAM saja -- ulangi tiap robot menyala.");
+}
+
+void Navigation::sudutTabel() {
+    Serial.println("\n--- SUDUT BADAN TERHADAP DINDING ---");
+    Serial.print("  dasar membujur (WALL_BASE_CM) : "); Serial.print(WALL_BASE_CM, 1);
+    Serial.println(" cm");
+    for (uint8_t k = 0; k < 2; k++) {
+        bool kiri = (k == 0);
+        Serial.print(kiri ? "  KIRI  (ch" : "  KANAN (ch");
+        Serial.print(kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D); Serial.print(" depan, ch");
+        Serial.print(kiri ? LIDAR_KIRI_B : LIDAR_KANAN_B); Serial.print(" belakang) : ");
+        float beda = bedaSisi(kiri);
+        if (isnan(beda)) {
+            Serial.println("TIDAK BISA -- bacaan tidak lengkap atau sampelnya terlalu berjauhan waktu");
+        } else {
+            float sudut = sudutDinding(kiri);
+            Serial.print("beda "); Serial.print(beda, 2);
+            Serial.print(" - bias "); Serial.print(biasSisi(kiri), 2);
+            Serial.print(" -> "); Serial.print(sudut, 1); Serial.println(" der");
+        }
+    }
+    Serial.println("  + = hidung menyerong MENDEKAT dinding itu.");
+    Serial.println("  'Y0' saat robot sejajar lorong untuk mencatat biasnya.");
+}
+
 void Navigation::setKemudiSamar(bool ya) {
     if (_wallSamar == ya) return;
     _wallSamar = ya;
