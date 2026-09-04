@@ -471,6 +471,18 @@ void Mission::update() {
         // GAIT_PROFILE_TAU, jadi aman dipanggil sambil robot berjalan.
         _robot.profileStairs();
 
+        // MENENGAH, bukan ikut dinding kanan. Di lorong selebar 45 cm
+        // ikut-dinding membiarkan sisi seberang mengurus dirinya sendiri, dan
+        // di lantai pecah badan tersentak cukup besar untuk menggesek sisi itu.
+        _nav.setTengah(true);
+
+        // Sensor depan diabaikan di ruas ini juga. Sebabnya bukan lantai
+        // seperti di turunan, melainkan akibatnya: halangan depan membuat mode
+        // arena PINDAH MATA ANGIN, dan itu langsung menggagalkan ruas karena
+        // sisa jaraknya akan diukur ke arah yang salah. Ruas ini dibatasi
+        // odometri, jadi ada yang menghentikannya selain sensor depan.
+        _nav.abaikanDepan(true);
+
         if (!mulaiJalan()) {
             gagal("gagal memulai ikut dinding untuk ruas lantai pecah.");
             return;
@@ -494,6 +506,9 @@ void Mission::update() {
         // sehingga sisa jangkauan ke bawah bertambah di bibir turunan.
         _robot.profileCrouch();
 
+        // Turunan tetap MENENGAH: dinding lorong masih ada di kedua sisi.
+        _nav.setTengah(true);
+
         // Di turunan berkas sensor depan menembak lantai, bukan halangan --
         // tanpa ini navigasi melambat lalu berbelok menjauhi dinding yang
         // diikuti, persis di bibir turunan. Ruas ini dibatasi odometri, jadi
@@ -514,6 +529,7 @@ void Mission::update() {
         if (ruasTempuh() < _turunCm) return;
 
         _nav.navBerhenti("ujung turunan tercapai.");
+        _nav.setTengah(false);
         _robot.profileFlat();
         masuk(MISI_SELESAI);
         Serial.println("\n=== SELESAI: DI BAWAH TURUNAN ===");

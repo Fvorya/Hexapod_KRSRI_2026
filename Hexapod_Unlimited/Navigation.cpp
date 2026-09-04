@@ -496,7 +496,16 @@ static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
 // DUA sudut yang berbeda adalah isi gagasannya:
 //
 //   (DEKAT, MENJAUH)  PD +0,504 -> samar +0,252  (separuh)
-//   (JAUH,  MENDEKAT) PD -0,504 -> samar -0,252
+//
+// Sudut (JAUH, MENDEKAT) SEMPAT dilunakkan dengan cara yang sama, lalu
+// DIKEMBALIKAN ke nilai PD sesudah trial: robot terlihat "menggok ke kanan"
+// saat ikut dinding kanan. Sebabnya persis pelunakan itu -- saat robot masih
+// terlalu jauh dan sedang mendekat, rem yang dikurangi membuatnya melewati
+// setpoint dan merapat ke dinding yang diikuti.
+//
+// Pelajarannya bukan "asimetri itu buruk", melainkan arahnya penting:
+// melonggarkan pemulihan MENJAUHI dinding aman, melonggarkan pendekatan KE
+// dinding tidak.
 //
 // Di kedua sudut itu robot sudah bergerak KE ARAH yang benar, dan suku D
 // milik PD justru melawannya: kd 0,030 x 20 cm/det = 0,60, cukup besar untuk
@@ -513,7 +522,7 @@ static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
 static const float SAMAR_Z[3][3] = {
     /* err DEKAT (terlalu rapat) */ { -0.696f, -0.096f, +0.252f },
     /* err PAS                   */ { -0.600f,  0.000f, +0.600f },
-    /* err JAUH  (terlalu lebar) */ { -0.252f, +0.096f, +0.696f },
+    /* err JAUH  (terlalu lebar) */ { -0.600f, +0.096f, +0.696f },
 };
 
 // t-norm PERKALIAN, bukan minimum. Dengan dua partisi yang masing-masing
@@ -616,6 +625,19 @@ float Navigation::turunanDariSudut(bool kiri) {
     // sudah terwujud, karena GAIT_SLEW_RATE meramp perubahannya.
     float v = _robot.lajuCms();
     return -v * sinf(phi * 0.0174532925f);
+}
+
+void Navigation::setTengah(bool ya) {
+    if (_tengah == ya) return;
+    _tengah = ya;
+    Serial.print("Kemudi lateral: ");
+    Serial.println(ya ? "MENENGAH (selisih kiri-kanan)" : "IKUT DINDING (satu sisi)");
+    if (ya) {
+        Serial.println("  AKTIF sekarang. wall.setpoint tidak dipakai -- sasarannya garis tengah lorong.");
+        Serial.println("  Salah satu sisi hilang -> otomatis kembali ikut dinding untuk sementara.");
+    }
+    Serial.println("  Mode ini hidup di RAM: reset Teensy mengembalikannya ke ikut dinding.");
+    _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
 }
 
 void Navigation::setKemudiMode(uint8_t m) {
@@ -855,6 +877,26 @@ void Navigation::navUpdate() {
         if (jarak < 0.0f) jarak = (float)samping;      // jaga-jaga, tak boleh terjadi
         uint32_t stempel = _lidar.stempelSampel(idSamping);
 
+        // MENENGAH. Dua tanda yang berbeda, dan menyamakannya keliru:
+        //   sisiPD   selalu -1, karena err = (kanan - kiri)/2 sudah membawa
+        //            arahnya sendiri -- kanan lebih jauh berarti geser kanan.
+        //   sisiDekat menunjuk dinding mana yang TERLALU DEKAT, dan itu bisa
+        //            sisi mana pun tanpa bergantung pada tanda err.
+        int8_t sisiPD = sisi, sisiDekat = sisi;
+        float errTengah = 0.0f;
+        bool  adaTengah = false;
+        if (_tengah) {
+            float dk = _lidar.jarakHalus(LIDAR_KIRI_D);
+            float dn = _lidar.jarakHalus(LIDAR_KANAN_D);
+            if (dk >= 0.0f && dn >= 0.0f) {
+                adaTengah = true;
+                jarak      = fminf(dk, dn);          // pita dekat memakai yang terdekat
+                sisiDekat  = (dk < dn) ? +1 : -1;
+                sisiPD     = -1;
+                errTengah  = (dn - dk) * 0.5f;
+            }
+        }
+
         if (jarak < WALL_MIN_CM) {
             // TERLALU DEKAT. Kekuatan menjauh naik dari separuh di ambang
             // wall.min sampai PENUH tepat di LIDAR_MIN_CM sensor itu -- yaitu
@@ -866,7 +908,7 @@ void Navigation::navUpdate() {
             float lebar = WALL_MIN_CM - WALL_KAKI_CM;
             if (lebar < 1.0f) lebar = 1.0f;         // jaga-jaga bila disetel rapat
             float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
-            turn = -sisi * NAV_WALL_TURN_MAX * (0.5f + 0.5f * dalam);
+            turn = -sisiDekat * NAV_WALL_TURN_MAX * (0.5f + 0.5f * dalam);
             _pitaDekat = true;
 
             // Pita ini SEMENTARA menurut rancangannya. Kalau robot tidak juga
@@ -890,7 +932,8 @@ void Navigation::navUpdate() {
             _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
         } else {
             _dekatSejak = 0;
-            float err = jarak - WALL_SETPOINT_CM;   // + = terlalu jauh
+            // Menengah: sasarannya garis tengah, bukan wall.setpoint.
+            float err = adaTengah ? errTengah : (jarak - WALL_SETPOINT_CM);
 
             if (!_errAda) {
                 _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
@@ -912,8 +955,8 @@ void Navigation::navUpdate() {
                 float ds = turunanDariSudut(ikutKiri);
                 if (!isnan(ds)) derr = ds;
             }
-            turn = sisi * (_wallSamar ? samarKemudi(err, derr)
-                                      : (WALL_KP * err + WALL_KD * derr));
+            turn = sisiPD * (_wallSamar ? samarKemudi(err, derr)
+                                        : (WALL_KP * err + WALL_KD * derr));
         }
     }
 
@@ -986,6 +1029,8 @@ void Navigation::navStatus() {
     Serial.print("  batas mustahil: samping <"); Serial.print(LIDAR_MIN_CM[LIDAR_KANAN_D]);
     Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
     Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
+    Serial.print("  lateral     : ");
+    Serial.println(_tengah ? "MENENGAH (selisih kiri-kanan)" : "IKUT DINDING (satu sisi)");
     Serial.print("  kemudi      : ");
     Serial.print(_wallSamar ? "SAMAR (fuzzy)" : "PD");
     Serial.print(", turunan dari ");

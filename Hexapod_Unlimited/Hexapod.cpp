@@ -204,10 +204,23 @@ void Hexapod::profileFlat() {
 }
 
 void Hexapod::profileStairs() {
-    // 1 TANGGA: { 75, 70, 1800, 110, 70 }
-    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+900), Tinggi Badan(+10)
+    // 1 TANGGA: { 75, 70, 1300, 125, 70 }
+    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+400), Tinggi Badan(+25)
+    //
+    // Badan +10 -> +25 sesudah trial di lantai pecah: sasis mengandas.
+    // 125 mm masih jauh di dalam jangkauan IK -- femur 80 + tibia 90 = 170 mm
+    // dari pangkal femur, dengan jangkauan mendatar 70 - 20 = 50 mm, batas
+    // tegaknya sqrt(170^2 - 50^2) = 162 mm. Perintah 'b<mm>' pun membolehkan
+    // sampai 160.
+    //
+    // Siklus +900 -> +400 sesudah trial: 1800 ms berarti badan maju 140 mm
+    // per 1,8 detik = 7,8 cm/detik, hampir separuh laju profil DATAR, dan itu
+    // terasa sangat lambat di arena. 1300 ms memberi 10,8 cm/detik.
+    //
+    // Kalau ternyata terlalu cepat sehingga kaki menyangkut bibir ubin,
+    // setel dasarnya: 'Qgait.cycle_time 1100' lalu 'T1' -> 1500 ms.
     _gait.setProfile({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 10.0f,
-                       GAIT_CYCLE_TIME + 900.0f, STAND_HEIGHT + 10.0f, STAND_RADIUS });
+                       GAIT_CYCLE_TIME + 400.0f, STAND_HEIGHT + 25.0f, STAND_RADIUS });
 }
 
 void Hexapod::profileCrouch() {

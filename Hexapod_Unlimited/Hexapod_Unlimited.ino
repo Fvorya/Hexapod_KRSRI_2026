@@ -433,6 +433,17 @@ static void handleCmd(char* s) {
             break;
         }
 
+        case 'Z':   // Z = keadaan, Z1 = menengah lorong, Z0 = ikut dinding
+            if      (s[1] == '1') nav.setTengah(true);
+            else if (s[1] == '0') nav.setTengah(false);
+            else {
+                Serial.print("Kemudi lateral: ");
+                Serial.println(nav.tengah() ? "MENENGAH (selisih kiri-kanan)"
+                                            : "IKUT DINDING (satu sisi)");
+                Serial.println("  Z1 = menengah, Z0 = ikut dinding. Boleh ditukar SAMBIL BERJALAN.");
+            }
+            break;
+
         case 'Y':   // Y = sudut dinding kedua sisi, Y0 = catat bias (robot sejajar)
             if (s[1] == '0') nav.kalibrasiSudut();
             else             nav.sudutTabel();
@@ -864,6 +875,7 @@ static void handleCmd(char* s) {
             Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
             Serial.println("  N0..N3 : Kemudi dinding. bit0 = SAMAR(fuzzy), bit1 = turunan dari SUDUT");
             Serial.println("           N0=PD/waktu  N1=SAMAR/waktu  N2=PD/SUDUT  N3=SAMAR/SUDUT");
+            Serial.println("  Z1/Z0  : Menengah lorong (kiri-kanan) / ikut satu dinding");
             Serial.println("  Y      : Sudut badan terhadap dinding, dari SEPASANG sensor tiap sisi");
             Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");

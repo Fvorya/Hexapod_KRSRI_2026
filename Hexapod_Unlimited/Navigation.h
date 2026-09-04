@@ -98,6 +98,20 @@ public:
     // tanpa menunggu dua sampel LiDAR berurutan.
     float turunanDariSudut(bool kiri);
 
+    // MENENGAH: kemudi dari SELISIH kedua sisi, bukan dari jarak ke satu
+    // dinding. err = (kanan - kiri)/2, jadi setpoint-nya adalah garis tengah
+    // lorong berapa pun lebarnya -- wall.setpoint tidak dipakai.
+    //
+    // Gunanya di lorong sempit: ikut-dinding memilih satu sisi dan membiarkan
+    // sisi lain mengurus dirinya sendiri, sehingga di lorong 45 cm robot bisa
+    // duduk benar terhadap dinding yang diikuti sambil menggesek dinding
+    // seberang. Menengah mengikat keduanya sekaligus.
+    //
+    // Jatuh kembali ke ikut-dinding biasa begitu salah satu sisi tidak memberi
+    // jarak -- di mulut simpangan itu justru yang benar.
+    void setTengah(bool ya);
+    bool tengah() const { return _tengah; }
+
     // SUDUT BADAN TERHADAP DINDING, dari SEPASANG sensor di sisi yang sama.
     //
     //     sudut = atan2((d_belakang - d_depan) - bias, WALL_BASE_CM)
@@ -211,6 +225,7 @@ private:
     bool  _wallSamar = false;
     bool  _wallSudut = false;
     uint32_t _dekatSejak = 0;   // millis() saat pita "terlalu dekat" mulai
+    bool  _tengah = false;
     float _biasKiri = 0.0f, _biasKanan = 0.0f;   // cm, RAM saja   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
