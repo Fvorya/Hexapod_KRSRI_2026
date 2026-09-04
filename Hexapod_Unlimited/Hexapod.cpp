@@ -204,10 +204,11 @@ void Hexapod::profileFlat() {
 }
 
 void Hexapod::profileStairs() {
-    // 1 TANGGA: { 75, 70, 1300, 125, 70 }
-    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+400), Tinggi Badan(+25)
+    // 1 TANGGA: { 75, 70, 1300, 115, 70 }
+    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+400), Tinggi Badan(+15)
     //
-    // Badan +10 -> +25 sesudah trial di lantai pecah: sasis mengandas.
+    // Badan +10 -> +25 sesudah trial di lantai pecah (sasis mengandas), lalu
+    // DITURUNKAN ke +15 di robot: 125 mm terlalu tinggi untuk dipakai.
     // 125 mm masih jauh di dalam jangkauan IK -- femur 80 + tibia 90 = 170 mm
     // dari pangkal femur, dengan jangkauan mendatar 70 - 20 = 50 mm, batas
     // tegaknya sqrt(170^2 - 50^2) = 162 mm. Perintah 'b<mm>' pun membolehkan
