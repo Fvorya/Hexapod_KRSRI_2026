@@ -35,6 +35,10 @@ public:
     // di-slew DAN dinormalisasi, jadi ia mengukur apa yang benar-benar
     // dilakukan kaki -- bukan apa yang diperintahkan.
     float jarakMm() const { return _jarakMm; }
+
+    // Laju maju sesaat, mm/detik, bertanda. Memakai skala slip yang sama
+    // dengan odometer, jadi ia ikut terkalibrasi oleh pengukuran meteran.
+    float lajuMmS() const { return _lajuMmS; }
     void  jarakNol()      { _jarakMm = 0.0f; }
 
     // Faktor slip. Dikalikan pada tiap PENAMBAHAN, bukan saat dibaca, supaya
@@ -54,6 +58,7 @@ private:
     bool _running;
     float _phase;
     float _jarakMm  = 0.0f;   // odometri, mm, bertanda
+    float _lajuMmS  = 0.0f;   // laju maju sesaat, mm/detik
     float _skalaOdo = ODO_SKALA_DEF;   // koreksi slip; diukur 1,0, ditimpa 'Ds'
     unsigned long _lastUpdate;
     void computeHome();

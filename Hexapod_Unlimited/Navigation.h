@@ -82,8 +82,21 @@ public:
     // Yang ditukar HANYA rumus di pita PD. Pita "terlalu dekat" tetap sama
     // untuk keduanya: ia penjaga geometri yang terikat LIDAR_MIN_CM, bukan
     // hukum kendali, dan membandingkan dua hal sekaligus tidak menjawab apa pun.
-    void setKemudiSamar(bool ya);
+    // MODE KEMUDI DINDING, dua saklar bebas dalam satu angka:
+    //   bit 0 = hukum kendali : 0 PD, 1 SAMAR (fuzzy)
+    //   bit 1 = sumber turunan: 0 selisih waktu, 1 SUDUT sepasang sensor
+    // Jadi N0..N3 adalah matriks 2x2 yang lengkap untuk membandingkan.
+    void setKemudiMode(uint8_t m);
+    uint8_t kemudiMode() const { return (uint8_t)((_wallSamar ? 1 : 0) | (_wallSudut ? 2 : 0)); }
     bool kemudiSamar() const { return _wallSamar; }
+    bool kemudiSudut() const { return _wallSudut; }
+
+    // Turunan error dinding yang DIHITUNG DARI SUDUT, cm/detik. NAN bila
+    // sudutnya tidak tersedia. Robot yang maju v dengan hidung menyerong phi
+    // mendekat dinding menutup jaraknya sebesar v*sin(phi) -- jadi turunan
+    // yang selama ini diselisihkan terhadap waktu bisa dibaca langsung,
+    // tanpa menunggu dua sampel LiDAR berurutan.
+    float turunanDariSudut(bool kiri);
 
     // SUDUT BADAN TERHADAP DINDING, dari SEPASANG sensor di sisi yang sama.
     //
@@ -196,6 +209,7 @@ private:
     float _remJarakCm = 0.0f;
     bool  _abaikanDepan = false;
     bool  _wallSamar = false;
+    bool  _wallSudut = false;
     float _biasKiri = 0.0f, _biasKanan = 0.0f;   // cm, RAM saja   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 

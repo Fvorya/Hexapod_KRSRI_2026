@@ -135,7 +135,12 @@ void HexaGait::update() {
     // SATU siklus (bukan 2 x duty x T), dan badan sungguh maju sejauh
     // sy / duty per siklus, bukan 2*sy. fminf(2.0, 1/duty) mengoreksi ini;
     // pada duty <= 0.5 hasilnya tetap 2.0 seperti semula.
-    _jarakMm += _skalaOdo * fminf(2.0f, 1.0f / GAIT_DUTY) * _curY * _prof.stepLength * f * dPhase;
+    float majuMm = _skalaOdo * fminf(2.0f, 1.0f / GAIT_DUTY) * _curY * _prof.stepLength * f * dPhase;
+    _jarakMm += majuMm;
+    // Laju sesaat dari PERTAMBAHAN yang sama, bukan dari menyelisihkan
+    // _jarakMm belakangan: rumusnya sudah memuat ramp _curY, penormalan
+    // langkah f, dan skala slip -- tiga hal yang mustahil ditebak dari luar.
+    if (dt > 1e-5f) _lajuMmS = majuMm / dt;
 
     // 5. Eksekusi Gerakan
     for (int leg = 0; leg < 6; leg++) {

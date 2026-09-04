@@ -606,13 +606,28 @@ void Navigation::sudutTabel() {
     Serial.println("  'Y0' saat robot sejajar lorong untuk mencatat biasnya.");
 }
 
-void Navigation::setKemudiSamar(bool ya) {
-    if (_wallSamar == ya) return;
-    _wallSamar = ya;
+float Navigation::turunanDariSudut(bool kiri) {
+    float phi = sudutDinding(kiri);
+    if (isnan(phi)) return NAN;
+    // Laju maju dari gait, bukan dari perintah: perintah 0,8 belum tentu
+    // sudah terwujud, karena GAIT_SLEW_RATE meramp perubahannya.
+    float v = _robot.lajuCms();
+    return -v * sinf(phi * 0.0174532925f);
+}
+
+void Navigation::setKemudiMode(uint8_t m) {
+    _wallSamar = (m & 1u) != 0;
+    _wallSudut = (m & 2u) != 0;
     Serial.print("Kemudi dinding: ");
-    Serial.println(ya ? "SAMAR (fuzzy, 9 aturan)" : "PD (wall.kp / wall.kd)");
-    Serial.println("  Hanya pita normal yang ditukar; pita 'terlalu dekat' sama untuk keduanya.");
-    Serial.println("  RAM saja -- 'W' tidak menyimpannya, reset kembali ke PD.");
+    Serial.print(_wallSamar ? "SAMAR (fuzzy, 9 aturan)" : "PD (wall.kp / wall.kd)");
+    Serial.print(", turunan dari ");
+    Serial.println(_wallSudut ? "SUDUT sepasang sensor" : "selisih waktu");
+    if (_wallSudut) {
+        Serial.println("  Sudut belum dikalibrasi? Beri 'Y0' saat robot sejajar lorong dulu.");
+        Serial.println("  Bila sudutnya tidak tersedia, otomatis jatuh kembali ke selisih waktu.");
+    }
+    Serial.println("  Hanya pita normal yang ditukar; pita 'terlalu dekat' sama untuk semuanya.");
+    Serial.println("  RAM saja -- 'W' tidak menyimpannya, reset kembali ke N0.");
     // Riwayat turunan milik pita PD; mulai bersih supaya hukum yang baru tidak
     // mewarisi turunan yang dihitung saat hukum lain sedang berjalan.
     _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
@@ -870,8 +885,17 @@ void Navigation::navUpdate() {
                 _errPrev = err; _errStempel = stempel;
             }
             // di antara sampel: _errTurunan ditahan, bukan dinolkan
-            turn = sisi * (_wallSamar ? samarKemudi(err, _errTurunan)
-                                      : (WALL_KP * err + WALL_KD * _errTurunan));
+            // Sumber turunan. Yang dari sudut seketika; yang dari waktu baru
+            // berarti sesudah dua sampel LiDAR berurutan. Kalau sudutnya tidak
+            // tersedia -- sensor pasangannya diam, atau kedua sampelnya terlalu
+            // berjauhan waktu -- jatuh kembali ke selisih waktu, tidak berhenti.
+            float derr = _errTurunan;
+            if (_wallSudut) {
+                float ds = turunanDariSudut(ikutKiri);
+                if (!isnan(ds)) derr = ds;
+            }
+            turn = sisi * (_wallSamar ? samarKemudi(err, derr)
+                                      : (WALL_KP * err + WALL_KD * derr));
         }
     }
 
@@ -945,7 +969,9 @@ void Navigation::navStatus() {
     Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
     Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
     Serial.print("  kemudi      : ");
-    Serial.println(_wallSamar ? "SAMAR (fuzzy)" : "PD");
+    Serial.print(_wallSamar ? "SAMAR (fuzzy)" : "PD");
+    Serial.print(", turunan dari ");
+    Serial.println(_wallSudut ? "SUDUT" : "waktu");
     if (_pitaDekat) Serial.println("  !! TERLALU DEKAT -- sedang memutar menjauhi dinding");
     if (_abaikanDepan) Serial.println("  !! SENSOR DEPAN DIABAIKAN -- berjalan buta ke depan ('i0' memulihkan)");
     Serial.print("  berhenti di : "); Serial.print(FRONT_STOP_CM);    Serial.println(" cm");

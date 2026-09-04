@@ -72,6 +72,7 @@ public:
     GaitProfile gaitProfile() const { return _gait.profile(); }
 
     // Odometri gait. Lihat HexaGait untuk arti dan batasnya.
+    float lajuCms() const { return _gait.lajuMmS() * 0.1f; }
     float jarakCm() const      { return _gait.jarakMm() * 0.1f; }
     void  jarakNol()           { _gait.jarakNol(); }
     void  setSkalaOdo(float s) { _gait.setSkalaOdo(s); }

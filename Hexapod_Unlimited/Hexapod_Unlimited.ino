@@ -438,13 +438,16 @@ static void handleCmd(char* s) {
             else             nav.sudutTabel();
             break;
 
-        case 'N':   // N = keadaan, N1 = kemudi samar (fuzzy), N0 = kembali PD
-            if      (s[1] == '1') nav.setKemudiSamar(true);
-            else if (s[1] == '0') nav.setKemudiSamar(false);
+        case 'N':   // N = keadaan, N0..N3 = matriks hukum x sumber turunan
+            if (s[1] >= '0' && s[1] <= '3') nav.setKemudiMode((uint8_t)(s[1] - '0'));
             else {
                 Serial.print("Kemudi dinding: ");
-                Serial.println(nav.kemudiSamar() ? "SAMAR (fuzzy)" : "PD");
-                Serial.println("  N1 = samar, N0 = PD. Boleh ditukar SAMBIL BERJALAN.");
+                Serial.print(nav.kemudiSamar() ? "SAMAR (fuzzy)" : "PD");
+                Serial.print(", turunan dari ");
+                Serial.println(nav.kemudiSudut() ? "SUDUT sepasang sensor" : "selisih waktu");
+                Serial.println("  N0 = PD/waktu    N1 = SAMAR/waktu");
+                Serial.println("  N2 = PD/SUDUT    N3 = SAMAR/SUDUT");
+                Serial.println("  Boleh ditukar SAMBIL BERJALAN.");
             }
             break;
 
@@ -859,7 +862,8 @@ static void handleCmd(char* s) {
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
             Serial.println("  v      : Status navigasi + jarak sekitar");
             Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
-            Serial.println("  N1/N0  : Kemudi dinding SAMAR (fuzzy) / PD -- boleh ditukar saat jalan");
+            Serial.println("  N0..N3 : Kemudi dinding. bit0 = SAMAR(fuzzy), bit1 = turunan dari SUDUT");
+            Serial.println("           N0=PD/waktu  N1=SAMAR/waktu  N2=PD/SUDUT  N3=SAMAR/SUDUT");
             Serial.println("  Y      : Sudut badan terhadap dinding, dari SEPASANG sensor tiap sisi");
             Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
