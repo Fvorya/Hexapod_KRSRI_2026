@@ -75,6 +75,16 @@ public:
     void abaikanDepan(bool ya);
     bool depanDiabaikan() const { return _abaikanDepan; }
 
+    // KEMUDI DINDING: PD atau SAMAR (fuzzy). Alat banding, bukan setelan --
+    // karena itu RAM saja, tidak masuk blob Calib. Menambah parameter ke sana
+    // mengubah ukuran blob, dan blob lama jadi tidak valid.
+    //
+    // Yang ditukar HANYA rumus di pita PD. Pita "terlalu dekat" tetap sama
+    // untuk keduanya: ia penjaga geometri yang terikat LIDAR_MIN_CM, bukan
+    // hukum kendali, dan membandingkan dua hal sekaligus tidak menjawab apa pun.
+    void setKemudiSamar(bool ya);
+    bool kemudiSamar() const { return _wallSamar; }
+
     // --- 1. Kompas Arena ---
     void kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
     void kompasSimpan();
@@ -167,7 +177,8 @@ private:
     uint32_t _tPivot   = 0;     // awal fase berjalan (belok arena / pivot / settle)
     uint32_t _diamSejak = 0;    // sejak kapan heading berada di dalam toleransi
     float _remJarakCm = 0.0f;
-    bool  _abaikanDepan = false;   // 0 = rem tidak terpasang
+    bool  _abaikanDepan = false;
+    bool  _wallSamar = false;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }

@@ -457,6 +457,93 @@ void Navigation::navMulai(ModeNav m) {
 // Satu-satunya jalan berhenti untuk SEMUA mode, pivot termasuk. Karena 's',
 // 'x', Enter dan 'w' di .ino sudah memanggil ini, pivot otomatis ikut bisa
 // dibatalkan tanpa kode khusus.
+// ==== KENDALI SAMAR (fuzzy) UNTUK KEMUDI DINDING =========================
+//
+// Menggantikan SATU baris: rumus PD di pita normal. Masukannya PERSIS sama --
+// err dan _errTurunan yang sudah dihitung untuk PD -- supaya yang dibandingkan
+// benar-benar hukum kendalinya, bukan jumlah sensor yang dipakai.
+//
+// Partisi segitiga: tiga himpunan yang pusatnya berjarak sama, sehingga jumlah
+// derajat keanggotaan SELALU 1,0 di seluruh rentang.
+static void samarPartisi3(float x, float c1, float c2, float c3, float mu[3]) {
+    if (x <= c1) { mu[0] = 1.0f; mu[1] = 0.0f; mu[2] = 0.0f; return; }
+    if (x >= c3) { mu[0] = 0.0f; mu[1] = 0.0f; mu[2] = 1.0f; return; }
+    if (x < c2) { float t = (x - c1) / (c2 - c1); mu[0] = 1.0f - t; mu[1] = t;        mu[2] = 0.0f; }
+    else        { float t = (x - c2) / (c3 - c2); mu[0] = 0.0f;     mu[1] = 1.0f - t; mu[2] = t;    }
+}
+
+// Pusat himpunan. err dalam cm, turunan dalam cm/detik.
+// Pusat sengaja LEBAR. Di luar pusat terjauh keluaran samar MENDATAR, dan
+// mendatar berarti kehilangan redaman justru saat simpangan paling besar --
+// percobaan dengan pusat +-6 cm / +-4 cm/det menghasilkan ayunan yang
+// memantul antara kedua dinding lorong 45 cm.
+static const float SAMAR_E_C[3]  = { -12.0f, 0.0f, +12.0f };   // cm
+static const float SAMAR_DE_C[3] = { -10.0f, 0.0f, +10.0f };   // cm/detik
+
+// Keluaran tiap aturan (singleton Sugeno orde-0), dalam KERANGKA DINDING yang
+// sama dengan kurung PD: + = kemudikan MENDEKAT dinding, - = MENJAUH.
+//
+// TUJUH dari sembilan nilai SENGAJA disamakan dengan PD di titik pusatnya,
+// yaitu 0,008*err + 0,030*turunan. Itu bukan malas: kalau skalanya berbeda,
+// yang terbandingkan cuma "mana yang gainnya lebih besar", bukan bentuk
+// hukumnya. Percobaan pertama memakai angka yang lebih kecil dan hasilnya
+// robot menyeberang menabrak dinding lawan -- redamannya tiga kali lebih
+// lemah dari PD, jadi yang teruji hanyalah kendali yang salah setel.
+//
+// DUA sudut yang berbeda adalah isi gagasannya:
+//
+//   (DEKAT, MENJAUH)  PD +0,204 -> samar +0,102  (separuh)
+//   (JAUH,  MENDEKAT) PD -0,204 -> samar -0,102
+//
+// Di kedua sudut itu robot sudah bergerak KE ARAH yang benar, dan suku D
+// milik PD justru melawannya: kd 0,030 x 10 cm/det = 0,30, cukup besar untuk
+// mengalahkan suku P dan mengemudikan robot kembali ke sisi yang salah.
+// Tabel aturan bisa mengatakan "mendekat ke setpoint dari sisi yang benar itu
+// bukan masalah" -- kalimat yang canggung ditulis sebagai satu rumus linear.
+//
+// SEPARUH, bukan nol. Menghapus rem itu sama sekali membuat robot menyeberang
+// lorong 45 cm dan menyentuh dinding lawan: di lorong sesempit ini, mendekat
+// ke setpoint terlalu cepat TETAP masalah. Angka separuh adalah kompromi yang
+// terukur, bukan tebakan -- lihat bagian 5 sim_dinding.
+//
+//                    turunan:  MENDEKAT   TETAP   MENJAUH
+static const float SAMAR_Z[3][3] = {
+    /* err DEKAT (terlalu rapat) */ { -0.396f, -0.096f, +0.102f },
+    /* err PAS                   */ { -0.300f,  0.000f, +0.300f },
+    /* err JAUH  (terlalu lebar) */ { -0.102f, +0.096f, +0.396f },
+};
+
+// t-norm PERKALIAN, bukan minimum. Dengan dua partisi yang masing-masing
+// berjumlah 1, jumlah kesembilan bobot = 1 x 1 = 1 SECARA PASTI. Jadi tidak
+// ada pembagian sama sekali di defuzzifikasi -- dan tanpa pembagian, tidak ada
+// pembagi yang bisa menormalkan keluaran kecil jadi keluaran penuh. Itulah
+// kesalahan yang membuat kendali samar warisan berperilaku bang-bang.
+//
+// Hasilnya otomatis terkurung antara nilai singleton terkecil dan terbesar,
+// jadi tidak perlu clamp sendiri; clamp NAV_WALL_TURN_MAX di hilir tetap ada.
+static float samarKemudi(float err, float derr) {
+    float me[3], mde[3];
+    samarPartisi3(err,  SAMAR_E_C[0],  SAMAR_E_C[1],  SAMAR_E_C[2],  me);
+    samarPartisi3(derr, SAMAR_DE_C[0], SAMAR_DE_C[1], SAMAR_DE_C[2], mde);
+    float keluar = 0.0f;
+    for (uint8_t i = 0; i < 3; i++)
+        for (uint8_t j = 0; j < 3; j++)
+            keluar += me[i] * mde[j] * SAMAR_Z[i][j];
+    return keluar;
+}
+
+void Navigation::setKemudiSamar(bool ya) {
+    if (_wallSamar == ya) return;
+    _wallSamar = ya;
+    Serial.print("Kemudi dinding: ");
+    Serial.println(ya ? "SAMAR (fuzzy, 9 aturan)" : "PD (wall.kp / wall.kd)");
+    Serial.println("  Hanya pita normal yang ditukar; pita 'terlalu dekat' sama untuk keduanya.");
+    Serial.println("  RAM saja -- 'W' tidak menyimpannya, reset kembali ke PD.");
+    // Riwayat turunan milik pita PD; mulai bersih supaya hukum yang baru tidak
+    // mewarisi turunan yang dihitung saat hukum lain sedang berjalan.
+    _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+}
+
 void Navigation::abaikanDepan(bool ya) {
     if (_abaikanDepan == ya) return;
     _abaikanDepan = ya;
@@ -709,7 +796,8 @@ void Navigation::navUpdate() {
                 _errPrev = err; _errStempel = stempel;
             }
             // di antara sampel: _errTurunan ditahan, bukan dinolkan
-            turn = sisi * (WALL_KP * err + WALL_KD * _errTurunan);
+            turn = sisi * (_wallSamar ? samarKemudi(err, _errTurunan)
+                                      : (WALL_KP * err + WALL_KD * _errTurunan));
         }
     }
 
@@ -782,6 +870,8 @@ void Navigation::navStatus() {
     Serial.print("  batas mustahil: samping <"); Serial.print(LIDAR_MIN_CM[LIDAR_KANAN_D]);
     Serial.print(" | depan <");                  Serial.print(LIDAR_MIN_CM[LIDAR_FRONT]);
     Serial.println(" cm -> dilaporkan 'jauh', bukan halangan");
+    Serial.print("  kemudi      : ");
+    Serial.println(_wallSamar ? "SAMAR (fuzzy)" : "PD");
     if (_pitaDekat) Serial.println("  !! TERLALU DEKAT -- sedang memutar menjauhi dinding");
     if (_abaikanDepan) Serial.println("  !! SENSOR DEPAN DIABAIKAN -- berjalan buta ke depan ('i0' memulihkan)");
     Serial.print("  berhenti di : "); Serial.print(FRONT_STOP_CM);    Serial.println(" cm");

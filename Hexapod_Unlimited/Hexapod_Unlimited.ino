@@ -433,6 +433,16 @@ static void handleCmd(char* s) {
             break;
         }
 
+        case 'N':   // N = keadaan, N1 = kemudi samar (fuzzy), N0 = kembali PD
+            if      (s[1] == '1') nav.setKemudiSamar(true);
+            else if (s[1] == '0') nav.setKemudiSamar(false);
+            else {
+                Serial.print("Kemudi dinding: ");
+                Serial.println(nav.kemudiSamar() ? "SAMAR (fuzzy)" : "PD");
+                Serial.println("  N1 = samar, N0 = PD. Boleh ditukar SAMBIL BERJALAN.");
+            }
+            break;
+
         case 'i':   // i = keadaan, i1 = abaikan sensor depan, i0 = pakai lagi
             if      (s[1] == '1') nav.abaikanDepan(true);
             else if (s[1] == '0') nav.abaikanDepan(false);
@@ -844,6 +854,7 @@ static void handleCmd(char* s) {
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
             Serial.println("  v      : Status navigasi + jarak sekitar");
             Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
+            Serial.println("  N1/N0  : Kemudi dinding SAMAR (fuzzy) / PD -- boleh ditukar saat jalan");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
             Serial.println("  T[0-3] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
             Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit");
