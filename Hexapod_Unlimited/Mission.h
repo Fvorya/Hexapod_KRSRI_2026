@@ -49,6 +49,7 @@ enum StatMisi : uint8_t {
     MISI_LANTAI_PECAH,   // menyeberangi lantai pecah dengan profil TANGGA
     MISI_TURUN,          // menuruni bidang miring dengan profil MERUNDUK
     MISI_MAJU_AKHIR,     // di bawah turunan, maju sampai sensor DEPAN dekat
+    MISI_MUNDUR_AKHIR,   // terlanjur lewat, mundur sampai kembali ke ambang
     MISI_PIVOT_AKHIR,    // memutar ke 45 der dari SELATAN menuju BARAT
     MISI_SELESAI,        // irisan ini habis (langkah ambil korban belum ada)
     MISI_GAGAL           // berhenti karena sebab yang dicetak & disimpan
@@ -125,6 +126,7 @@ private:
 
     void     masuk(StatMisi s);
     bool     mulaiJalan();        // navMulai + verifikasi ia BENAR-BENAR jalan
+    void     mulaiPivotAkhir();   // dipanggil dari ruas maju ATAU sesudah mundur
     void     mulaiSusurDinding(); // dipakai sesudah pivot awal selesai
     void     gagal(const char* sebab);
 

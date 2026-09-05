@@ -324,6 +324,13 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // di ruas turunan; sesudahnya baru dinyalakan dan diawasi.
 #define MISI_AKHIR_MIN_CM   30
 
+// Sejauh mana robot boleh MUNDUR untuk mengoreksi kelebihan di ruas terakhir.
+// Kelebihan yang wajar hanya beberapa cm -- tiga sampel penegasan ditambah
+// ramp GAIT_SLEW_RATE. Kalau sudah 30 cm belum juga cukup, yang salah bukan
+// posisinya melainkan bacaannya, dan mundur terus hanya menjauhkan robot dari
+// tempat yang benar.
+#define MISI_MUNDUR_MAKS_CM 30
+
 #define WALL_BIAS_KIRI_CM   2.0f
 #define WALL_BIAS_KANAN_CM  2.0f
 

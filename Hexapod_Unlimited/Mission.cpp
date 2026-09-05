@@ -213,6 +213,23 @@ void Mission::gagal(const char* sebab) {
     Serial.println("   'm' untuk status, 'm1' untuk mengulang, 'x' untuk melemaskan.");
 }
 
+void Mission::mulaiPivotAkhir() {
+    _headAkhir = _nav.headingAntara(MISI_AKHIR_A, MISI_AKHIR_B, MISI_AKHIR_BAGIAN);
+    if (isnan(_headAkhir)) {
+        gagal("kompas arena tidak punya SELATAN atau BARAT -- catat dengan 'c2'/'c3'.");
+        return;
+    }
+    Serial.print("\n=== PIVOT AKHIR: 45 der dari "); Serial.print(_nav.namaArah(MISI_AKHIR_A));
+    Serial.print(" menuju "); Serial.print(_nav.namaArah(MISI_AKHIR_B));
+    Serial.print(" ("); Serial.print(_headAkhir, 1); Serial.println(" der) ===");
+    Serial.println("  Satu pivot langsung ke sana, bukan mampir dulu di SELATAN:");
+    Serial.println("  sasarannya heading yang sama dengan separuh putaran lebih sedikit.");
+
+    _nav.pivotKe(_headAkhir);
+    if (!_nav.pivotSedangJalan()) { gagal("pivot akhir tidak mau jalan."); return; }
+    masuk(MISI_PIVOT_AKHIR);
+}
+
 int8_t Mission::tungguPivot(uint8_t arah, const char* sebabGagal) {
     if (_nav.pivotSedangJalan()) return 0;
     if (!_nav.diArah(arah)) { gagal(sebabGagal); return -1; }
@@ -597,23 +614,60 @@ void Mission::update() {
         _nav.navBerhenti("ambang depan ruas terakhir tercapai.");
         _nav.setTengah(false);
 
-        _headAkhir = _nav.headingAntara(MISI_AKHIR_A, MISI_AKHIR_B, MISI_AKHIR_BAGIAN);
-        if (isnan(_headAkhir)) {
-            gagal("kompas arena tidak punya SELATAN atau BARAT -- catat dengan 'c2'/'c3'.");
-            return;
+        // Terlanjur lewat? Mundur dulu. Kelebihannya wajar: tiga sampel
+        // penegasan ditambah ramp GAIT_SLEW_RATE membuat robot meluncur
+        // beberapa cm sesudah perintah berhenti.
+        if ((float)d < _depanCm - 1.0f) {
+            _ruasAwal = _robot.jarakCm();
+            masuk(MISI_MUNDUR_AKHIR);
+            Serial.print("\n=== MUNDUR: terlanjur "); Serial.print(_depanCm - (float)d, 1);
+            Serial.print(" cm lewat dari ambang "); Serial.print(_depanCm, 0);
+            Serial.println(" cm ===");
+            break;
         }
-        Serial.print("\n=== PIVOT AKHIR: 45 der dari "); Serial.print(_nav.namaArah(MISI_AKHIR_A));
-        Serial.print(" menuju "); Serial.print(_nav.namaArah(MISI_AKHIR_B));
-        Serial.print(" ("); Serial.print(_headAkhir, 1); Serial.println(" der) ===");
-        Serial.println("  Satu pivot langsung ke sana, bukan mampir dulu di SELATAN:");
-        Serial.println("  sasarannya heading yang sama dengan separuh putaran lebih sedikit.");
 
-        _nav.pivotKe(_headAkhir);
-        if (!_nav.pivotSedangJalan()) { gagal("pivot akhir tidak mau jalan."); return; }
-        masuk(MISI_PIVOT_AKHIR);
+        mulaiPivotAkhir();
         break;
     }
 
+    case MISI_MUNDUR_AKHIR: {
+        // Navigasi sudah DIAM, jadi misi yang menulis vektor gerak di sini --
+        // pola yang sama dengan perintah manual 'V'. Tidak ada kunci heading
+        // saat mundur; langkahnya sengaja pendek supaya simpangannya kecil.
+        if (!_robot.isArmed()) { gagal("servo dilemaskan saat mundur."); return; }
+
+        // Mundur itu BUTA ke belakang kalau sensor belakang tidak diperiksa.
+        // Ambangnya FRONT_STOP_CM: angka yang sama sudah dipakai untuk "jangan
+        // mendekat lebih dari ini" di arah depan, dan artinya sama di sini.
+        int blk = _lidar.getDistance(LIDAR_BACK);
+        if (blk != LIDAR_JAUH && blk != LIDAR_MATI && blk <= FRONT_STOP_CM) {
+            _robot.stop();
+            gagal("tidak ada ruang untuk mundur -- ada sesuatu di belakang.");
+            return;
+        }
+
+        // Odometer bertanda, jadi mundur membuatnya BERKURANG.
+        if (_ruasAwal - _robot.jarakCm() > (float)MISI_MUNDUR_MAKS_CM) {
+            _robot.stop();
+            gagal("mundur sudah melewati batas tanpa bacaan depan membaik.");
+            return;
+        }
+
+        int d2 = _lidar.getDistance(LIDAR_FRONT);
+        if (d2 != LIDAR_MATI && d2 != LIDAR_JAUH && (float)d2 < _depanCm) {
+            // Separuh laju maju: mundur tidak dipandu apa pun, jadi tidak ada
+            // gunanya cepat -- dan pelan memberi sensor belakang waktu bereaksi.
+            _robot.walk(-NAV_FWD_SPEED * 0.5f, 0.0f, 0.0f);
+            return;
+        }
+
+        _robot.stop();
+        Serial.print("  mundur selesai, depan "); Serial.print(d2);
+        Serial.print(" cm sesudah "); Serial.print(_ruasAwal - _robot.jarakCm(), 1);
+        Serial.println(" cm.");
+        mulaiPivotAkhir();
+        break;
+    }
     case MISI_PIVOT_AKHIR:
         if (_nav.pivotSedangJalan()) return;
         if (!_nav.diHeading(_headAkhir)) {
@@ -781,6 +835,7 @@ void Mission::status() {
                                Serial.print(_lantaiCm, 0); Serial.println(" cm"); break;
         case MISI_MAJU_AKHIR:  Serial.print("RUAS TERAKHIR -- maju sampai depan <= ");
                                Serial.print(_depanCm, 0); Serial.println(" cm"); break;
+        case MISI_MUNDUR_AKHIR: Serial.println("MUNDUR -- mengoreksi kelebihan ruas terakhir"); break;
         case MISI_PIVOT_AKHIR: Serial.println("PIVOT AKHIR -- memutar ke barat daya"); break;
         case MISI_TURUN:       Serial.print("TURUNAN -- profil MERUNDUK, tempuh ");
                                Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
