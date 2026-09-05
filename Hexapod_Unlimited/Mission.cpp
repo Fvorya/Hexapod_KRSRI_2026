@@ -547,12 +547,20 @@ void Mission::update() {
         // Sensor depan DIPAKAI LAGI di ruas ini -- navBerhenti() di atas sudah
         // memulihkannya, dan memang harus: ambang 40 cm itu justru bacaannya.
         if (!mulaiJalan()) { gagal("gagal memulai ruas terakhir di bawah turunan."); return; }
+
+        // Sensor depan MASIH diabaikan di awal ruas ini. Badan belum lepas
+        // dari bidang miring, jadi berkasnya masih menembak tanah -- dan
+        // bacaan tanah di bawah FRONT_STOP_CM membuat mode arena berbelok.
+        _nav.abaikanDepan(true);
+        _ruasAwal = _robot.jarakCm();
         _depanN = 0;
         _serongT0 = 0;
         masuk(MISI_MAJU_AKHIR);
         Serial.println("\n=== RUAS TERAKHIR: DI BAWAH TURUNAN ===");
         Serial.println("  Profil dikembalikan ke DATAR.");
-        Serial.print("  Maju sampai sensor DEPAN membaca "); Serial.print(_depanCm, 0);
+        Serial.print("  Sensor depan diabaikan dulu selama "); Serial.print(MISI_AKHIR_MIN_CM);
+        Serial.println(" cm DAN sampai bacaannya menunjukkan lorong terbuka.");
+        Serial.print("  Sesudah itu: maju sampai sensor DEPAN membaca "); Serial.print(_depanCm, 0);
         Serial.println(" cm atau kurang.");
         break;
 
@@ -562,8 +570,28 @@ void Mission::update() {
         // LIDAR_JAUH berarti lorong masih terbuka, BUKAN "sangat dekat". Dan
         // MISI_DEKAT_N sampel berturut-turut, supaya satu bacaan nyasar tidak
         // menghentikan ruas -- pola yang sama dengan pemicu korban 1.
-        int d = _lidar.getDistance(LIDAR_FRONT);
-        if (d == LIDAR_JAUH || d == LIDAR_MATI || (float)d > _depanCm) { _depanN = 0; return; }
+        // Belum cukup jauh dari bidang miring -> bacaan depan belum berarti.
+        if (ruasTempuh() < (float)MISI_AKHIR_MIN_CM) return;
+
+        int  d    = _lidar.getDistance(LIDAR_FRONT);
+        bool lega = (d == LIDAR_JAUH) || (d != LIDAR_MATI && (float)d > _depanCm);
+
+        if (_nav.depanDiabaikan()) {
+            // DUA syarat untuk mulai percaya, bukan satu. Jarak saja tidak
+            // cukup: EMA LidarArray masih menyimpan bacaan tanah beberapa
+            // sampel sesudah badan mendatar, dan menyalakan sensor tepat di
+            // situ membuat mode arena berbelok karena angka yang sudah basi.
+            // Jadi tunggu sampai bacaannya benar-benar menunjukkan lorong
+            // TERBUKA -- itu bukti berkasnya sudah lepas dari tanah.
+            if (!lega) { _depanN = 0; return; }
+            if (++_depanN < MISI_DEKAT_N) return;
+            _depanN = 0;
+            _nav.abaikanDepan(false);
+            Serial.println("  Sensor depan menunjukkan lorong terbuka -- mulai diawasi.");
+            return;
+        }
+
+        if (lega || d == LIDAR_MATI) { _depanN = 0; return; }
         if (++_depanN < MISI_DEKAT_N) return;
 
         _nav.navBerhenti("ambang depan ruas terakhir tercapai.");

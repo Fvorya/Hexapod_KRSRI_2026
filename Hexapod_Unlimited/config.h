@@ -313,6 +313,17 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // menimpanya saat jalan.
 #define MISI_DEPAN_CM_DEF   40
 
+// Jarak yang HARUS ditempuh dulu di ruas terakhir sebelum bacaan sensor depan
+// dipercaya. Di ujung turunan badan masih miring: kaki depan sudah di lantai
+// datar sementara kaki belakang masih di bidang miring, jadi berkas depan
+// masih menembak TANAH. Sim mengukurnya 15 cm -- di bawah FRONT_STOP_CM, jadi
+// mode arena langsung berbelok dan misi gagal sebelum ruas ini mulai.
+//
+// 30 cm kira-kira satu panjang badan: cukup untuk keenam kaki lepas dari
+// bidang miring. Selama jarak itu sensor depan tetap DIABAIKAN, persis seperti
+// di ruas turunan; sesudahnya baru dinyalakan dan diawasi.
+#define MISI_AKHIR_MIN_CM   30
+
 #define WALL_BIAS_KIRI_CM   2.0f
 #define WALL_BIAS_KANAN_CM  2.0f
 
