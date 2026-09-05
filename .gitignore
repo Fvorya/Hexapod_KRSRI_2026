@@ -12,3 +12,9 @@ legacy-2026/
 Thumbs.db
 desktop.ini
 *.swp
+
+# Bukan bagian firmware -- tetap ada di disk, tidak ikut ke GitHub.
+# Dihapus dari riwayat 5 September 2026 atas permintaan; cadangan penuh
+# ada di bundle git yang dibuat sebelum penulisan ulang.
+docs/
+test-pc/
