@@ -62,6 +62,16 @@ static const uint8_t MISI_AKHIR_A = 2;      // SELATAN
 static const uint8_t MISI_AKHIR_B = 3;      // BARAT
 static const float   MISI_AKHIR_BAGIAN = 0.5f;   // 45 der dari 90 der
 
+// Gerak serong terakhir: 45 der ke KANAN badan. Kedua komponen dibuat sama
+// besar dan diskalakan supaya BESAR resultannya tetap NAV_FWD_SPEED -- kalau
+// keduanya diberi NAV_FWD_SPEED penuh, resultannya akar-2 kali lebih cepat
+// dan normalisasi langkah di HexaGait yang memangkasnya diam-diam.
+static const float MISI_MIRING_KOMP = 0.70710678f;
+
+// Lintasan serong = komponen maju / cos(45 der) = komponen maju x akar 2.
+// Odometri gait hanya menghitung komponen maju, jadi konversinya di sini.
+static const float MISI_MIRING_SKALA = 1.41421356f;
+
 // SEBERAPA SERONG masih boleh, untuk ruas berjarak. SENGAJA jauh lebih longgar
 // dari HEADING_TOLERANCE_DEG (6 der): angka itu milik pemeriksaan "pivot sudah
 // sampai", tempat robot berdiri diam. Di sini robot BERJALAN di atas ubin
@@ -674,10 +684,93 @@ void Mission::update() {
             gagal("pivot akhir tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
             return;
         }
+        Serial.print("\n=== BALIK KE "); Serial.print(_nav.namaArah(MISI_AKHIR_A));
+        Serial.println(" ===");
+        _nav.pivotKompas(MISI_AKHIR_A);
+        if (!_nav.pivotSedangJalan()) { gagal("pivot balik ke SELATAN tidak mau jalan."); return; }
+        masuk(MISI_PIVOT_SELATAN);
+        break;
+
+    case MISI_PIVOT_SELATAN: {
+        int8_t pv = tungguPivot(MISI_AKHIR_A,
+                    "pivot balik ke SELATAN tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
+        if (pv <= 0) return;
+
+        // Ambangnya wall.min, bukan angka baru: itu memang definisi robot
+        // sendiri untuk "terlalu dekat ke dinding", dan sudah bisa disetel
+        // lewat 'Qwall.min'.
+        float kanan = _nav.jarakSisi(false);
+        Serial.print("  sensor kanan depan: ");
+        if (kanan < 0.0f) Serial.println("tidak memberi jarak");
+        else { Serial.print(kanan, 1); Serial.print(" cm (ambang "); Serial.print(WALL_MIN_CM, 1); Serial.println(")"); }
+
+        if (kanan < 0.0f || kanan >= WALL_MIN_CM) {
+            masuk(MISI_SELESAI);
+            Serial.println("\n=== SELESAI: MENGHADAP SELATAN, KANAN TIDAK MEPET ===");
+            Serial.println("  Gerak serong dilewati. 'm1' untuk mengulang dari awal.");
+            break;
+        }
+
+        _ruasAwal = _robot.jarakCm();
+        masuk(MISI_MUNDUR_KANAN);
+        Serial.println("\n=== MUNDUR: kanan mepet dinding ===");
+        Serial.print("  Mundur sampai kanan >= "); Serial.print(WALL_MIN_CM, 1);
+        Serial.print(" cm, paling jauh "); Serial.print(MISI_MUNDUR_MAKS_CM);
+        Serial.println(" cm.");
+        break;
+    }
+
+    case MISI_MUNDUR_KANAN: {
+        if (!_robot.isArmed()) { gagal("servo dilemaskan saat mundur."); return; }
+
+        int blk = _lidar.getDistance(LIDAR_BACK);
+        if (blk != LIDAR_JAUH && blk != LIDAR_MATI && blk <= FRONT_STOP_CM) {
+            _robot.stop();
+            gagal("tidak ada ruang untuk mundur -- ada sesuatu di belakang.");
+            return;
+        }
+
+        float mundur = _ruasAwal - _robot.jarakCm();   // odometer bertanda
+        float kanan  = _nav.jarakSisi(false);
+        bool  lega   = (kanan < 0.0f) || (kanan >= WALL_MIN_CM);
+
+        if (!lega && mundur <= (float)MISI_MUNDUR_MAKS_CM) {
+            _robot.walk(-NAV_FWD_SPEED * 0.5f, 0.0f, 0.0f);
+            return;
+        }
+        _robot.stop();
+        Serial.print("  mundur "); Serial.print(mundur, 1);
+        Serial.print(" cm, kanan sekarang "); Serial.print(kanan, 1); Serial.println(" cm.");
+
+        _ruasAwal = _robot.jarakCm();
+        masuk(MISI_MIRING_KANAN);
+        Serial.println("\n=== SERONG KE KANAN ===");
+        Serial.print("  45 der ke kanan badan, lintasan "); Serial.print(_miringCm, 0);
+        Serial.println(" cm menurut odometri.");
+        Serial.println("  TIDAK ada kunci heading selama serong -- badan bisa menyimpang sedikit.");
+        break;
+    }
+
+    case MISI_MIRING_KANAN: {
+        if (!_robot.isArmed()) { gagal("servo dilemaskan saat serong."); return; }
+        if (lewat() > MISI_RUAS_BATAS_MS) {
+            _robot.stop(); gagal("gerak serong tidak selesai dalam batas waktu."); return;
+        }
+
+        // Odometri hanya menghitung komponen MAJU; lintasannya akar-2 kali itu.
+        float lintasan = (_robot.jarakCm() - _ruasAwal) * MISI_MIRING_SKALA;
+        if (lintasan < _miringCm) {
+            _robot.walk(NAV_FWD_SPEED * MISI_MIRING_KOMP,
+                        NAV_FWD_SPEED * MISI_MIRING_KOMP, 0.0f);
+            return;
+        }
+        _robot.stop();
         masuk(MISI_SELESAI);
-        Serial.println("\n=== SELESAI: MENGHADAP BARAT DAYA ===");
+        Serial.print("\n=== SELESAI: SERONG "); Serial.print(lintasan, 1);
+        Serial.println(" cm SELESAI ===");
         Serial.println("  Irisan misi ini habis di sini. 'm1' untuk mengulang dari awal.");
         break;
+    }
 
     case MISI_KONFIRM1:
         // Navigasi memang sudah DIAM di sini (kita yang menghentikannya), jadi
@@ -764,6 +857,16 @@ static void setRuas(const char* nama, float& tujuan, float cm, const char* perin
 void Mission::setLantaiCm(float cm) { setRuas("lebar lantai pecah", _lantaiCm, cm, "m7 <cm>"); }
 void Mission::setTurunCm (float cm) { setRuas("panjang turunan",    _turunCm,  cm, "m6 <cm>"); }
 
+void Mission::setMiringCm(float cm) {
+    const float lo = 5.0f, hi = 200.0f;
+    float v = clampf(cm, lo, hi);
+    Serial.print("Lintasan serong terakhir: "); Serial.print(_miringCm, 1);
+    Serial.print(" -> "); Serial.print(v, 1); Serial.println(" cm");
+    Serial.println("  Diukur odometri gait lewat komponen majunya, lalu dikali akar 2.");
+    Serial.println("  Selip MELINTANG belum pernah diukur, jadi angkanya pendekatan.");
+    _miringCm = v;
+}
+
 void Mission::setDepanCm(float cm) {
     const float lo = (float)FRONT_STOP_CM + 1.0f, hi = 200.0f;
     float v = clampf(cm, lo, hi);
@@ -837,6 +940,12 @@ void Mission::status() {
                                Serial.print(_depanCm, 0); Serial.println(" cm"); break;
         case MISI_MUNDUR_AKHIR: Serial.println("MUNDUR -- mengoreksi kelebihan ruas terakhir"); break;
         case MISI_PIVOT_AKHIR: Serial.println("PIVOT AKHIR -- memutar ke barat daya"); break;
+        case MISI_PIVOT_SELATAN: Serial.println("PIVOT -- balik ke SELATAN"); break;
+        case MISI_MUNDUR_KANAN: Serial.println("MUNDUR -- kanan mepet dinding"); break;
+        case MISI_MIRING_KANAN: Serial.print("SERONG KANAN -- lintasan ");
+                               Serial.print((ruasTempuh()) * MISI_MIRING_SKALA, 1);
+                               Serial.print(" dari "); Serial.print(_miringCm, 0);
+                               Serial.println(" cm"); break;
         case MISI_TURUN:       Serial.print("TURUNAN -- profil MERUNDUK, tempuh ");
                                Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
                                Serial.print(_turunCm, 0); Serial.println(" cm"); break;

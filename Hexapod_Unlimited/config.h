@@ -331,6 +331,15 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // tempat yang benar.
 #define MISI_MUNDUR_MAKS_CM 30
 
+// Panjang LINTASAN gerak serong terakhir (bukan geser melintangnya), cm.
+// 'm4 <cm>' menimpanya.
+//
+// Diukur odometri gait, yang hanya menghitung komponen MAJU. Pada serong 45
+// der lintasannya = komponen maju x akar 2, dan itulah yang dipakai. Selip
+// melintang TIDAK terkalibrasi -- 'Ds' hanya pernah diukur untuk jalan lurus
+// -- jadi angka ini pendekatan, sesuai permintaan "sekitar".
+#define MISI_MIRING_CM_DEF  35
+
 #define WALL_BIAS_KIRI_CM   2.0f
 #define WALL_BIAS_KANAN_CM  2.0f
 
