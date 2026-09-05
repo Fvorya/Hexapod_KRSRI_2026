@@ -852,6 +852,35 @@ static void handleCmd(char* s) {
             Serial.println("Robot berhenti.");
             break;
 
+        case 'V': {   // Vektor gerak manual: V<maju> <samping> <putar>
+            // TIDAK ADA yang disalin dari TES_GERAK: setMove(vx,vy,vyaw) di
+            // sana adalah fungsi yang sama dengan walk(maju,samping,putar) di
+            // sini -- slew, normalisasi langkah, dan tripodnya identik.
+            // Mundur = maju negatif, geser = samping bukan nol. Yang selama
+            // ini hilang cuma perintah serialnya; 'w' hanya bisa maju.
+            float p[3] = {0, 0, 0};
+            uint8_t n = argFloats(s, p, 3);
+            if (n < 1) {
+                Serial.println("Format: V<maju> <samping> <putar>, semuanya -1,0 .. 1,0");
+                Serial.println("  V-0.8      = MUNDUR");
+                Serial.println("  V0 0.8     = geser KANAN     V0 -0.8 = geser KIRI");
+                Serial.println("  V0.5 0.5   = serong depan-kanan");
+                Serial.println("  V0 0 0.5   = putar di tempat (tanpa kunci heading)");
+                Serial.println("  's' atau 'V0' untuk berhenti.");
+                break;
+            }
+            float maju    = clampf(p[0], -1.0f, 1.0f);
+            float samping = clampf(p[1], -1.0f, 1.0f);
+            float putar   = clampf(p[2], -1.0f, 1.0f);
+            nav.navBerhenti("diambil alih perintah manual.");
+            robot.walk(maju, samping, putar);
+            Serial.print("Gerak: maju "); Serial.print(maju, 2);
+            Serial.print("  samping ");   Serial.print(samping, 2);
+            Serial.print("  putar ");     Serial.println(putar, 2);
+            Serial.println("  (+samping = KANAN, -samping = KIRI; +maju = DEPAN)");
+            break;
+        }
+
         case 'w': // Walk (Maju manual)
             nav.navBerhenti("diambil alih perintah manual.");
             robot.walk(NAV_FWD_SPEED, 0.0f, 0.0f);
@@ -892,6 +921,8 @@ static void handleCmd(char* s) {
             Serial.println("  D0     : Nolkan jarak dan lepas rem");
             Serial.println("  Ds<f>  : Faktor slip odometri, RAM saja (misal Ds1.05)");
             Serial.println("  s/x/Enter : Hentikan navigasi");
+            Serial.println("  V<maju> <samping> <putar> : vektor gerak manual, -1..1");
+            Serial.println("           V-0.8 = mundur, V0 0.8 = geser kanan, V0 -0.8 = geser kiri");
             Serial.println("  y<ms>  : Aliran yaw dengan jeda tertentu (50-5000, misal y100)");
             Serial.println("EEPROM & KALIBRASI GERAK:");
             Serial.println("  K      : Tabel kalibrasi pivot (EEPROM 2048)");
