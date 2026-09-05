@@ -237,7 +237,6 @@ private:
     // 11 cm alih-alih selang sampel 25 ms. 'N0' mengembalikannya ke selisih
     // waktu kalau sepasang sensor sisi bermasalah.
     bool  _wallSudut = true;
-    uint32_t _dekatSejak = 0;   // millis() saat pita "terlalu dekat" mulai
     bool  _tengah = false;
     float _biasKiri = WALL_BIAS_KIRI_CM, _biasKanan = WALL_BIAS_KANAN_CM;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)

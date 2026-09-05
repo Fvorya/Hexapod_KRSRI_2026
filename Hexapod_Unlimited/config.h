@@ -200,17 +200,19 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // menggeser titik dorongan penuh.
 #define WALL_KAKI_CM     11.0f
 
-// Berapa lama robot boleh BERTURUT-TURUT berada di pita "terlalu dekat"
-// sebelum navigasi menyerah. Pita itu dirancang sebagai keadaan SEMENTARA:
-// dorongan menjauh mengeluarkan robot darinya dalam hitungan detik. Bertahan
-// belasan detik berarti dorongannya tidak pernah menang -- sensor macet di
-// bacaan pendek, atau badan benar-benar tersangkut.
+// PENJAGA "terkurung di pita terlalu dekat" DIBUANG, sesudah ia menghentikan
+// misi di ruas turunan dua kali berturut-turut: sensor kanan bertahan 11,7 cm
+// sementara robot sebenarnya sudah di tengah dan tidak punya ke mana bergeser.
 //
-// Lubang yang ditutupnya nyata dan tidak bergantung pada LIDAR_MIN_CM: hantu
-// yang macet SEDIKIT DI ATAS ambang itu -- misal 11 cm di sensor samping --
-// bukan "dinding hilang", jadi NAV_CARI_BATAS_MS tidak pernah menyala, dan
-// robot berjalan terus sambil memutar menjauhi dinding yang tidak ada.
-#define NAV_DEKAT_BATAS_MS 10000
+// Sempat dicoba menyempitkannya jadi "hanya salah kalau sisi SEBERANG lega",
+// tapi itu bocor: robot yang didorong hantu menyeberang sampai mepet dinding
+// lawan, dan di situ kedua sisi sempit sehingga penjaganya diam lagi. Tidak
+// ada cara bersih membedakan lorong sempit dari sensor macet hanya dari jarak.
+//
+// Yang menggantikannya: MISI_RUAS_BATAS_MS (90 detik) untuk ruas misi, dan
+// tangan pengguna untuk 'F'/'P' manual. Harganya nyata -- sensor yang macet
+// di bawah wall.min pada sisi yang diikuti kini membuat robot menyusuri
+// dinding hantu tanpa batas waktu di mode manual.
 
 // Sempat ditambal ke 11 cm saat trial, lalu DICABUT kembali ke angka
 // geometrinya. Riwayatnya layak diingat karena diagnosisnya yang berguna,

@@ -441,7 +441,6 @@ void Navigation::navMulai(ModeNav m) {
     _mode = m;
     _fase = FASE_JALAN;
     _errAda = false; _errPrev = 0.0f; _errTurunan = 0.0f; _errStempel = 0;
-    _dekatSejak = 0;
     _pitaDekat = false;
     _tBelok = 0; _tCari = 0; _tPivot = 0; _diamSejak = 0;
 
@@ -995,21 +994,6 @@ void Navigation::navUpdate() {
             // dinding. Tanpa ini robot menyeret kakinya sambil mengoreksi.
             maju *= (1.0f - 0.5f * dalam);
 
-            // Daerah ini SEMENTARA menurut rancangannya. Kalau robot tidak juga
-            // keluar, dorongannya tidak pernah menang -- sensor macet di bacaan
-            // pendek, atau badan tersangkut. Berjalan terus sambil memutar
-            // menjauh dari dinding yang tidak ada bukan jalan keluar.
-            if (_dekatSejak == 0) _dekatSejak = now;
-            else if (now - _dekatSejak > NAV_DEKAT_BATAS_MS) {
-                Serial.print("  sensor "); Serial.print(LidarArray::nama(idSamping));
-                Serial.print(" bertahan di "); Serial.print(jarak, 1);
-                Serial.print(" cm selama "); Serial.print(now - _dekatSejak);
-                Serial.println(" ms.");
-                navBerhenti("terlalu dekat ke dinding dan tidak bisa menjauh.");
-                return;
-            }
-        } else {
-            _dekatSejak = 0;
         }
     }
 
