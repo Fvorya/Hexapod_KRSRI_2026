@@ -109,6 +109,15 @@ public:
     //
     // Jatuh kembali ke ikut-dinding biasa begitu salah satu sisi tidak memberi
     // jarak -- di mulut simpangan itu justru yang benar.
+    // JARAK SISI dari pasangan sensor. Memakai dudukan DEPAN seperti biasa;
+    // dudukan belakang hanya dipakai sebagai cadangan kalau yang depan diam.
+    //
+    // SEMPAT dipakai juga untuk menolak penghalang -- dugaan bahwa kaki tengah
+    // menyeberangi berkas. Data arena membantahnya: selisih ch3/ch4 ternyata
+    // TETAP (~2 cm, itu bias pemasangan), bukan berdenyut di frekuensi
+    // langkah. Penolaknya dibuang; yang tersisa cuma cadangan sensor mati.
+    float jarakSisi(bool kiri);
+
     void setTengah(bool ya);
     bool tengah() const { return _tengah; }
 
@@ -223,10 +232,14 @@ private:
     float _remJarakCm = 0.0f;
     bool  _abaikanDepan = false;
     bool  _wallSamar = false;
-    bool  _wallSudut = false;
+    // MENYALA sejak awal. Turunan dari sudut terbukti di arena dan di sim:
+    // goyang perintah kemudi 4,4/detik -> 0,16/detik, karena pembaginya dasar
+    // 11 cm alih-alih selang sampel 25 ms. 'N0' mengembalikannya ke selisih
+    // waktu kalau sepasang sensor sisi bermasalah.
+    bool  _wallSudut = true;
     uint32_t _dekatSejak = 0;   // millis() saat pita "terlalu dekat" mulai
     bool  _tengah = false;
-    float _biasKiri = 0.0f, _biasKanan = 0.0f;   // cm, RAM saja   // 0 = rem tidak terpasang
+    float _biasKiri = WALL_BIAS_KIRI_CM, _biasKanan = WALL_BIAS_KANAN_CM;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }

@@ -573,6 +573,29 @@ static float samarKemudi(float err, float derr) {
 // melainkan dua keadaan yang berbeda dikurangkan.
 static const uint32_t SUDUT_SKEW_MAKS_MS = 100;
 
+// Selisih terbesar antara kedua sensor satu sisi yang masih bisa dijelaskan
+// oleh serong badan. atan(4 / 11) = 20 der, di atas rentang kerja wajar.
+// Di luar itu salah satu berkas melihat benda lain, bukan dinding yang sama --
+// dan sudut yang dihitung darinya bukan sudut badan.
+//
+// Data arena membuktikan ini perlu: ch1 (kiri belakang) macet di 5-6 cm
+// sementara ch0 membaca 16-29 cm. Tanpa penjaga ini pasangan itu melaporkan
+// serong 60 derajat yang tidak pernah terjadi.
+static const float SISI_BEDA_MAKS_CM = 4.0f;
+
+float Navigation::jarakSisi(bool kiri) {
+    const uint8_t idD = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
+    const uint8_t idB = kiri ? LIDAR_KIRI_B : LIDAR_KANAN_B;
+    float dD = _lidar.jarakHalus(idD);
+    float dB = _lidar.jarakHalus(idB);
+
+    if (dD < 0.0f && dB < 0.0f) return -1.0f;
+    if (dD < 0.0f) return dB - (kiri ? _biasKiri : _biasKanan);
+    if (dB < 0.0f) return dD;                   // sendirian: tak ada pembanding
+
+    return dD;
+}
+
 float Navigation::bedaSisi(bool kiri) {
     const uint8_t idD = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
     const uint8_t idB = kiri ? LIDAR_KIRI_B : LIDAR_KANAN_B;
@@ -592,6 +615,9 @@ float Navigation::sudutDinding(bool kiri) {
     float beda = bedaSisi(kiri);
     if (isnan(beda)) return NAN;
     beda -= (kiri ? _biasKiri : _biasKanan);
+    // Selisih di luar batas serong wajar berarti salah satu berkas terhalang,
+    // dan sudut yang dihitung darinya bukan sudut badan melainkan sudut kaki.
+    if (fabsf(beda) > SISI_BEDA_MAKS_CM) return NAN;
     return atan2f(beda, WALL_BASE_CM) * 57.2957795f;
 }
 
@@ -893,7 +919,7 @@ void Navigation::navUpdate() {
     } else {
         // Jarak float (belum dibulatkan ke cm) + stempel waktu sampelnya.
         _tCari = 0;                                    // dinding ketemu lagi
-        float jarak = _lidar.jarakHalus(idSamping);
+        float jarak = jarakSisi(ikutKiri);
         if (jarak < 0.0f) jarak = (float)samping;      // jaga-jaga, tak boleh terjadi
         uint32_t stempel = _lidar.stempelSampel(idSamping);
 
@@ -906,8 +932,8 @@ void Navigation::navUpdate() {
         float errTengah = 0.0f;
         bool  adaTengah = false;
         if (_tengah) {
-            float dk = _lidar.jarakHalus(LIDAR_KIRI_D);
-            float dn = _lidar.jarakHalus(LIDAR_KANAN_D);
+            float dk = jarakSisi(true);
+            float dn = jarakSisi(false);
             if (dk >= 0.0f && dn >= 0.0f) {
                 adaTengah = true;
                 jarak      = fminf(dk, dn);          // pita dekat memakai yang terdekat
@@ -917,24 +943,62 @@ void Navigation::navUpdate() {
             }
         }
 
-        if (jarak < WALL_MIN_CM) {
-            // TERLALU DEKAT. Kekuatan menjauh naik dari separuh di ambang
-            // wall.min sampai PENUH tepat di LIDAR_MIN_CM sensor itu -- yaitu
-            // di jarak saat kaki sudah menyentuh dinding, batas bawah yang
-            // sama yang dipakai LidarArray. Lebar ramp-nya menyesuaikan sendiri
-            // kalau wall.min disetel, jadi tidak ada angka ketiga yang bisa
-            // lupa ikut diubah. Hasilnya tetap dibatasi NAV_WALL_TURN_MAX --
-            // ini koreksi lateral, bukan izin untuk berputar di tempat.
-            float lebar = WALL_MIN_CM - WALL_KAKI_CM;
-            if (lebar < 1.0f) lebar = 1.0f;         // jaga-jaga bila disetel rapat
-            float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
-            turn = -sisiDekat * NAV_WALL_TURN_MAX * (0.5f + 0.5f * dalam);
-            _pitaDekat = true;
+        // --- SATU RUMUS, BUKAN DUA PITA YANG BERSAMBUNG PATAH ---
+        //
+        // Dulu ini 'if (jarak < wall.min) dorong; else PD;'. Tepat di ambang
+        // itu keluarannya MELOMPAT: di sisi PD, err = 13 - 17 memberi -0,03;
+        // di sisi dorong, 0,5 x NAV_WALL_TURN_MAX memberi 0,25. Lompatan 0,28
+        // pada satu batas yang tidak punya histeresis sama sekali.
+        //
+        // Akibatnya relay: robot yang kebetulan duduk DI SEKITAR wall.min
+        // menyeberangi batas itu bolak-balik, dan tiap penyeberangan membalik
+        // perintah kemudi. Data arena menunjukkannya langsung -- sensor kanan
+        // membaca 10,11,13,11,12,13,13,12,13,14,13,13,14 cm, berayun persis di
+        // sekitar wall.min 13.
+        //
+        // Sekarang keduanya DILEBUR: dalam = 0 di ambang (hasilnya PD murni,
+        // jadi sambungannya mulus) dan 1 saat kaki menyentuh dinding (hasilnya
+        // dorongan penuh). Tidak ada lagi batas untuk diseberangi.
+        float err = adaTengah ? errTengah : (jarak - WALL_SETPOINT_CM);
 
-            // Pita ini SEMENTARA menurut rancangannya. Kalau robot tidak juga
-            // keluar, dorongannya tidak pernah menang -- sensor macet di
-            // bacaan pendek, atau badan tersangkut. Berjalan terus sambil
-            // memutar menjauh dari dinding yang tidak ada bukan jalan keluar.
+        if (!_errAda) {
+            _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
+        } else if (stempel != _errStempel) {
+            // Sampel BARU -> perbarui turunan, memakai jarak waktu antar sampel
+            // yang sebenarnya. Dulu pembaginya dt loop, yang dijepit di 0,001 s
+            // -- satu lompatan pembulatan 1 cm jadi bernilai 10,0 satuan putar.
+            float dts = (float)(uint32_t)(stempel - _errStempel) / 1000.0f;
+            _errTurunan = (dts > 0.005f && dts < 0.5f) ? (err - _errPrev) / dts : 0.0f;
+            _errPrev = err; _errStempel = stempel;
+        }
+        // di antara sampel: _errTurunan ditahan, bukan dinolkan.
+        // Sumber turunan: yang dari sudut seketika, yang dari waktu baru
+        // berarti sesudah dua sampel LiDAR berurutan. Sudut yang tidak
+        // tersedia jatuh kembali ke selisih waktu, tidak menghentikan robot.
+        float derr = _errTurunan;
+        if (_wallSudut) {
+            float ds = turunanDariSudut(ikutKiri);
+            if (!isnan(ds)) derr = ds;
+        }
+        float pd = sisiPD * (_wallSamar ? samarKemudi(err, derr)
+                                        : (WALL_KP * err + WALL_KD * derr));
+
+        float lebar = WALL_MIN_CM - WALL_KAKI_CM;
+        if (lebar < 1.0f) lebar = 1.0f;             // jaga-jaga bila disetel rapat
+        float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
+        float dorong = -sisiDekat * NAV_WALL_TURN_MAX;
+        turn = (1.0f - dalam) * pd + dalam * dorong;
+
+        if (dalam > 0.0f) {
+            _pitaDekat = true;
+            // Melambat supaya kemudi sempat bekerja sebelum kaki sampai ke
+            // dinding. Tanpa ini robot menyeret kakinya sambil mengoreksi.
+            maju *= (1.0f - 0.5f * dalam);
+
+            // Daerah ini SEMENTARA menurut rancangannya. Kalau robot tidak juga
+            // keluar, dorongannya tidak pernah menang -- sensor macet di bacaan
+            // pendek, atau badan tersangkut. Berjalan terus sambil memutar
+            // menjauh dari dinding yang tidak ada bukan jalan keluar.
             if (_dekatSejak == 0) _dekatSejak = now;
             else if (now - _dekatSejak > NAV_DEKAT_BATAS_MS) {
                 Serial.print("  sensor "); Serial.print(LidarArray::nama(idSamping));
@@ -944,39 +1008,8 @@ void Navigation::navUpdate() {
                 navBerhenti("terlalu dekat ke dinding dan tidak bisa menjauh.");
                 return;
             }
-            // Melambat supaya kemudi sempat bekerja sebelum kaki sampai ke
-            // dinding. Tanpa ini robot menyeret kakinya sambil mengoreksi.
-            maju *= (1.0f - 0.5f * dalam);
-            // PD dimulai bersih saat keluar dari pita ini, kalau tidak turunan
-            // melonjak dari lompatan error antar-pita.
-            _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
         } else {
             _dekatSejak = 0;
-            // Menengah: sasarannya garis tengah, bukan wall.setpoint.
-            float err = adaTengah ? errTengah : (jarak - WALL_SETPOINT_CM);
-
-            if (!_errAda) {
-                _errPrev = err; _errStempel = stempel; _errTurunan = 0.0f; _errAda = true;
-            } else if (stempel != _errStempel) {
-                // Sampel BARU -> perbarui turunan, memakai jarak waktu antar sampel
-                // yang sebenarnya. Dulu pembaginya dt loop, yang dijepit di 0,001 s
-                // -- satu lompatan pembulatan 1 cm jadi bernilai 10,0 satuan putar.
-                float dts = (float)(uint32_t)(stempel - _errStempel) / 1000.0f;
-                _errTurunan = (dts > 0.005f && dts < 0.5f) ? (err - _errPrev) / dts : 0.0f;
-                _errPrev = err; _errStempel = stempel;
-            }
-            // di antara sampel: _errTurunan ditahan, bukan dinolkan
-            // Sumber turunan. Yang dari sudut seketika; yang dari waktu baru
-            // berarti sesudah dua sampel LiDAR berurutan. Kalau sudutnya tidak
-            // tersedia -- sensor pasangannya diam, atau kedua sampelnya terlalu
-            // berjauhan waktu -- jatuh kembali ke selisih waktu, tidak berhenti.
-            float derr = _errTurunan;
-            if (_wallSudut) {
-                float ds = turunanDariSudut(ikutKiri);
-                if (!isnan(ds)) derr = ds;
-            }
-            turn = sisiPD * (_wallSamar ? samarKemudi(err, derr)
-                                        : (WALL_KP * err + WALL_KD * derr));
         }
     }
 

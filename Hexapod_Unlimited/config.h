@@ -300,6 +300,16 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // Ukuran mekanis, per-robot. Ganti bila dudukan sensor dipindah.
 #define WALL_BASE_CM     11.0f
 
+// SIMPANGAN PEMASANGAN pasangan sensor tiap sisi, (belakang - depan) dalam cm
+// saat badan SEJAJAR dinding. Diukur di robot dengan 'Y0': 2,00 cm di kedua
+// sisi, sama persis dua kali pengukuran. Tanpa dikurangkan, robot mengira
+// dirinya menyerong 10 der padahal lurus.
+//
+// Nilai awal saja -- 'Y0' menimpanya kapan pun. Ada di sini supaya turunan
+// dari sudut sudah benar sejak menyala, tanpa perlu mengetik apa pun.
+#define WALL_BIAS_KIRI_CM   2.0f
+#define WALL_BIAS_KANAN_CM  2.0f
+
 #define LIDAR_KANAN_D    4   // menghadap kanan, dudukan depan
 #define LIDAR_KANAN_B    3   // menghadap kanan, dudukan belakang
 #define LIDAR_BACK       2   // satu-satunya yang menghadap BELAKANG
