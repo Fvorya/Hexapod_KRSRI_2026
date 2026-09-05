@@ -704,19 +704,25 @@ void Mission::update() {
         if (kanan < 0.0f) Serial.println("tidak memberi jarak");
         else { Serial.print(kanan, 1); Serial.print(" cm (ambang "); Serial.print(WALL_MIN_CM, 1); Serial.println(")"); }
 
+        // Gerak serong SELALU terjadi. Yang bersyarat cuma mundurnya: ia
+        // membuka ruang lebih dulu kalau kanan sudah mepet. Kanan yang lega
+        // berarti ruang itu sudah ada, jadi langsung serong.
         if (kanan < 0.0f || kanan >= WALL_MIN_CM) {
-            masuk(MISI_SELESAI);
-            Serial.println("\n=== SELESAI: MENGHADAP SELATAN, KANAN TIDAK MEPET ===");
-            Serial.println("  Gerak serong dilewati. 'm1' untuk mengulang dari awal.");
+            _ruasAwal = _robot.jarakCm();
+            masuk(MISI_MIRING_KANAN);
+            Serial.println("\n=== SERONG KE KANAN (kanan lega, mundur dilewati) ===");
+            Serial.print("  45 der ke kanan badan, lintasan "); Serial.print(_miringCm, 0);
+            Serial.println(" cm menurut odometri.");
+            Serial.println("  TIDAK ada kunci heading selama serong -- badan bisa menyimpang sedikit.");
             break;
         }
 
         _ruasAwal = _robot.jarakCm();
         masuk(MISI_MUNDUR_KANAN);
-        Serial.println("\n=== MUNDUR: kanan mepet dinding ===");
+        Serial.println("\n=== MUNDUR: kanan mepet, buka ruang dulu ===");
         Serial.print("  Mundur sampai kanan >= "); Serial.print(WALL_MIN_CM, 1);
         Serial.print(" cm, paling jauh "); Serial.print(MISI_MUNDUR_MAKS_CM);
-        Serial.println(" cm.");
+        Serial.println(" cm, lalu serong.");
         break;
     }
 
