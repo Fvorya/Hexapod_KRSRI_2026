@@ -49,6 +49,19 @@ static const uint8_t MISI_ARAH_KORBAN1 = 3;   // 3 = BARAT
 // TANGGA menaikkan cycleTime dari 900 ke 1800 ms, MERUNDUK ke 1100 ms.
 static const uint32_t MISI_RUAS_BATAS_MS = 90000;
 
+// RUAS TERAKHIR di bawah turunan: maju sampai ada sesuatu sedekat ini di
+// depan, lalu memutar. 40 cm diminta langsung; 'm5 <cm>' menimpanya.
+// Harus DI ATAS FRONT_STOP_CM, kalau tidak mode arena keburu berbelok
+// menghindari halangan sebelum misi sempat berhenti -- sebab yang sama dengan
+// static_assert ambang korban di atas.
+static_assert(MISI_DEPAN_CM_DEF > FRONT_STOP_CM,
+              "Ambang ruas terakhir harus > FRONT_STOP_CM");
+
+// Arah akhir: 45 der dari SELATAN menuju BARAT, yaitu barat daya.
+static const uint8_t MISI_AKHIR_A = 2;      // SELATAN
+static const uint8_t MISI_AKHIR_B = 3;      // BARAT
+static const float   MISI_AKHIR_BAGIAN = 0.5f;   // 45 der dari 90 der
+
 // SEBERAPA SERONG masih boleh, untuk ruas berjarak. SENGAJA jauh lebih longgar
 // dari HEADING_TOLERANCE_DEG (6 der): angka itu milik pemeriksaan "pivot sudah
 // sampai", tempat robot berdiri diam. Di sini robot BERJALAN di atas ubin
@@ -529,11 +542,58 @@ void Mission::update() {
         if (ruasTempuh() < _turunCm) return;
 
         _nav.navBerhenti("ujung turunan tercapai.");
-        _nav.setTengah(false);
         _robot.profileFlat();
-        masuk(MISI_SELESAI);
-        Serial.println("\n=== SELESAI: DI BAWAH TURUNAN ===");
+
+        // Sensor depan DIPAKAI LAGI di ruas ini -- navBerhenti() di atas sudah
+        // memulihkannya, dan memang harus: ambang 40 cm itu justru bacaannya.
+        if (!mulaiJalan()) { gagal("gagal memulai ruas terakhir di bawah turunan."); return; }
+        _depanN = 0;
+        _serongT0 = 0;
+        masuk(MISI_MAJU_AKHIR);
+        Serial.println("\n=== RUAS TERAKHIR: DI BAWAH TURUNAN ===");
         Serial.println("  Profil dikembalikan ke DATAR.");
+        Serial.print("  Maju sampai sensor DEPAN membaca "); Serial.print(_depanCm, 0);
+        Serial.println(" cm atau kurang.");
+        break;
+
+    case MISI_MAJU_AKHIR: {
+        if (!ruasSehat(MISI_ARAH_AWAL)) return;
+
+        // LIDAR_JAUH berarti lorong masih terbuka, BUKAN "sangat dekat". Dan
+        // MISI_DEKAT_N sampel berturut-turut, supaya satu bacaan nyasar tidak
+        // menghentikan ruas -- pola yang sama dengan pemicu korban 1.
+        int d = _lidar.getDistance(LIDAR_FRONT);
+        if (d == LIDAR_JAUH || d == LIDAR_MATI || (float)d > _depanCm) { _depanN = 0; return; }
+        if (++_depanN < MISI_DEKAT_N) return;
+
+        _nav.navBerhenti("ambang depan ruas terakhir tercapai.");
+        _nav.setTengah(false);
+
+        _headAkhir = _nav.headingAntara(MISI_AKHIR_A, MISI_AKHIR_B, MISI_AKHIR_BAGIAN);
+        if (isnan(_headAkhir)) {
+            gagal("kompas arena tidak punya SELATAN atau BARAT -- catat dengan 'c2'/'c3'.");
+            return;
+        }
+        Serial.print("\n=== PIVOT AKHIR: 45 der dari "); Serial.print(_nav.namaArah(MISI_AKHIR_A));
+        Serial.print(" menuju "); Serial.print(_nav.namaArah(MISI_AKHIR_B));
+        Serial.print(" ("); Serial.print(_headAkhir, 1); Serial.println(" der) ===");
+        Serial.println("  Satu pivot langsung ke sana, bukan mampir dulu di SELATAN:");
+        Serial.println("  sasarannya heading yang sama dengan separuh putaran lebih sedikit.");
+
+        _nav.pivotKe(_headAkhir);
+        if (!_nav.pivotSedangJalan()) { gagal("pivot akhir tidak mau jalan."); return; }
+        masuk(MISI_PIVOT_AKHIR);
+        break;
+    }
+
+    case MISI_PIVOT_AKHIR:
+        if (_nav.pivotSedangJalan()) return;
+        if (!_nav.diHeading(_headAkhir)) {
+            gagal("pivot akhir tidak sampai -- dibatalkan, timeout, atau IMU lepas.");
+            return;
+        }
+        masuk(MISI_SELESAI);
+        Serial.println("\n=== SELESAI: MENGHADAP BARAT DAYA ===");
         Serial.println("  Irisan misi ini habis di sini. 'm1' untuk mengulang dari awal.");
         break;
 
@@ -622,6 +682,21 @@ static void setRuas(const char* nama, float& tujuan, float cm, const char* perin
 void Mission::setLantaiCm(float cm) { setRuas("lebar lantai pecah", _lantaiCm, cm, "m7 <cm>"); }
 void Mission::setTurunCm (float cm) { setRuas("panjang turunan",    _turunCm,  cm, "m6 <cm>"); }
 
+void Mission::setDepanCm(float cm) {
+    const float lo = (float)FRONT_STOP_CM + 1.0f, hi = 200.0f;
+    float v = clampf(cm, lo, hi);
+    Serial.print("Ambang depan ruas terakhir: "); Serial.print(_depanCm, 1);
+    Serial.print(" -> "); Serial.print(v, 1); Serial.println(" cm");
+    if (fabsf(v - cm) > 1e-3f) {
+        Serial.print("  (diminta "); Serial.print(cm, 1);
+        Serial.print(", DI-CLAMP ke "); Serial.print(lo, 0);
+        Serial.print(" .. "); Serial.print(hi, 0); Serial.println(")");
+    }
+    Serial.println("  Batas bawah = FRONT_STOP_CM + 1: di bawah itu mode arena");
+    Serial.println("  keburu berbelok sebelum misi sempat menghentikannya.");
+    _depanCm = v;
+}
+
 void Mission::setAmbangBlk(float cm) {
     // Jarak TEMPUH, bukan bacaan sensor. Batas atasnya menyisakan ruang untuk
     // titik nol: bacaan akhir = titik nol + tempuh, dan itu harus tetap di
@@ -676,6 +751,9 @@ void Mission::status() {
         case MISI_LANTAI_PECAH: Serial.print("LANTAI PECAH -- profil TANGGA, tempuh ");
                                Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
                                Serial.print(_lantaiCm, 0); Serial.println(" cm"); break;
+        case MISI_MAJU_AKHIR:  Serial.print("RUAS TERAKHIR -- maju sampai depan <= ");
+                               Serial.print(_depanCm, 0); Serial.println(" cm"); break;
+        case MISI_PIVOT_AKHIR: Serial.println("PIVOT AKHIR -- memutar ke barat daya"); break;
         case MISI_TURUN:       Serial.print("TURUNAN -- profil MERUNDUK, tempuh ");
                                Serial.print(ruasTempuh(), 1); Serial.print(" dari ");
                                Serial.print(_turunCm, 0); Serial.println(" cm"); break;
@@ -699,6 +777,8 @@ void Mission::status() {
     Serial.print("  lantai pecah: ");
     if (_lantaiCm < 0.0f) Serial.println("BELUM disetel -- 'm7 <cm>'");
     else { Serial.print(_lantaiCm, 1); Serial.println(" cm, odometri gait"); }
+    Serial.print("  ruas akhir  : depan <= "); Serial.print(_depanCm, 1);
+    Serial.println(" cm, lalu pivot 45 der dari SELATAN ke BARAT");
     Serial.print("  turunan     : ");
     if (_turunCm < 0.0f) Serial.println("BELUM disetel -- 'm6 <cm>'");
     else { Serial.print(_turunCm, 1); Serial.println(" cm, odometri gait"); }

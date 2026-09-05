@@ -48,6 +48,8 @@ enum StatMisi : uint8_t {
     MISI_PIVOT_LANTAI,   // sesudah korban dikonfirmasi, memutar balik ke UTARA
     MISI_LANTAI_PECAH,   // menyeberangi lantai pecah dengan profil TANGGA
     MISI_TURUN,          // menuruni bidang miring dengan profil MERUNDUK
+    MISI_MAJU_AKHIR,     // di bawah turunan, maju sampai sensor DEPAN dekat
+    MISI_PIVOT_AKHIR,    // memutar ke 45 der dari SELATAN menuju BARAT
     MISI_SELESAI,        // irisan ini habis (langkah ambil korban belum ada)
     MISI_GAGAL           // berhenti karena sebab yang dicetak & disimpan
 };
@@ -64,7 +66,8 @@ public:
     void setAmbang(float cm);           // 'm9 <cm>'  -- ambang sensor DEPAN
     void setAmbangBlk(float cm);        // 'm8 <cm>'  -- JARAK TEMPUH dari START ke korban 1
     void setLantaiCm(float cm);         // 'm7 <cm>'  -- lebar rintangan lantai pecah
-    void setTurunCm(float cm);          // 'm6 <cm>'  -- panjang bidang miring
+    void setTurunCm(float cm);
+    void setDepanCm(float cm);          // 'm6 <cm>'  -- panjang bidang miring
 
     StatMisi stat() const { return _stat; }
     bool berjalan() const {
@@ -112,6 +115,9 @@ private:
     // profil gait di tempat yang salah -- di bibir turunan, itu jatuh.
     float    _lantaiCm  = -1.0f;  // lebar lantai pecah, cm (<0 = belum disetel)
     float    _turunCm   = -1.0f;  // panjang turunan, cm (<0 = belum disetel)
+    float    _depanCm   = MISI_DEPAN_CM_DEF;  // ambang berhenti ruas terakhir
+    float    _headAkhir = 0.0f;   // heading sasaran pivot terakhir
+    uint8_t  _depanN    = 0;      // sampel berturut-turut di dalam ambang
     float    _ruasAwal  = 0.0f;   // odometer saat ruas berjalan dimulai, cm
     uint32_t _serongT0  = 0;      // sejak kapan heading keluar toleransi (0 = tidak)
 

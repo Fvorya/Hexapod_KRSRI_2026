@@ -155,6 +155,13 @@ public:
     // membedakan keduanya dari luar adalah heading akhirnya.
     bool diArah(uint8_t arah) const;
 
+    // Heading di ANTARA dua mata angin arena, dari kompas yang TERCATAT --
+    // bukan dari asumsi bahwa keempatnya berjarak 90 der sempurna di IMU.
+    // bagian 0 = tepat di a, 1 = tepat di b, 0,5 = separuh jalan.
+    // NAN bila salah satu arah belum dicatat.
+    float headingAntara(uint8_t a, uint8_t b, float bagian) const;
+    bool  diHeading(float target) const;
+
     // Simpangan heading sekarang terhadap satu arah arena, -180..180.
     // NAN bila arah itu belum dicatat atau IMU belum punya data. Dipakai misi
     // untuk menilai odometri: simpang theta memendekkan jarak sesungguhnya

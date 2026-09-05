@@ -362,6 +362,12 @@ static void handleCmd(char* s) {
                 case '1': misi.mulai();      break;
                 case '2': misi.jawab(true);  break;
                 case '3': misi.jawab(false); break;
+                case '5': {
+                    float p[2] = {0, 0};
+                    if (argFloats(s, p, 2) >= 2) misi.setDepanCm(p[1]);
+                    else Serial.println("Format: m5 <cm>, misal m5 40");
+                    break;
+                }
                 case '6': {
                     float p[2] = {0, 0};
                     if (argFloats(s, p, 2) >= 2) misi.setTurunCm(p[1]);
@@ -928,6 +934,7 @@ static void handleCmd(char* s) {
             Serial.println("  m1     : MULAI misi -- menuju korban 1 (dinding kanan + kunci arena)");
             Serial.println("  m0     : Batalkan misi");
             Serial.println("  m2/m3  : Saat berhenti -> 'm2' benar korban, 'm3' bukan (jalan lagi)");
+            Serial.println("  m5<cm> : Ambang sensor DEPAN ruas terakhir (misal m5 40)");
             Serial.println("  m6<cm> : Panjang bidang miring, odometri (misal m6 60)");
             Serial.println("  m7<cm> : Lebar rintangan lantai pecah, odometri (misal m7 80)");
             Serial.println("  m8<cm> : Jarak garis start -> korban 1, diukur sensor BELAKANG");

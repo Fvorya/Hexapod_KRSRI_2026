@@ -309,6 +309,10 @@ const uint8_t LIDAR_MIN_CM[6] = {
 //
 // Nilai awal saja -- 'Y0' menimpanya kapan pun. Ada di sini supaya turunan
 // dari sudut sudah benar sejak menyala, tanpa perlu mengetik apa pun.
+// Ambang sensor DEPAN untuk ruas terakhir di bawah turunan, cm. 'm5 <cm>'
+// menimpanya saat jalan.
+#define MISI_DEPAN_CM_DEF   40
+
 #define WALL_BIAS_KIRI_CM   2.0f
 #define WALL_BIAS_KANAN_CM  2.0f
 
