@@ -476,12 +476,24 @@ static void samarPartisi3(float x, float c1, float c2, float c3, float mu[3]) {
 // Pusat himpunan. err dalam cm, turunan dalam cm/detik.
 // Pusat sengaja LEBAR. Di luar pusat terjauh keluaran samar MENDATAR, dan
 // mendatar berarti kehilangan redaman justru saat simpangan paling besar --
-// dua percobaan -- pusat +-6 cm / +-4 cm/det, lalu +-12 cm / +-10 cm/det --
+// lima percobaan -- pusat +-6/+-4, +-12/+-10, +-12/+-20, +-30/+-40, lalu
 // sama-sama menghasilkan ayunan yang memantul antara kedua dinding lorong
-// 45 cm. Nilai singleton di luar +-0,50 memang melebihi NAV_WALL_TURN_MAX;
-// PD pun begitu, dan clamp di hilir yang mengurusnya.
-static const float SAMAR_E_C[3]  = { -12.0f, 0.0f, +12.0f };   // cm
-static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
+// 45 cm. Sumbu TURUNAN yang paling menuntut: derau kuantisasi saja sudah
+// menghasilkan belasan cm/detik, dan mendatar di situ berarti kehilangan
+// redaman tepat pada puncak deraunya.
+//
+// Batas akhirnya DIHITUNG, bukan ditebak lagi. Error: +-30 cm melampaui
+// seluruh lebar lorong 45 cm. Turunan: dts dijaga minimum 0,005 detik dan
+// satu langkah EMA menggeser 0,4 cm, jadi |derr| tidak bisa melebihi
+// 0,4 / 0,005 = 80 cm/detik. Di luar kedua batas itu tidak ada keadaan yang
+// bisa dicapai robot, jadi tabel ini tidak pernah mendatar dalam praktik --
+// dan itu memang tujuannya: yang dibandingkan BENTUK hukumnya, bukan
+// seberapa besar kewenangan yang kebetulan tersisa.
+//
+// Nilai singleton di luar +-0,50 memang melebihi NAV_WALL_TURN_MAX; PD pun
+// begitu, dan clamp di hilir yang mengurusnya.
+static const float SAMAR_E_C[3]  = { -30.0f, 0.0f, +30.0f };   // cm
+static const float SAMAR_DE_C[3] = { -80.0f, 0.0f, +80.0f };   // cm/detik
 
 // Keluaran tiap aturan (singleton Sugeno orde-0), dalam KERANGKA DINDING yang
 // sama dengan kurung PD: + = kemudikan MENDEKAT dinding, - = MENJAUH.
@@ -493,19 +505,27 @@ static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
 // robot menyeberang menabrak dinding lawan -- redamannya tiga kali lebih
 // lemah dari PD, jadi yang teruji hanyalah kendali yang salah setel.
 //
-// DUA sudut yang berbeda adalah isi gagasannya:
+// GAGASAN ASLINYA dua sudut asimetris, dan KEDUANYA sudah dikembalikan ke
+// nilai PD sesudah diuji. Riwayatnya layak disimpan karena hasilnya negatif
+// dan itu justru kesimpulannya:
 //
-//   (DEKAT, MENJAUH)  PD +0,504 -> samar +0,252  (separuh)
+//   (JAUH, MENDEKAT) dilunakkan -> robot "menggok ke kanan" di arena. Saat
+//   masih terlalu jauh dan sedang mendekat, rem yang dikurangi membuatnya
+//   melewati setpoint dan merapat ke dinding yang diikuti.
 //
-// Sudut (JAUH, MENDEKAT) SEMPAT dilunakkan dengan cara yang sama, lalu
-// DIKEMBALIKAN ke nilai PD sesudah trial: robot terlihat "menggok ke kanan"
-// saat ikut dinding kanan. Sebabnya persis pelunakan itu -- saat robot masih
-// terlalu jauh dan sedang mendekat, rem yang dikurangi membuatnya melewati
-// setpoint dan merapat ke dinding yang diikuti.
+//   (DEKAT, MENJAUH) dilunakkan -> di lorong 45 cm robot menyeberang dan
+//   menyentuh dinding LAWAN (sim: celah seberang -0,15 cm). "Sudah bergerak
+//   ke arah yang benar" ternyata bukan alasan untuk mengurangi rem, karena
+//   di lorong sesempit ini arah yang benar tetap punya ujung.
 //
-// Pelajarannya bukan "asimetri itu buruk", melainkan arahnya penting:
-// melonggarkan pemulihan MENJAUHI dinding aman, melonggarkan pendekatan KE
-// dinding tidak.
+// Jadi tabelnya sekarang PERSIS PD di seluruh kotaknya: interpolasi bilinear
+// atas fungsi linear menghasilkan fungsi itu sendiri. Yang tersisa sebagai
+// beda cuma PENJENUHAN di luar +-12 cm / +-20 cm/detik.
+//
+// Itu kesimpulan yang berguna, bukan kegagalan: kebebasan tabel aturan untuk
+// menjadi tak-linear tidak membeli apa pun di lorong yang KEDUA dindingnya
+// mengikat. Yang membeli sesuatu justru sumber turunannya (N2/N3) dan kemudi
+// menengah (Z1), bukan bentuk hukumnya.
 //
 // Di kedua sudut itu robot sudah bergerak KE ARAH yang benar, dan suku D
 // milik PD justru melawannya: kd 0,030 x 20 cm/det = 0,60, cukup besar untuk
@@ -520,9 +540,9 @@ static const float SAMAR_DE_C[3] = { -20.0f, 0.0f, +20.0f };   // cm/detik
 //
 //                    turunan:  MENDEKAT   TETAP   MENJAUH
 static const float SAMAR_Z[3][3] = {
-    /* err DEKAT (terlalu rapat) */ { -0.696f, -0.096f, +0.252f },
-    /* err PAS                   */ { -0.600f,  0.000f, +0.600f },
-    /* err JAUH  (terlalu lebar) */ { -0.600f, +0.096f, +0.696f },
+    /* err DEKAT (terlalu rapat) */ { -2.640f, -0.240f, +2.160f },
+    /* err PAS                   */ { -2.400f,  0.000f, +2.400f },
+    /* err JAUH  (terlalu lebar) */ { -2.160f, +0.240f, +2.640f },
 };
 
 // t-norm PERKALIAN, bukan minimum. Dengan dua partisi yang masing-masing

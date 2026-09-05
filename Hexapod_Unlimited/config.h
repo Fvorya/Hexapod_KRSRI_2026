@@ -158,12 +158,35 @@ const float ARM_ORIGINS[2][3] = {
 // Menurunkannya juga tidak menambah kemampuan ukur apa pun: kaki sudah
 // menabrak benda sebelum sensor bisa membacanya sedekat itu, jadi bacaan di
 // bawah angka geometri di atas TIDAK MUNGKIN berasal dari benda nyata.
+// SISI DITURUNKAN 10 -> 4 cm. Sebabnya ditemukan di arena: ambang 10 pada
+// sensor SAMPING membuat jerat, bukan sekadar penyaring.
+//
+// Kaki menyentuh dinding saat bacaan 11 cm, jadi rentang 10..11 cm sudah
+// hampir menempel -- dan tepat di bawah 10 bacaannya dipetakan ke LIDAR_JAUH,
+// yang bagi ikut-dinding berarti "dinding HILANG". Reaksinya
+// 'turn = sisi * NAV_CARI_CMD', yaitu MEMBELOK KE ARAH dinding untuk
+// mencarinya. Ikut dinding kanan -> sisi = -1 -> membelok ke kanan, masuk ke
+// dinding yang sebenarnya sudah menempel.
+//
+// Jadi tandanya TERBALIK persis di daerah yang paling berbahaya: makin dekat,
+// makin keras robot merapat. Itu yang terlihat sebagai "sering serong ke
+// kanan" saat ikut dinding kanan.
+//
+// Dengan 4 cm, seluruh rentang 4..13 cm dipercaya dan ditangani pita
+// "terlalu dekat", yang mendorong MENJAUH dengan kekuatan penuh. Sensor
+// samping yang macet di bacaan pendek tidak lagi lolos tanpa terdeteksi:
+// NAV_DEKAT_BATAS_MS menghentikan robot sesudah 10 detik di pita itu.
+//
+// DEPAN dan BELAKANG tetap 7. Keduanya tidak punya jerat ini -- "jauh" di
+// sensor depan berarti "lorong kosong", bukan "kejar dindingnya" -- sementara
+// hantu 5 cm di ch5 punya bukti sim tersendiri (sim_depan) bahwa tanpa ambang
+// itu robot berbelok menghindari lorong yang terbuka lebar.
 const uint8_t LIDAR_MIN_CM[6] = {
-    10,  // ch0 kiri depan   (samping)
-    10,  // ch1 kiri belakang(samping)
+     4,  // ch0 kiri depan   (samping)
+     4,  // ch1 kiri belakang(samping)
      7,  // ch2 belakang
-    10,  // ch3 kanan blkg   (samping)
-    10,  // ch4 kanan depan  (samping)
+     4,  // ch3 kanan blkg   (samping)
+     4,  // ch4 kanan depan  (samping)
      7   // ch5 depan
 };
 
