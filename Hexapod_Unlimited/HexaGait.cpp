@@ -4,6 +4,7 @@
 HexaGait::HexaGait() {
     // 1. Menambahkan STAND_RADIUS ke nilai inisiasi
     _prof = _tgtProf = { GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT, STAND_RADIUS };
+    for (int i = 0; i < 6; i++) _off[i] = _tgtOff[i] = { 0.0f, 0.0f, 0.0f };
     _tgtX = _tgtY = _tgtYaw = 0;
     _curX = _curY = _curYaw = 0;
     _running = false;
@@ -19,6 +20,13 @@ void HexaGait::computeHome() {
         _footHome[i].x = BODY_LEG_ORIGINS[i][0] + _prof.standRadius * cosf(a);
         _footHome[i].y = BODY_LEG_ORIGINS[i][1] + _prof.standRadius * sinf(a);
         _footHome[i].z = -_prof.standHeight;
+
+        // Offset per kaki DI ATAS bentuk seragam. Nol untuk semua profil
+        // kecuali KAIL, jadi jalur ini tidak mengubah apa pun sampai ada
+        // yang benar-benar memintanya.
+        _footHome[i].x += _off[i].x;
+        _footHome[i].y += _off[i].y;
+        _footHome[i].z += _off[i].z;
     }
 }
 
@@ -63,6 +71,11 @@ void HexaGait::update() {
     _prof.cycleTime   = lerpf(_prof.cycleTime,   _tgtProf.cycleTime,   ap);
     _prof.standHeight = lerpf(_prof.standHeight, _tgtProf.standHeight, ap);
     _prof.standRadius = lerpf(_prof.standRadius, _tgtProf.standRadius, ap);
+    for (int i = 0; i < 6; i++) {
+        _off[i].x = lerpf(_off[i].x, _tgtOff[i].x, ap);
+        _off[i].y = lerpf(_off[i].y, _tgtOff[i].y, ap);
+        _off[i].z = lerpf(_off[i].z, _tgtOff[i].z, ap);
+    }
 
     computeHome();
 
@@ -137,6 +150,16 @@ void HexaGait::update() {
     // pada duty <= 0.5 hasilnya tetap 2.0 seperti semula.
     float majuMm = _skalaOdo * fminf(2.0f, 1.0f / GAIT_DUTY) * _curY * _prof.stepLength * f * dPhase;
     _jarakMm += majuMm;
+
+    // Sumbu geser diakumulasi dengan rumus yang SAMA PERSIS -- ia melewati
+    // normalisasi 'f' yang sama dan skala slip yang sama, jadi memisahkannya
+    // hanya akan membuat dua rumus yang bisa menyimpang diam-diam.
+    float geserMm = _skalaOdo * fminf(2.0f, 1.0f / GAIT_DUTY) * _curX * _prof.stepLength * f * dPhase;
+    _geserMm += geserMm;
+
+    // Panjang lintasan: besar perpindahan, bukan komponennya. Dipakai rem
+    // jarak supaya satu pagar berlaku untuk maju, mundur, dan kepiting.
+    _lintasMm += sqrtf(majuMm * majuMm + geserMm * geserMm);
     // Laju sesaat dari PERTAMBAHAN yang sama, bukan dari menyelisihkan
     // _jarakMm belakangan: rumusnya sudah memuat ramp _curY, penormalan
     // langkah f, dan skala slip -- tiga hal yang mustahil ditebak dari luar.

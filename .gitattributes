@@ -1,0 +1,26 @@
+# AKHIR BARIS: DI DALAM REPO SELALU LF, apa pun setelan mesin yang memakainya.
+#
+# Isi repo ini LF (diukur byte per byte 18 Sep 2026: blob HEAD punya 0 byte
+# 0x0D). Yang ber-CRLF hanya salinan di disk Windows, hasil konversi
+# core.autocrlf=true saat checkout -- dan itu memang tidak apa-apa, karena
+# konversi yang sama mengembalikannya ke LF saat 'git add'.
+#
+# Baris ini ada untuk mesin yang autocrlf-nya MATI. Di sana tidak ada yang
+# menormalkan apa pun, jadi berkas yang disunting di Windows masuk ke commit
+# ber-CRLF -- dan satu commit seperti itu menjadikan seluruh 34 ribu baris
+# firmware "berubah", menenggelamkan tiap perubahan nyata di dalamnya dan
+# membuat penyatuan dengan program-krsri-misi jadi konflik di tiap baris.
+#
+# 'text=auto eol=lf' = git yang memutuskan mana berkas teks, lalu menyimpannya
+# LF di repo. Salinan di disk boleh CRLF; Arduino IDE, MSYS2 g++, dan Python
+# tidak peduli.
+#
+# CATATAN: sempat ditulis '* -text' di sini pada 18 Sep 2026, atas kesimpulan
+# yang salah bahwa repo ini ber-CRLF. Kesimpulan itu datang dari 'grep -c',
+# yang menghitung BARIS yang memuat CR, bukan byte CR -- jadi berkas LF di
+# HEAD yang dibandingkan dengan salinan CRLF di disk sama-sama melapor "90",
+# dan bedanya tidak kelihatan. Yang membuktikannya: 'tr -cd "\r" | wc -c'.
+* text=auto eol=lf
+
+# Gambar: jangan disentuh sama sekali.
+*.png binary

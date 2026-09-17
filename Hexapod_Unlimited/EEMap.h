@@ -24,6 +24,17 @@
 #include <stddef.h>
 #include "config.h"
 #include "Calib.h"
+#include "HexaGait.h"
+
+struct ProfilStore {
+    uint16_t magic;
+    uint8_t version, mask;
+    GaitProfile nilai[6];
+    uint16_t crc;
+};
+static_assert(sizeof(ProfilStore) == 128, "Layout profil EEPROM berubah");
+static_assert(EE_GERAK_ADDR + 80 <= EE_PROFIL_ADDR, "Profil menimpa kalibrasi gerak");
+static_assert(EE_PROFIL_ADDR + sizeof(ProfilStore) <= EE_TOTAL_BYTES, "Profil melebihi EEPROM");
 
 // ------------------------------------------------------------ 1024
 // Ditulis TES_SERVO / SET_HOME. Layout = servo_map.h.
@@ -39,6 +50,31 @@ struct ServoMap {
     int16_t  trim[EE_SM_SLOTS];     // us, koreksi netral per servo
     uint16_t crc;                   // CRC16-CCITT (Calib::crc16)
 };
+
+// NAMA SLOT, urutan sama dengan blob di atas. Disalin dari
+// legacy-2026/KALIBRASI/servo_map.h pada 18 Sep 2026, waktu penyetelan trim
+// pindah ke firmware utama: sesudah sketsa legacy pensiun untuk trim, nama
+// slot butuh SATU pemilik, dan pemiliknya di sebelah struct yang ia namai.
+//
+// Dipakai 'Yt' dan tab trim di HUD. Nomor slotnya yang dikirim lewat serial,
+// bukan namanya -- nama ini untuk mata manusia.
+static const char* const SLOT_NAMA[EE_SM_SLOTS] = {
+    "K0_COXA",  "K0_FEMUR",  "K0_TIBIA",     // Ka-Depan
+    "K1_COXA",  "K1_FEMUR",  "K1_TIBIA",     // Ka-Tengah
+    "K2_COXA",  "K2_FEMUR",  "K2_TIBIA",     // Ka-Belakang
+    "K3_COXA",  "K3_FEMUR",  "K3_TIBIA",     // Ki-Belakang
+    "K4_COXA",  "K4_FEMUR",  "K4_TIBIA",     // Ki-Tengah
+    "K5_COXA",  "K5_FEMUR",  "K5_TIBIA",     // Ki-Depan
+    "ARMR_BASE", "ARMR_SHOULDER", "ARMR_GRIP",
+    "ARML_BASE", "ARML_SHOULDER", "ARML_GRIP"
+};
+
+// BATAS TRIM, mikrodetik. Trim itu koreksi netral, bukan pemetaan: pada
+// 500..2500 us untuk 180 der, 200 us sudah 18 der. Yang menuntut lebih dari
+// itu bukan trim yang kurang, melainkan horn terpasang di gigi yang salah
+// atau invert yang terbalik -- dan menutupinya dengan trim besar membuang
+// setengah jangkauan servo di satu ujung.
+#define TRIM_MAKS_US  200
 
 // ------------------------------------------------------------ 1792
 // Ditulis TES_IMU dan perintah 'e' di firmware.
@@ -94,7 +130,7 @@ static_assert(EE_GERAK_ADDR    + sizeof(GerakStore)  <= EE_TOTAL_BYTES,
               "GerakStore melewati ujung EEPROM Teensy");
 
 // Alamat teratas yang benar-benar dipakai -- untuk cek runtime di bawah.
-#define EE_TERPAKAI_TERATAS (EE_GERAK_ADDR + (uint32_t)sizeof(GerakStore))
+#define EE_TERPAKAI_TERATAS (EE_PROFIL_ADDR + (uint32_t)sizeof(ProfilStore))
 
 // Cetak peta + pastikan chip-nya memang sebesar yang diasumsikan config.h.
 // EE_TOTAL_BYTES hanya dugaan saat kompilasi; EEPROM.length() adalah
@@ -119,6 +155,8 @@ static inline bool eeMapPeriksa(bool cerewet = true) {
                       (unsigned)(EE_GERAK_ADDR + sizeof(GerakStore) - 1), (unsigned)sizeof(GerakStore));
         Serial.printf("  kapasitas chip: %u B, terpakai s/d %u B\n",
                       (unsigned)nyata, (unsigned)EE_TERPAKAI_TERATAS);
+        Serial.printf("  ProfilStore  %d .. %u (%u B), enam profil medan\n", EE_PROFIL_ADDR,
+                      (unsigned)(EE_PROFIL_ADDR + sizeof(ProfilStore) - 1), (unsigned)sizeof(ProfilStore));
     }
 
     if (!ok) {

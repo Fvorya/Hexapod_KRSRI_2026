@@ -57,12 +57,42 @@ public:
     void cetakTabel();             // laporan enam baris (perintah 'l')
     void cetakBaris();             // satu baris ringkas (aliran 'L')
 
+    // ==================================================================
+    // OFFSET JARAK PER SENSOR (cm) -- perintah 'Yd'
+    //
+    // ST mewajibkan kalibrasi OFFSET per modul VL53L1X, dan mengulanginya
+    // begitu ada kaca/akrilik penutup di atasnya. Firmware ini tidak pernah
+    // mengalibrasi satu pun dari keenamnya; yang ada cuma WALL_BIAS_* yang
+    // itu bias SUDUT (selisih bacaan sepasang sensor), BUKAN offset jarak.
+    // Sementara WALL_KAKI_CM 7,0 diturunkan dari satu pengukuran yang
+    // mengasumsikan keenam sensor sepakat.
+    //
+    // Pustaka Pololu tidak mengekspos API kalibrasi ST, jadi jangan tukar
+    // pustaka untuk ini. Versi malasnya cukup: robot menghadap dinding,
+    // ukur dengan meteran, ketik jaraknya.
+    //
+    // RAM SAJA, sengaja. Menyimpannya menuntut baris baru di PARAM_DEFS, dan
+    // itu menaikkan CALIB_VERSION -- membuang seluruh kalibrasi tersimpan
+    // yang sudah disetel di robot. Perilakunya sama dengan 'Ds' dan 'Y0':
+    // diulang tiap robot menyala.
+    // ==================================================================
+    void  setOffset(uint8_t ch, float cm);   // "sensor ch sedang <cm> dari dinding"
+    void  nolkanOffset();
+    void  cetakOffset();
+    float offset(uint8_t ch) const { return (ch < NUM_LIDAR) ? _offset[ch] : 0.0f; }
+
     // Perintah 'I'. Memindai mux + tiap channel, DAN meng-init ulang sensor
     // yang ada di bus tapi belum aktif. begin() hanya jalan sekali saat boot,
     // jadi tanpa ini sensor yang gagal init (mis. modul belum siap saat papan
     // menyala, atau kabel yang baru dibetulkan) tetap mati sampai di-reset --
     // padahal pindaiannya sendiri melaporkan modulnya "ADA".
     void pindaiI2C();
+
+    // UJI PIN, bukan uji bus. Dipanggil lewat 'I1' saat bus mati dan yang
+    // dipertanyakan tinggal pin Teensy-nya sendiri. Tidak memakai peripheral
+    // I2C sama sekali -- murni GPIO, jadi ia menjawab pertanyaan yang tidak
+    // bisa dijawab pindaiI2C().
+    void periksaPinBus();
 
     // JEJAK: kumpulkan statistik mentah satu/semua channel selama beberapa
     // detik, lalu ringkas. Satu cuplikan 'l' tidak bisa membedakan hantu yang
@@ -102,6 +132,10 @@ private:
     // sedangkan WrapTargetFail berarti pantulan dari objek yang terlalu jauh.
     uint16_t _mmAkhir[NUM_LIDAR];
     uint8_t  _statusAkhir[NUM_LIDAR];
+
+    // Offset jarak per sensor, cm, dikurangkan SESUDAH median + EMA selesai --
+    // satu tempat saja, sebelum pembaca mana pun. Lihat catatan di .cpp.
+    float    _offset[NUM_LIDAR] = {0};
 
     // --- akumulator jejak ---
     uint32_t _jejakSampai = 0;        // millis() kapan jendela berakhir (0 = mati)

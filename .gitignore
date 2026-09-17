@@ -32,17 +32,29 @@ test-pc/
 *.onnx
 *.zip
 
-# Salinan basi pohon HUD. Yang HIDUP moses/moses/; yang di tingkat atas
-# snapshot lama yang tertinggal, dan dua pohon dengan nama berkas sama adalah
-# cara pasti menyunting yang salah. Dibiarkan di disk, tidak ikut ke git.
-/moses/*.py
-/moses/*.sh
-/moses/*.md
-/moses/*.bat
-/moses/*.txt
-/moses/arsip/
-/moses/__pycache__/
+# Cache Python -- moses/ dijalankan langsung, .pyc tidak pernah dibutuhkan repo.
+__pycache__/
+*.pyc
+
+# Keadaan perkakas Command Code (settings + taste). Milik mesin ini, bukan repo.
+.commandcode/
+
+# Snapshot pohon lama yang tertinggal di disk. Bukan salinan kerja -- dua pohon
+# dengan nama berkas sama adalah cara pasti menyunting yang salah.
 "Hexapod_Unlimited_v1.17/"
 "Hexapod_Unlimited_v1.17 (2)/"
 "moses v1.19/"
-__pycache__/
+
+# ====================================================================
+# CATATAN 18 Sep 2026 -- aturan '/moses/*.py', '/moses/*.sh', '/moses/*.md',
+# '/moses/*.bat', '/moses/*.txt', dan '/moses/arsip/' DIBUANG dari sini.
+#
+# Aturan itu BENAR untuk tata letak LAMA: yang hidup moses/moses/, sedangkan
+# moses/ di tingkat atas cuma snapshot basi yang tertinggal -- dan mengabaikan
+# snapshot itu memang tepat.
+#
+# Sesudah pohon dirapikan, yang HIDUP justru moses/ DI TINGKAT ATAS. Membiarkan
+# aturan itu berarti setiap berkas HUD yang ditambahkan sesudah ini diabaikan
+# git DIAM-DIAM: berkasnya ada di disk, tidak pernah ikut commit, dan yang
+# terlihat cuma "kok perubahan saya tidak muncul di GitHub".
+# ====================================================================

@@ -6,8 +6,8 @@
 // dua salinan yang bisa menyimpang diam-diam dari program penulisnya.
 
 Hexapod::Hexapod()
-    : _armF(&_servos, ARM_PIN_MAP_DEPAN,    NUM_SERVOS),                      // slot 18,19,20
-      _armB(&_servos, ARM_PIN_MAP_BELAKANG, NUM_SERVOS + ARM_NUM_SERVOS) {   // slot 21,22,23
+    : _armF(&_servos, ARM_PIN_MAP_DEPAN,    ARM_N_DEPAN,    NUM_SERVOS),                 // slot 18,19,20,21
+      _armB(&_servos, ARM_PIN_MAP_BELAKANG, ARM_N_BELAKANG, NUM_SERVOS + ARM_N_DEPAN) { // slot 22
     _roll  = _pitch  = _yaw  = 0.0f;
     _rollT = _pitchT = _yawT = 0.0f;
     _trans = _transT = {0, 0, 0};
@@ -22,6 +22,7 @@ void Hexapod::begin() {
     _gait.begin();
     _armF.begin();
     _armB.begin();
+    muatProfil();
     profileFlat();
 
     loadZOff();
@@ -54,6 +55,214 @@ void Hexapod::loadServoMap() {
     }
     _mapLoaded = true;
     Serial.println("Hexapod: invert & trim dimuat dari ServoMap EEPROM 1024.");
+}
+
+// --- TRIM SERVO ------------------------------------------------------------
+//
+// Ditulis ke blob yang SAMA dengan yang dibaca loadServoMap(), alamat 1024.
+// Bukan ke CalibBlob alamat 0: blob itu juga punya trim[] dan invert[], tapi
+// keduanya MATI -- loadServoMap() menimpanya tiap boot, jadi 'W' yang menyimpan
+// trim ke alamat 0 tidak pernah berpengaruh. Menulis ke dua tempat yang salah
+// satunya diabaikan adalah cara membuat dua angka menyimpang diam-diam.
+
+void Hexapod::setTrim(uint8_t slot, int16_t us) {
+    if (slot >= TOTAL_SERVOS || slot >= EE_SM_SLOTS) {
+        Serial.print("Trim DITOLAK: slot "); Serial.print(slot);
+        Serial.print(" di luar 0.."); Serial.println(EE_SM_SLOTS - 1);
+        return;
+    }
+    if (us > TRIM_MAKS_US)  us =  TRIM_MAKS_US;
+    if (us < -TRIM_MAKS_US) us = -TRIM_MAKS_US;
+    gTrim[slot] = us;
+    Serial.print("Trim "); Serial.print(SLOT_NAMA[slot]);
+    Serial.print(" (slot "); Serial.print(slot);
+    Serial.print(") = "); Serial.print(us);
+    Serial.println(" us -- RAM saja, 'YtW' untuk menyimpan.");
+}
+
+void Hexapod::nolkanTrim() {
+    for (uint8_t i = 0; i < TOTAL_SERVOS && i < EE_SM_SLOTS; i++) gTrim[i] = 0;
+    Serial.println("Seluruh trim DINOLKAN -- RAM saja, 'YtW' untuk menyimpan.");
+}
+
+void Hexapod::cetakTrim() {
+    // AWALAN '#TRIM' TETAP. HUD mencocokkan awalan ini, bukan kalimat penuh,
+    // supaya menyunting teks di bawah tidak diam-diam mematikan tab trimnya.
+    // Pola yang sama dengan '#KORBAN' dan '#LEPAS'.
+    Serial.println("--- TRIM SERVO (us) ---");
+    for (uint8_t i = 0; i < TOTAL_SERVOS && i < EE_SM_SLOTS; i++) {
+        Serial.printf("#TRIM %u %s %u %+d\n",
+                      i, SLOT_NAMA[i], SERVO_INVERT[i], gTrim[i]);
+    }
+    Serial.print("  sumber: ");
+    Serial.println(_mapLoaded ? "EEPROM 1024" : "bawaan Calib (EEPROM 1024 kosong/rusak)");
+    Serial.println("  'Yt<slot> <us>' setel, 'YtW' simpan, 'Yt!' nolkan semua.");
+}
+
+// ====================================================================
+// OFFSET SUDUT, INVERT, DAN zOff -- perintah 'Yo' / 'Yi' / 'Yz'
+// ====================================================================
+
+// Pagar, BUKAN hasil ukur. +-30 der sudah lebih besar daripada meleset datum
+// terparah yang tercatat (lutut +24 der di config.h); yang menuntut lebih dari
+// ini bukan offset yang kurang melainkan panjang link yang salah, dan
+// menutupinya dengan offset besar membuang sudut servo di satu ujung.
+#define OFFSET_MAKS_DER  30.0f
+
+// Pagar, BUKAN hasil ukur. Seluruh offset KAIL yang dipakai cuma 40 mm (depan)
+// dan 42 mm (belakang); yang melewatinya akan di-clamp IK diam-diam.
+#define ZOFF_MAKS_MM     60.0f
+
+void Hexapod::setOffset(uint8_t slot, float der) {
+    if (slot >= TOTAL_SERVOS) {
+        Serial.print("Offset DITOLAK: slot "); Serial.print(slot);
+        Serial.print(" di luar 0.."); Serial.println(TOTAL_SERVOS - 1);
+        return;
+    }
+    if (!isfinite(der)) { Serial.println("Offset DITOLAK: nilai tidak sah."); return; }
+
+    const float minta = der;
+    der = clampf(der, -OFFSET_MAKS_DER, OFFSET_MAKS_DER);
+    gOffset[slot] = der;
+
+    Serial.print("Offset sudut "); Serial.print(SLOT_NAMA[slot]);
+    Serial.print(" (slot "); Serial.print(slot); Serial.print(") = ");
+    Serial.print(der, 1);
+    Serial.println(" der -- RAM saja, 'W' untuk menyimpan (EEPROM 0, BUKAN 'YtW').");
+    if (fabsf(der - minta) > 1e-6f) {
+        Serial.print("  (diminta "); Serial.print(minta, 1);
+        Serial.print(", DI-CLAMP ke +-"); Serial.print(OFFSET_MAKS_DER, 0);
+        Serial.println(" der)");
+    }
+}
+
+void Hexapod::cetakOffset() {
+    // AWALAN '#OFFSET', berkas terpisah dari '#TRIM' dengan sengaja. cetakTrim()
+    // TIDAK disentuh: HUD Raspi mencocokkan awalan '#TRIM' dan jumlah kolomnya,
+    // dan menyelipkan kolom offset di sana akan memecahkan pembacanya di sisi
+    // Raspi tanpa satu pun gejala di robot.
+    Serial.println("--- OFFSET SUDUT SERVO (der, koreksi DATUM sudut) ---");
+    uint8_t terisi = 0;
+    for (uint8_t i = 0; i < TOTAL_SERVOS && i < EE_SM_SLOTS; i++) {
+        if (gOffset[i] != 0.0f) terisi++;
+        Serial.printf("#OFFSET %u %s %+.1f\n", i, SLOT_NAMA[i], (double)gOffset[i]);
+    }
+    Serial.print("  terisi: "); Serial.print(terisi);
+    Serial.print(" dari ");     Serial.print(TOTAL_SERVOS); Serial.println(" slot");
+    Serial.println("  'Yo<slot> <der>' setel | 'W' simpan | 'Yo!' nolkan.");
+    Serial.println("  BEDA dari trim: trim = us (gigi horn), offset = der (datum sudut).");
+}
+
+void Hexapod::nolkanOffset() {
+    for (uint8_t i = 0; i < TOTAL_SERVOS; i++) gOffset[i] = 0.0f;
+    Serial.println("Seluruh offset sudut DINOLKAN -- RAM saja, 'W' untuk menyimpan.");
+}
+
+bool Hexapod::setInvert(uint8_t slot, uint8_t on) {
+    // DITOLAK selagi servo hidup. Membalik satu kanal menggeser servo itu
+    // hampir 180 der SEKETIKA, tanpa ramp apa pun -- kelas bahaya yang sama
+    // persis dengan 'Qpulse.min' yang bertanda P_SERVO_LEMAS.
+    if (_servos.isEnabled()) {
+        Serial.println("Ditolak: membalik invert menggeser servo hampir 180 der tanpa ramp.");
+        Serial.println("        Ketik 'x' (lemas) dulu, ubah, lalu 'b' lagi.");
+        return false;
+    }
+    if (slot >= TOTAL_SERVOS || slot >= EE_SM_SLOTS) {
+        Serial.print("Invert DITOLAK: slot "); Serial.print(slot);
+        Serial.print(" di luar 0.."); Serial.println(EE_SM_SLOTS - 1);
+        return false;
+    }
+    const uint8_t baru = on ? 1 : 0;
+    if (gInvert[slot] == baru) {
+        Serial.print(SLOT_NAMA[slot]); Serial.print(" (slot "); Serial.print(slot);
+        Serial.println(") sudah begitu -- tidak ada yang diubah.");
+        return true;
+    }
+    gInvert[slot] = baru;
+    Serial.print("Invert "); Serial.print(SLOT_NAMA[slot]);
+    Serial.print(" (slot "); Serial.print(slot); Serial.print(") = ");
+    Serial.println(baru ? "1 (arah DIBALIK)" : "0 (arah normal)");
+    // Tampilan dan penyimpanan gratis: gInvert[] sudah ikut cetakTrim() dan
+    // sudah ikut simpanServoMap(), jadi tombol simpannya 'YtW' -- BUKAN 'W'.
+    Serial.println("  RAM saja, 'YtW' untuk menyimpan (EEPROM 1024, BUKAN 'W').");
+    return true;
+}
+
+bool Hexapod::setZOff(uint8_t leg, float mm) {
+    if (leg > 5)       { Serial.println("zOff DITOLAK: kaki 0..5."); return false; }
+    if (!isfinite(mm)) { Serial.println("zOff DITOLAK: nilai tidak sah."); return false; }
+
+    const float minta = mm;
+    mm = clampf(mm, -ZOFF_MAKS_MM, ZOFF_MAKS_MM);
+
+    // BACA DULU, baru timpa satu field. Blok 2048 MILIK TES_GERAK: lvlR/lvlP,
+    // refR/refP dan jac[4] di dalamnya hanya bisa didapat dengan menjalankan
+    // sketsa itu, dan menulis nol ke sana membuangnya untuk selama-lamanya.
+    GerakStore s;
+    EEPROM.get(EE_GERAK_ADDR, s);
+    const bool sah = (s.m0 == 0x6E && s.m1 == 0x2C && s.ver == 2 &&
+                      s.sum == eeSum(&s, offsetof(GerakStore, sum)));
+    if (!sah) {
+        memset(&s, 0, sizeof(s));
+        s.m0 = 0x6E; s.m1 = 0x2C; s.ver = 2;
+        Serial.println("zOff: blok EEPROM 2048 belum sah -> dibuat baru (rata badan & jac = 0).");
+    }
+
+    s.zoff[leg] = mm;
+    s.sum = eeSum(&s, offsetof(GerakStore, sum));
+    EEPROM.put(EE_GERAK_ADDR, s);
+    loadZOff();      // segarkan _zOff[] dari yang barusan ditulis (sekalian memverifikasi)
+
+    Serial.print("zOff kaki "); Serial.print(leg); Serial.print(" = ");
+    Serial.print(mm, 1); Serial.println(" mm -- tersimpan di EEPROM 2048.");
+    if (fabsf(mm - minta) > 1e-6f) {
+        Serial.print("  (diminta "); Serial.print(minta, 1);
+        Serial.print(", DI-CLAMP ke +-"); Serial.print(ZOFF_MAKS_MM, 0);
+        Serial.println(" mm)");
+    }
+    return true;
+}
+
+bool Hexapod::simpanServoMap() {
+    // BACA DULU, baru timpa. drv[] dan ch[] adalah hasil pemetaan TES_SERVO --
+    // firmware ini tidak pernah memakainya (penomoran drivernya kebalikan dari
+    // HexaServos) tapi sketsa legacy masih, dan menulis nol ke sana membuang
+    // pemetaan yang cuma bisa didapat dengan menelusuri servo satu per satu.
+    ServoMap m;
+    EEPROM.get(EE_SERVOMAP_ADDR, m);
+
+    uint16_t want = Calib::crc16((const uint8_t*)&m, offsetof(ServoMap, crc));
+    if (m.magic[0] != 'S' || m.magic[1] != 'M' || m.version != 1 || m.crc != want) {
+        // Blob belum ada: mulai dari kosong, dan tandai drv/ch BELUM DIPETAKAN
+        // (-1) alih-alih 0 -- 0 adalah driver yang sah, dan menulisnya berarti
+        // berbohong kepada sketsa legacy bahwa pemetaan sudah dikerjakan.
+        Serial.println("ServoMap EEPROM 1024 kosong/rusak -> blob BARU dibuat.");
+        Serial.println("  drv/ch ditandai BELUM DIPETAKAN -- jalankan TES_SERVO kalau perlu.");
+        m.magic[0] = 'S'; m.magic[1] = 'M'; m.version = 1;
+        for (uint8_t i = 0; i < EE_SM_SLOTS; i++) { m.drv[i] = -1; m.ch[i] = -1; }
+    }
+
+    for (uint8_t i = 0; i < TOTAL_SERVOS && i < EE_SM_SLOTS; i++) {
+        m.trim[i]   = gTrim[i];
+        m.invert[i] = gInvert[i];
+    }
+    m.crc = Calib::crc16((const uint8_t*)&m, offsetof(ServoMap, crc));
+    EEPROM.put(EE_SERVOMAP_ADDR, m);
+
+    // BACA BALIK. EEPROM Teensy 4.1 itu emulasi di flash, dan tulisan yang
+    // gagal tidak melapor. Tanpa baca balik, "tersimpan" cuma berarti
+    // "perintahnya dikirim" -- dan yang dipertaruhkan di sini kalibrasi yang
+    // baru saja dikerjakan dengan tangan.
+    ServoMap cek;
+    EEPROM.get(EE_SERVOMAP_ADDR, cek);
+    uint16_t cekCrc = Calib::crc16((const uint8_t*)&cek, offsetof(ServoMap, crc));
+    if (cek.crc != cekCrc || cek.crc != m.crc) {
+        Serial.println("GAGAL menyimpan ServoMap: baca balik tidak cocok.");
+        return false;
+    }
+    _mapLoaded = true;
+    Serial.println("Trim TERSIMPAN ke EEPROM 1024 -- bertahan sesudah reset.");
+    return true;
 }
 
 void Hexapod::loadZOff() {
@@ -175,7 +384,7 @@ void Hexapod::slewBodyPose() {
     dt = clampf(dt, 0.0f, 0.05f);
 
     const float dRot = deg2rad(BODY_SLEW_DEG_S) * dt;
-    const float dMm  = BODY_SLEW_MM_S * dt;
+    const float dMm  = _bodySlewMm * dt;
 
     _roll    = rayap(_roll,    _rollT,    dRot);
     _pitch   = rayap(_pitch,   _pitchT,   dRot);
@@ -200,12 +409,12 @@ void Hexapod::jog(uint8_t tuneId, uint16_t pulseUs) {
 
 void Hexapod::profileFlat() {
     // 0 DATAR: { 40, 60, 900, 100, 70 } -> Sesuai konstanta dasar
-    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT, STAND_RADIUS });
+    pasangProfil({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME, STAND_HEIGHT, STAND_RADIUS }, 0);
 }
 
 void Hexapod::profileStairs() {
-    // 1 TANGGA: { 75, 70, 1300, 115, 70 }
-    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+400), Tinggi Badan(+15)
+    // 1 TANGGA: { 75, 70, 1100, 115, 70 }
+    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+200), Tinggi Badan(+15)
     //
     // Badan +10 -> +25 sesudah trial di lantai pecah (sasis mengandas), lalu
     // DITURUNKAN ke +15 di robot: 125 mm terlalu tinggi untuk dipakai.
@@ -214,14 +423,16 @@ void Hexapod::profileStairs() {
     // tegaknya sqrt(170^2 - 50^2) = 162 mm. Perintah 'b<mm>' pun membolehkan
     // sampai 160.
     //
-    // Siklus +900 -> +400 sesudah trial: 1800 ms berarti badan maju 140 mm
-    // per 1,8 detik = 7,8 cm/detik, hampir separuh laju profil DATAR, dan itu
-    // terasa sangat lambat di arena. 1300 ms memberi 10,8 cm/detik.
+    // Siklus +900 -> +400 -> +200 sesudah trial berturut-turut. Badan maju
+    // 2 x stepLength = 140 mm per siklus, jadi angkanya langsung jadi laju:
+    // 1800 ms = 7,8 cm/detik (hampir separuh profil DATAR, terasa sangat
+    // lambat di arena), 1300 ms = 10,8, dan 1100 ms yang berlaku sekarang
+    // = 12,7 cm/detik.
     //
     // Kalau ternyata terlalu cepat sehingga kaki menyangkut bibir ubin,
-    // setel dasarnya: 'Qgait.cycle_time 1100' lalu 'T1' -> 1500 ms.
-    _gait.setProfile({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 10.0f,
-                       GAIT_CYCLE_TIME + 400.0f, STAND_HEIGHT + 15.0f, STAND_RADIUS });
+    // setel dasarnya: 'Qgait.cycle_time 1300' lalu 'T1' -> 1500 ms.
+    pasangProfil({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 10.0f,
+                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT + 15.0f, STAND_RADIUS }, 1);
 }
 
 void Hexapod::profileCrouch() {
@@ -244,15 +455,252 @@ void Hexapod::profileCrouch() {
     // bawahnya bertambah -- itu yang dibutuhkan di PUNCAK turunan, saat kaki
     // depan melangkah ke tanah yang jatuh sementara kaki belakang masih di
     // lantai datar.
-    _gait.setProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 15.0f, 
-                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT - 20.0f, STAND_RADIUS });
+    pasangProfil({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 15.0f, 
+                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT - 20.0f, STAND_RADIUS }, 2);
+}
+
+// 4 KAIL -- SEMENTARA DISEDERHANAKAN (15 Sep 2026, permintaan Vincent).
+// Dasarnya sekarang DATAR (T0) + satu kemiringan badan, titik. Yang dibuang:
+// stance dipersempit ke 60, kaki depan maju, kaki belakang diputar lurus ke
+// belakang, kaki tengah didorong keluar, tinggi badan 100 milik KAIL, dan
+// lutut depan dibekukan.
+//
+// Yang tersisa cuma yang diminta: badan BELAKANG NAIK, badan DEPAN TURUN.
+// Lewat offset z per kaki, karena computeHome() menulis satu z = -standHeight
+// untuk keenam kaki dan satu angka tidak bisa berarti dua tinggi sekaligus.
+//
+//   +z = kaki NAIK                -> badan di sisi itu TURUN
+//   -z = kaki MEMANJANG KE BAWAH  -> badan di sisi itu NAIK
+//
+// Kaki tengah sengaja tidak diubah: merekalah sumbu miringnya.
+//
+// Jangkauan aman pada STAND_RADIUS 70 dan STAND_HEIGHT 100: kaki belakang
+// boleh memanjang 47 mm (dipakai 42) dan kaki depan boleh mengait 75 mm
+// (dipakai 40). Kedua batas itu diukur cek_kail.cpp. Naikkan salah satu knop
+// melewati batasnya dan IK mentok -- ukur ulang di robot dulu.
+//
+// Sisa konstanta KAIL_* di config.h SENGAJA dibiarkan di tempatnya. Nilainya
+// hasil ukur, dan memulihkan profil lama nanti cuma perlu menulis ulang
+// fungsi ini.
+void Hexapod::profileKail() {
+    // DASAR T0, tapi DITULIS SENDIRI, bukan lewat profileFlat(). Bedanya cuma
+    // satu kolom: siklusnya milik KAIL, supaya laju R-9 bisa disetel tanpa
+    // ikut mengubah seluruh misi. Empat kolom lain memakai konstanta yang
+    // sama persis dengan profileFlat(), jadi keduanya tetap bergerak bersama
+    // kalau dasarnya disetel.
+    pasangProfil({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH,
+                   GAIT_CYCLE_TIME + KAIL_CYCLE_TAMBAH_MS,
+                   STAND_HEIGHT, STAND_RADIUS }, 4);
+
+    Vec3 off[6] = {};
+    off[0] = off[5] = { 0.0f, 0.0f,  KAIL_DEPAN_NAIK     };  // depan: badan TURUN
+    off[2] = off[3] = { 0.0f, 0.0f, -KAIL_BELAKANG_TURUN };  // belakang: badan NAIK
+    _gait.setOffsetKaki(off);        // WAJIB sesudah pasangProfil():
+                                     // setProfile() menghapus offset.
+}
+
+// PROFIL TANJAK -- R-9, versi lambat yang kaki depannya BENAR-BENAR maju.
+//
+// Ia menjawab satu laporan arena: kaki depan berhasil naik ke anak tangga
+// berikutnya KURANG DARI 50% per langkah, sementara robot yang berdiri DIAM
+// di tanjakan itu tidak merosot sesenti pun. Berdiri diam yang mantap berarti
+// gesekannya cukup dan margin jungkirnya cukup -- yang gagal AYUNANnya, bukan
+// tumpuannya. Karena itu ketiga perubahan di bawah semuanya soal ayunan.
+//
+// 1. TINGGI LANGKAH 40 -> 75 mm. profileKail() memakai tinggi langkah DATAR
+//    (dulu lewat profileFlat(), sejak 17 Sep 2026 lewat GAIT_STEP_HEIGHT
+//    langsung -- yang berubah cuma siklusnya) sebagai
+//    dasar, jadi selama ini kaki depan cuma terangkat setinggi langkah DATAR
+//    -- di bawah tinggi banyak anak tangga. Telapak yang tidak melewati muka
+//    anak tangga menendang mukanya, dan "kadang naik kadang tidak" adalah
+//    bentuk yang diharapkan dari kaki yang tingginya pas-pasan. 75 mm angka
+//    milik TANGGA, satu-satunya tinggi langkah di firmware ini yang sudah
+//    terbukti menaiki anak tangga.
+//
+// 2. SIKLUS 900 -> 1300 ms, langkah 60 -> 45 mm. Badan yang masih berayun
+//    saat telapak mendarat memindahkan momentumnya ke kaki yang tumpuannya
+//    paling tipis, dan di tanjakan itu selalu kaki depan.
+//
+// 3. GEOMETRI KAKI PENUH, DIAMBIL DARI program-krsri-misi. profileKail() di
+//    pohon ini sengaja disederhanakan jadi offset z saja (lihat catatan di
+//    atasnya), jadi tujuh konstanta KAIL_* berdiri di config.h tanpa ada yang
+//    membacanya. Yang paling mahal hilangnya:
+//
+//    - KAKI BELAKANG DIPUTAR LURUS KE BELAKANG. Langkah gait searah +-y, jadi
+//      begitu telapak belakang duduk di garis x lokal = 0 seluruh stroke jadi
+//      RADIAL dan coxa berhenti mengayuh: 41,5 -> 0,0 der per siklus, diukur.
+//      Coxa yang mengayuh sambil telapak menahan badan yang mendongak berarti
+//      telapak DISERET MENYAMPING. IK tidak pernah melaporkannya, karena IK
+//      cuma tahu posisi, bukan gesekan.
+//    - KAKI DEPAN MAJU 60 mm, menaruh telapak lebih dalam di TAPAK anak tangga
+//      alih-alih di bibirnya.
+//    - STANCE DIPERSEMPIT 70 -> 60 mm (KAIL_RADIUS_KAKI), yang justru
+//      MEMBEBASKAN jangkauan: belakang boleh memanjang sampai 52 mm (dari 47)
+//      dan depan mengait sampai 85 mm (dari 75) sebelum IK mentok.
+//
+//    Harga stance sempit: poligon tumpuan menyempit, jadi lebih mudah oleng
+//    MENYAMPING di bidang 27,3 der. Kalau robot mulai goyang kiri-kanan di
+//    tangga, KAIL_RADIUS_KAKI tersangka pertamanya.
+//
+// Pitch-nya SENGAJA sama dengan KAIL: depan +40 dan belakang -42 memberi
+// atan(82/156) = 27,7 der. config.h:547 memperingatkan bahwa melewati 27,3 der
+// membuat badan MENUNDUK di tanjakan sehingga telapak depan menekan tegak
+// lurus ke muka anak tangga alih-alih mengait tapaknya -- persis gejala yang
+// sedang diperbaiki di sini.
+//
+// LUTUT DEPAN TIDAK DIKUNCI di sini, walau program-krsri-misi menguncinya.
+// Kunci lutut membuang komponen radial lintasan ayun, dan yang sedang dibeli
+// di profil ini justru tinggi ayunan itu. Kalau telapak depan ternyata
+// MENGGARUK tapak (bukan gagal naik), itu knop berikutnya: pasang
+// _lututKunci = (1 << 0) | (1 << 5) tepat sebelum kurung tutup.
+void Hexapod::profileTanjak() {
+    pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH - 15.0f,
+                   GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI }, 5);
+
+    // Telapak belakang diputar ke -y pada radius yang SAMA, jadi jangkauan D
+    // tidak berubah sedikit pun -- yang berubah cuma arahnya.
+    const float aBlk = deg2rad(BODY_LEG_ANGLE[2]);
+    const float blkX = KAIL_RADIUS_KAKI * (0.0f - cosf(aBlk)) + KAIL_BELAKANG_LEBAR;
+    const float blkY = KAIL_RADIUS_KAKI * (-1.0f - sinf(aBlk)) - KAIL_BELAKANG_MUNDUR;
+
+    // Kaki tengah: radius dan SUDUT, bukan geseran x. Memutar pada radius
+    // tetap membuat jangkauan IK-nya juga tidak berubah.
+    const float rTgh = KAIL_RADIUS_KAKI + KAIL_TENGAH_KELUAR;
+    const float tghX = rTgh * cosf(deg2rad(KAIL_TENGAH_SUDUT)) - KAIL_RADIUS_KAKI;
+    const float tghY = rTgh * sinf(deg2rad(KAIL_TENGAH_SUDUT));
+
+    Vec3 off[6] = {};
+    off[0] = off[5] = { 0.0f, KAIL_DEPAN_MAJU, KAIL_DEPAN_NAIK };
+    off[1] = {  tghX, tghY, 0.0f };
+    off[4] = { -tghX, tghY, 0.0f };                   // cermin kaki 1
+    off[2] = {  blkX, blkY, -KAIL_BELAKANG_TURUN };
+    off[3] = { -blkX, blkY, -KAIL_BELAKANG_TURUN };   // cermin kaki 2
+    _gait.setOffsetKaki(off);        // WAJIB sesudah pasangProfil():
+                                     // setProfile() menghapus offset.
 }
 
 void Hexapod::profileNarrow() {
     // 3 SEMPIT: { 30, 45, 1000, 100, 45 }
     // Perubahan: Tinggi(-10), Langkah(-15), Siklus(+100), Lebar Kaki(-25)
-    _gait.setProfile({ GAIT_STEP_HEIGHT - 10.0f, GAIT_STEP_LENGTH - 15.0f, 
-                       GAIT_CYCLE_TIME + 100.0f, STAND_HEIGHT, STAND_RADIUS - 25.0f });
+    pasangProfil({ GAIT_STEP_HEIGHT - 10.0f, GAIT_STEP_LENGTH - 15.0f, 
+                       GAIT_CYCLE_TIME + 100.0f, STAND_HEIGHT, STAND_RADIUS - 25.0f }, 3);
+}
+
+// RENTANG SAH TIAP KOLOM PROFIL -- satu tempat.
+//
+// Dulu batas ini ditulis sebagai rangkaian perbandingan di dalam profilSah(),
+// dan perintah 'Th'/'Tl'/... butuh ANGKA YANG SAMA untuk pesan penolakannya.
+// Dua salinan angka yang sama adalah persis cara pemeriksa dan pesannya
+// menyimpang diam-diam -- kelas bug yang sudah berkali-kali menggigit di
+// firmware ini. Sekarang keduanya membaca tabel ini.
+//
+// Urutannya WAJIB sama dengan HexaGait::KolomProfil.
+static const struct { float lo, hi; } KOL_BATAS[HexaGait::N_KOL_PROFIL] = {
+    {   0.0f,  120.0f },   // tinggi langkah, mm
+    {   0.0f,  150.0f },   // panjang langkah, mm
+    { 300.0f, 3000.0f },   // waktu siklus, ms
+    {  40.0f,  160.0f },   // tinggi badan, mm
+    {  30.0f,  120.0f },   // radius kaki, mm
+};
+
+static const char* const KOL_NAMA[HexaGait::N_KOL_PROFIL] = {
+    "tinggi langkah", "panjang langkah", "waktu siklus", "tinggi badan", "radius kaki"
+};
+
+static bool profilSah(const GaitProfile& p) {
+    const float v[HexaGait::N_KOL_PROFIL] = {
+        p.stepHeight, p.stepLength, p.cycleTime, p.standHeight, p.standRadius
+    };
+    for (uint8_t i = 0; i < HexaGait::N_KOL_PROFIL; i++) {
+        if (!isfinite(v[i]) || v[i] < KOL_BATAS[i].lo || v[i] > KOL_BATAS[i].hi)
+            return false;
+    }
+    return true;
+}
+
+// 'Th' / 'Tl' / 'Tc' / 'Tr' / 'Tb'. Lihat HexaGait::setKolomProfil() untuk
+// kenapa ini BUKAN pemasangan profil.
+bool Hexapod::setKolomProfil(uint8_t kolom, float nilai) {
+    if (kolom >= HexaGait::N_KOL_PROFIL) {
+        Serial.println("Kolom profil tidak dikenal.");
+        return false;
+    }
+    if (!isfinite(nilai) || nilai < KOL_BATAS[kolom].lo || nilai > KOL_BATAS[kolom].hi) {
+        Serial.print("DITOLAK: '"); Serial.print(KOL_NAMA[kolom]);
+        Serial.print("' = "); Serial.print(nilai, 1);
+        Serial.print(" di luar rentang sah "); Serial.print(KOL_BATAS[kolom].lo, 0);
+        Serial.print(" .. "); Serial.print(KOL_BATAS[kolom].hi, 0); Serial.println(".");
+        return false;
+    }
+    if (!_gait.setKolomProfil(kolom, nilai)) return false;
+
+    // Profil tersimpan TIDAK ditandai di sini. Yang menandai 'TW'
+    // (simpanProfil()), dan ia sudah membaca targetProfile() -- jadi
+    // penyetelan ini ikut tersimpan tanpa jalur kedua.
+    Serial.print(KOL_NAMA[kolom]); Serial.print(" -> ");
+    Serial.print(nilai, 1); Serial.println(" (di-ramp; offset kaki TIDAK dihapus)");
+    return true;
+}
+
+void Hexapod::pilihProfil(uint8_t id) {
+    switch (id) {
+        case 0: profileFlat(); break;
+        case 1: profileStairs(); break;
+        case 2: profileCrouch(); break;
+        case 3: profileNarrow(); break;
+        case 4: profileKail(); break;
+        case 5: profileTanjak(); break;
+    }
+}
+
+bool Hexapod::ubahProfil(uint8_t id, const GaitProfile& p) {
+    if (id >= 6 || !profilSah(p)) return false;
+    _profil.nilai[id] = p;
+    _profil.mask |= 1 << id;
+    pilihProfil(id);
+    return true;
+}
+
+void Hexapod::resetProfil(uint8_t id) {
+    if (id >= 6) return;
+    _profil.mask &= ~(1 << id);
+    pilihProfil(id);
+}
+
+bool Hexapod::muatProfil() {
+    ProfilStore p;
+    EEPROM.get(EE_PROFIL_ADDR, p);
+    if (p.magic != 0x4850 || p.version != 1 || p.mask > 63 ||
+        p.crc != Calib::crc16((const uint8_t*)&p, offsetof(ProfilStore, crc))) return false;
+    for (int i = 0; i < 6; ++i)
+        if ((p.mask & (1 << i)) && !profilSah(p.nilai[i])) return false;
+    _profil = p;
+    if (_profilId >= 0) pilihProfil(_profilId);
+    return true;
+}
+
+bool Hexapod::simpanProfil() {
+    if (_profilId >= 0) {
+        const GaitProfile p = _gait.targetProfile();
+        if (!profilSah(p)) return false;
+        _profil.nilai[_profilId] = p;
+        _profil.mask |= 1 << _profilId;
+    }
+    _profil.magic = 0x4850;
+    _profil.version = 1;
+    _profil.crc = Calib::crc16((const uint8_t*)&_profil, offsetof(ProfilStore, crc));
+    EEPROM.put(EE_PROFIL_ADDR, _profil);
+    ProfilStore cek;
+    EEPROM.get(EE_PROFIL_ADDR, cek);
+    return memcmp(&cek, &_profil, sizeof cek) == 0;
+}
+
+void Hexapod::cetakProfil() const {
+    const GaitProfile p = _gait.targetProfile();
+    Serial.printf("#PROFIL %d %.2f %.2f %.2f %.2f %.2f %u\n", _profilId,
+                  p.stepHeight, p.stepLength, p.cycleTime, p.standHeight, p.standRadius,
+                  (unsigned)_profil.mask);
+    Serial.printf("#SERVO %d\n", isArmed() ? 1 : 0);
 }
 
 // geoAngle (derajat) -> pulse, dengan kalibrasi per-servo.
@@ -276,13 +724,18 @@ uint16_t Hexapod::angleToPulse(uint8_t id, float geoAngleDeg, float baseline) {
     return (uint16_t)constrain(pulse, SERVO_PULSE_MIN, SERVO_PULSE_MAX);
 }
 
-// Lengan = BAHU, SIKU, GRIP (2 DOF planar + penjepit), dipasang DEPAN dan
-// BELAKANG badan. Keduanya menyapu bidang VERTIKAL yang menghadap keluar
-// dari badan; tidak ada sendi pemutar di pangkal, jadi untuk membidik objek
-// yang tidak segaris, BADAN robot yang harus diarahkan. Karena itu IK 2 link
-// di ArmInverse memang bentuk yang tepat.
+// HANYA LENGAN DEPAN yang bisa menjangkau. Ia BAHU, SIKU, PERGELANGAN, GRIP:
+// bahu+siku menyapu bidang VERTIKAL yang menghadap keluar badan, dan karena
+// tidak ada sendi pemutar di pangkal, untuk membidik objek yang tidak segaris
+// BADAN robot yang harus diarahkan. Karena itu IK 2 link di ArmInverse memang
+// bentuk yang tepat -- PERGELANGAN sengaja di luar IK, ia sudut ketiga yang
+// disetel sendiri lewat setPergelangan().
 //
-// Slot kalibrasi: depan 18=bahu 19=siku 20=grip, belakang 21/22/23.
+// LENGAN BELAKANG cuma grip. Tidak ada yang bisa dijangkau, jadi fungsi ini
+// MENOLAK -- letak capit belakang ditentukan letak badan, bukan sudut sendi.
+//
+// Slot kalibrasi: depan 18=bahu 19=siku 20=pergelangan 21=grip, belakang
+// 22=grip. Slot 23 dialokasikan tapi tidak terpakai.
 // (SLOT_NAME[] di legacy TES_GERAK/servo_map.h masih menulis "BASE" untuk
 //  slot pertama dan menamai lengan "R"/"L" -- label itu USANG.)
 //
@@ -290,7 +743,7 @@ uint16_t Hexapod::angleToPulse(uint8_t id, float geoAngleDeg, float baseline) {
 // di sini. Versi lama mengurangkan ARM_ORIGINS[0][0] -- offset ke SAMPING --
 // dari koordinat jangkauan, dua sumbu yang berbeda.
 bool Hexapod::moveArmTarget(uint8_t arm, float jangkauan, float tinggi) {
-    if (arm > 1) return false;
+    if (arm != ARM_DEPAN) return false;   // belakang tidak punya sendi
     HexaArm* a = (arm == ARM_DEPAN) ? &_armF : &_armB;
 
     // fabsf: lengan belakang punya origin -Y, tapi "jangkauan" untuk kedua
@@ -301,8 +754,84 @@ bool Hexapod::moveArmTarget(uint8_t arm, float jangkauan, float tinggi) {
     float bahuDeg = 0.0f, sikuDeg = 0.0f;
     if (!ArmInverse::solve(lokalX, lokalY, bahuDeg, sikuDeg)) return false;
 
-    a->setArmPulse(0, a->angleToPulse(0, bahuDeg, 90.0f));
-    a->setArmPulse(1, a->angleToPulse(1, sikuDeg, 90.0f));
+    a->setArmPulse(ARM_ID_BAHU, a->angleToPulse(ARM_ID_BAHU, bahuDeg, ARM_BASE_BAHU));
+    // BASELINE SIKU 0, BUKAN 90 SEPERTI BAHU. Keduanya bukan sudut sejenis:
+    // bahuDeg bertanda, berayun di sekitar 0, jadi baseline 90 menaruhnya di
+    // tengah rentang servo. sikuDeg adalah sudut DALAM dari acos -- selalu
+    // 0..180, tidak pernah negatif. Dengan baseline 90 ia jadi 90..270 dan
+    // clampf() di angleToPulse() memakan segala yang di atas 180 -- DIAM-DIAM,
+    // tanpa penanda seperti _servoClamped milik kaki. Diukur di cek_lengan:
+    // dua pertiga jangkauan lengan (r < 31 mm dari bahu) hilang begitu saja.
+    //
+    // Kalau siku ternyata berputar ke arah yang salah, JANGAN membalik ke
+    // baseline 90 + invert: itu cuma mencerminkan clamp-nya ke ujung bawah.
+    // Pasangannya yang benar adalah baseline 180 + invert slot 19 -- 180-siku
+    // juga menempati 0..180 penuh, cuma berlawanan arah.
+    a->setArmPulse(ARM_ID_SIKU, a->angleToPulse(ARM_ID_SIKU, sikuDeg, ARM_BASE_SIKU));
+    return true;
+}
+
+// Target di TITIK CAPIT dengan tapak dijaga MENDATAR. Lihat Hexapod.h.
+bool Hexapod::moveArmGrip(uint8_t arm, float jangkauan, float tinggi, float tapakDeg) {
+    if (arm != ARM_DEPAN) return false;   // belakang tidak punya sendi
+
+    // Titik PERGELANGAN = titik capit dikurangi satu tapak, searah tapak.
+    const float t   = deg2rad(tapakDeg);
+    const float pjk = jangkauan - HAND_LENGTH * cosf(t);
+    const float ptg = tinggi    - HAND_LENGTH * sinf(t);
+
+    float bahuDeg = 0.0f, sikuDeg = 0.0f;
+    if (!ArmInverse::solve(pjk - fabsf(ARM_ORIGINS[arm][1]),
+                           ptg - ARM_ORIGINS[arm][2], bahuDeg, sikuDeg)) return false;
+
+    // Sudut tapak = jumlah SEMUA putaran sendi dari badan. bahuDeg diukur dari
+    // mendatar-ke-depan dan sikuDeg adalah putaran lengan bawah terhadap
+    // lengan atas (0 = lurus), jadi sisanya milik pergelangan.
+    const float prgDeg = tapakDeg - (bahuDeg + sikuDeg);
+    if (fabsf(prgDeg) > 90.0f) return false;
+
+    // Sudut servo di luar 0..180 = ter-clamp diam-diam di angleToPulse().
+    const float bahuServo = ARM_BASE_BAHU + bahuDeg;
+    const float sikuServo = ARM_BASE_SIKU + sikuDeg;
+    if (bahuServo < 0.0f || bahuServo > 180.0f) return false;
+    if (sikuServo < 0.0f || sikuServo > 180.0f) return false;
+
+    moveArmTarget(arm, pjk, ptg);   // menghitung ulang IK yang sama; murah,
+    setPergelangan(arm, prgDeg);    // dan pulsa tetap lahir di satu tempat
+    return true;
+}
+
+// PERGELANGAN: sudut ketiga lengan depan, disetel sendiri dan TIDAK ikut IK.
+// Sudut geometris terhadap baseline 90 der, sama seperti bahu/siku, jadi
+// offset/trim/invert slot 20 berlaku lewat jalur yang sama.
+bool Hexapod::setSudutLengan(uint8_t arm, float bahuDeg, float sikuDeg,
+                             float prgDeg, float* servoOut) {
+    if (arm != ARM_DEPAN) return false;    // belakang cuma grip
+
+    const uint8_t id[3]   = { ARM_ID_BAHU, ARM_ID_SIKU, ARM_ID_PERGELANGAN };
+    const float   base[3] = { ARM_BASE_BAHU, ARM_BASE_SIKU, ARM_BASE_PERGELANGAN };
+    const float   geo[3]  = { bahuDeg, sikuDeg, prgDeg };
+
+    bool sanggup = true;
+    for (uint8_t i = 0; i < 3; i++) {
+        const float sv = _armF.sudutServo(id[i], geo[i], base[i]);
+        if (servoOut) servoOut[i] = sv;
+        if (sv < 0.0f || sv > 180.0f) sanggup = false;
+        _armF.setArmPulse(id[i], _armF.angleToPulse(id[i], geo[i], base[i]));
+    }
+    return sanggup;
+}
+
+void Hexapod::setSlewLengan(uint8_t arm, float degS) {
+    if (arm > 1) return;
+    ((arm == ARM_DEPAN) ? _armF : _armB).setSlew(degS);
+}
+
+bool Hexapod::setPergelangan(uint8_t arm, float deg) {
+    if (arm != ARM_DEPAN) return false;   // belakang tidak punya pergelangan
+    deg = clampf(deg, -90.0f, 90.0f);
+    _armF.setArmPulse(ARM_ID_PERGELANGAN,
+                      _armF.angleToPulse(ARM_ID_PERGELANGAN, deg, ARM_BASE_PERGELANGAN));
     return true;
 }
 
@@ -311,9 +840,10 @@ bool Hexapod::moveArmTarget(uint8_t arm, float jangkauan, float tinggi) {
 bool Hexapod::setGrip(uint8_t arm, float persen) {
     if (arm > 1) return false;
     HexaArm* a = (arm == ARM_DEPAN) ? &_armF : &_armB;
-    persen = clampf(persen, 0.0f, 100.0f);
+    persen = clampf(persen, GRIP_PERSEN_MIN, GRIP_PERSEN_MAKS);   // MG90S, lihat config.h
     float geo = persen / 100.0f * 180.0f - 90.0f;   // baseline 90 der
-    a->setArmPulse(2, a->angleToPulse(2, geo, 90.0f));
+    const uint8_t id = gripId(arm);                 // depan 3, belakang 0
+    a->setArmPulse(id, a->angleToPulse(id, geo, ARM_BASE_GRIP));
     return true;
 }
 
@@ -378,16 +908,95 @@ void Hexapod::debugDump() {
             _servos.targetPulse(c), _servos.targetPulse(f), _servos.targetPulse(t),
             ok ? "ok" : "CLAMP");
     }
+
+    // --- LENGAN ---------------------------------------------------
+    // Satu-satunya cara melihat invert & trim lengan dari serial: keduanya
+    // datang dari ServoMap EEPROM 1024, bukan dari parameter 'Q' yang bisa
+    // dibaca 'q'. "basis" adalah baseline yang dipakai angleToPulse() --
+    // dicetak karena dialah yang menentukan bagian mana dari 0..180 der
+    // servo yang terpakai, dan dia tidak muncul di mana pun selain sini.
+    Serial.printf("\nlengan pulse (us) : %u .. %u\n",
+                  SERVO_ARM_PULSE_MIN, SERVO_ARM_PULSE_MAX);
+    Serial.printf("slew lengan       : %.0f der/detik\n", (double)ARM_SLEW_DEG_S);
+    Serial.println("sendi    slot  inv    off   trim  basis  target   kini  PWM");
+    const struct { const char* nama; HexaArm* a; uint8_t id; float basis; } LNG[] = {
+        { "bahu",   &_armF, ARM_ID_BAHU,          ARM_BASE_BAHU        },
+        { "siku",   &_armF, ARM_ID_SIKU,          ARM_BASE_SIKU        },
+        { "prglng", &_armF, ARM_ID_PERGELANGAN,   ARM_BASE_PERGELANGAN },
+        { "gripD",  &_armF, ARM_ID_GRIP_DEPAN,    ARM_BASE_GRIP        },
+        { "gripB",  &_armB, ARM_ID_GRIP_BELAKANG, ARM_BASE_GRIP        },
+    };
+    for (uint8_t i = 0; i < 5; i++) {
+        // Slot kalibrasi dihitung sama seperti di konstruktor HexaArm:
+        // depan mulai NUM_SERVOS, belakang NUM_SERVOS + ARM_N_DEPAN.
+        uint8_t slot = (i < 4) ? (uint8_t)(NUM_SERVOS + LNG[i].id)
+                               : (uint8_t)(NUM_SERVOS + ARM_N_DEPAN + LNG[i].id);
+        // target DAN kini: dengan slew keduanya berbeda selama lengan masih
+        // berjalan, dan "diminta" vs "sedang dikirim" adalah dua pertanyaan
+        // yang berbeda saat lengan tidak sampai ke tempat yang diminta.
+        Serial.printf("%-8s  %2u   %u  %+5.1f  %+5d  %5.1f   %4u   %4u  %s\n",
+            LNG[i].nama, slot, SERVO_INVERT[slot], (double)SERVO_OFFSET[slot],
+            SERVO_TRIM_US[slot], (double)LNG[i].basis,
+            LNG[i].a->targetPulse(LNG[i].id), LNG[i].a->pulseKini(LNG[i].id),
+            LNG[i].a->isEnabled() ? "aktif" : "mati");
+    }
+
+    // --- UJI ARAH SERVO LENGAN -------------------------------------
+    // Perintah 'a' menggerakkan bahu DAN siku sekaligus, jadi arah satu
+    // sendi tidak bisa dibaca dari sembarang pose. Dua sasaran di bawah
+    // memisahkannya, dan keduanya DIHITUNG dari panjang link + ARM_ORIGINS
+    // yang berlaku sekarang -- bukan angka tetap yang basi tiap kali lengan
+    // diukur ulang.
+    //   sasaran-1: radius sama dengan netral, arah diputar -30 der
+    //              -> sudut siku tetap, cuma bahu yang berubah
+    //   sasaran-2: radius maksimum (lengan wajib lurus) tepat lurus ke
+    //              depan -> bahu tetap nol, cuma siku yang berubah
+    const float oy = fabsf(ARM_ORIGINS[ARM_DEPAN][1]);
+    const float oz = ARM_ORIGINS[ARM_DEPAN][2];
+    const float r0 = hypotf(UPPERARM_LENGTH, FOREARM_LENGTH);
+    const float t1 = atan2f(FOREARM_LENGTH, UPPERARM_LENGTH) - deg2rad(30.0f);
+    Serial.println("\nuji arah (servo lengan hidup, mulai dari netral):");
+    Serial.printf("  a%-4.0f %-4.0f      NETRAL: bentuk L -- atas mendatar, bawah TEGAK\n",
+                  (double)(oy + UPPERARM_LENGTH), (double)(oz + FOREARM_LENGTH));
+    Serial.printf("  a%-4.0f %-4.0f      lengan ATAS turun 30 der, siku DIAM   -> slot 18\n",
+                  (double)(oy + r0 * cosf(t1)), (double)(oz + r0 * sinf(t1)));
+    Serial.printf("  a%-4.0f %-4.0f      lengan LURUS MENDATAR (siku 90->0)    -> slot 19\n",
+                  (double)(oy + UPPERARM_LENGTH + FOREARM_LENGTH), (double)oz);
+    Serial.printf("  a%-4.0f %-4.0f 30   hanya pergelangan yang miring         -> slot 20\n",
+                  (double)(oy + UPPERARM_LENGTH), (double)(oz + FOREARM_LENGTH));
+    Serial.println("  g20 / G20      capit MENUTUP dari 50%                 -> slot 21 / 22");
+    Serial.println("  (bergerak ke arah sebaliknya = slot itu yang ter-invert)");
+    // Sesudah slew dipasang, perintah lengan tidak lagi seketika. Langkah
+    // terbesar uji ini 90 der (siku 90 -> 0), jadi mengetik perintah
+    // berikutnya terlalu cepat berarti yang diamati gerakan yang BELUM selesai
+    // -- dan arah gerakan setengah jalan bisa terbaca terbalik.
+    Serial.printf("  beri jeda ~%.0f ms tiap perintah: servo merayap %.0f der/detik\n",
+                  (double)(90.0f / ARM_SLEW_DEG_S * 1000.0f), (double)ARM_SLEW_DEG_S);
     Serial.println("===============================================\n");
 }
 
-// Satu kaki: titik gait -> transform badan -> frame kaki -> IK.
-// Dipakai bersama oleh solvePose() dan debugDump() supaya angka yang dicetak
-// dijamin sama dengan yang benar-benar dikirim ke servo.
+// Sudut lutut yang dipakai kaki ini kalau dibekukan: sudut lutut pada pose
+// NETRALnya sendiri, dihitung ulang tiap update karena offset KAIL di-ramp.
+// Akibatnya bentuk BERDIRI sama persis dengan IK biasa -- yang berubah hanya
+// ayunan. NAN = kaki ini tidak dikunci.
+float Hexapod::kunciLutut(int leg) {
+    if (!(_lututKunci & (1 << leg))) return NAN;
+    float lx, ly, lz, c, f, t;
+    legSolveAt(leg, _gait.footHome(leg), lx, ly, lz, c, f, t, NAN);
+    return t;
+}
+
 bool Hexapod::legSolve(int leg, float& lx, float& ly, float& lz,
                        float& coxa, float& femur, float& tibia) {
-    Vec3 foot = _gait.legTargets[leg];
+    return legSolveAt(leg, _gait.legTargets[leg], lx, ly, lz,
+                      coxa, femur, tibia, kunciLutut(leg));
+}
 
+// Satu kaki: titik telapak -> transform badan -> frame kaki -> IK.
+// Dipakai bersama oleh solvePose() dan debugDump() supaya angka yang dicetak
+// dijamin sama dengan yang benar-benar dikirim ke servo.
+bool Hexapod::legSolveAt(int leg, const Vec3& foot, float& lx, float& ly, float& lz,
+                         float& coxa, float& femur, float& tibia, float kunciLututDeg) {
     Vec3 p = {
         foot.x - _trans.x,
         foot.y - _trans.y,
@@ -404,7 +1013,7 @@ bool Hexapod::legSolve(int leg, float& lx, float& ly, float& lz,
     ly = sinf(a) * vx + cosf(a) * vy;
     lz = vz;
 
-    return LegInverseKinematics::solve(lx, ly, lz, coxa, femur, tibia);
+    return LegInverseKinematics::solve(lx, ly, lz, coxa, femur, tibia, kunciLututDeg);
 }
 
 bool Hexapod::legAngles(int leg, float& coxaDeg, float& femurDeg, float& tibiaDeg) {

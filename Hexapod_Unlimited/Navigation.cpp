@@ -1,6 +1,7 @@
 #include "Navigation.h"
 #include "Calib.h"  // Memanggil ini agar bisa membaca GAIT_CYCLE_TIME dari sistem
 #include "EEMap.h"  // KompasStore, GerakStore, eeSum -- satu definisi bersama
+#include "NavKoreksi.h"  // keputusan "berhenti dulu, baru koreksi" -- diuji di PC
 
 // Konstruktor disambungkan ke Hexapod
 Navigation::Navigation(Imu& imuRef, Hexapod& robotRef, LidarArray& lidarRef)
@@ -60,13 +61,84 @@ bool Navigation::tungguYaw(uint32_t ms, float& yawAkum) {
 // 1. KOMPAS ARENA
 // ====================================================================
 
-void Navigation::kompasCatat(uint8_t arah) {
-    if (arah > 3) return;
-    if (!_imu.hasData()) { Serial.println("Navigation: Tidak ada data sudut IMU."); return; }
+bool Navigation::kompasCatat(uint8_t arah) {
+    if (arah > 3) return false;
+    if (!_imu.hasData()) { Serial.println("Navigation: Tidak ada data sudut IMU."); return false; }
     
-    _headArah[arah] = _imu.yawDeg();
+    // DIRATA-RATA, TIDAK LAGI SATU SAMPEL. Satu sampel tidak bisa membedakan
+    // heading tenang dari heading yang sedang melompat-lompat, dan yang kedua
+    // menghasilkan tabel kompas yang salah tanpa satu pun gejala saat mencatat.
+    //
+    // Rata-ratanya MELINGKAR (jumlah sin/cos), bukan aritmetika: 359 dan 1
+    // rata-ratanya 0, bukan 180.
+    //
+    // MEMBLOKIR sekitar KOMPAS_SAMPEL_MS, dan itu disengaja. Perintah ini cuma
+    // dipakai saat robot berdiri diam dan operator memutar badannya dengan
+    // tangan; tidak ada navigasi yang sedang berjalan untuk dikelaparkan, dan
+    // servo menahan pulsa terakhirnya sendiri.
+    float sumSin = 0.0f, sumCos = 0.0f;
+    float magMin = 1e9f, magMaks = 0.0f;
+    uint16_t n = 0;
+    const uint32_t tMulai = millis();
+    while (millis() - tMulai < KOMPAS_SAMPEL_MS) {
+        _imu.update();
+        const float y = deg2rad(_imu.yawDeg());
+        sumSin += sinf(y);
+        sumCos += cosf(y);
+        const float m = _imu.magMagnitude();
+        if (m < magMin)  magMin  = m;
+        if (m > magMaks) magMaks = m;
+        n++;
+    }
+    if (n == 0) { Serial.println("Navigation: tidak ada sampel IMU."); return false; }
+
+    float rerata = rad2deg(atan2f(sumSin / n, sumCos / n));
+    if (rerata < 0.0f) rerata += 360.0f;
+
+    // SEBARAN dari panjang vektor rata-rata. R = 1 berarti seluruh sampel
+    // searah; makin kecil R, makin berserak. Diubah ke derajat supaya angkanya
+    // bisa dibandingkan langsung dengan ambangnya.
+    const float R = sqrtf((sumSin / n) * (sumSin / n) + (sumCos / n) * (sumCos / n));
+    const float sebar = (R >= 1.0f)
+                            ? 0.0f
+                            : rad2deg(sqrtf(-2.0f * logf(R > 1e-6f ? R : 1e-6f)));
+
     Serial.print("Tercatat "); Serial.print(_arahNama[arah]);
-    Serial.print(" = "); Serial.print(_headArah[arah], 1); Serial.println(" derajat");
+    Serial.print(" = "); Serial.print(rerata, 1);
+    Serial.print(" derajat  (dari "); Serial.print(n);
+    Serial.print(" sampel, sebaran "); Serial.print(sebar, 1); Serial.println(" der)");
+
+    // MEDAN MAGNET dilaporkan mentah. Nilai mutlaknya tidak berarti apa-apa --
+    // ia cacahan sensor, bukan mikrotesla -- tapi PERUBAHANNYA berarti. Medan
+    // yang bergerak sementara robot DIAM berarti ada arus di dekat
+    // magnetometer, dan itu persis yang memelintir heading.
+    Serial.print("  medan magnet "); Serial.print(magMin, 0);
+    Serial.print(" .. "); Serial.print(magMaks, 0);
+    Serial.print("  (naik-turun "); Serial.print(magMaks - magMin, 0);
+    Serial.println(" saat robot DIAM)");
+
+    if (sebar > KOMPAS_SEBAR_MAKS_DER) {
+        Serial.print("!! TIDAK DICATAT: sebaran "); Serial.print(sebar, 1);
+        Serial.print(" der > "); Serial.print(KOMPAS_SEBAR_MAKS_DER, 1);
+        Serial.println(" der. Heading belum tenang.");
+        Serial.println("   Tunggu robot benar-benar diam, lalu ulangi perintahnya.");
+        Serial.println("   Kalau tetap berserak: magnetometer terganggu. Jauhkan");
+        Serial.println("   kabel IMU dari kabel daya servo, dan dari besi.");
+        return false;
+    }
+
+    _headArah[arah] = rerata;
+
+    // Indeks 0 adalah JANGKAR seluruh tabel lintasan: Misi menyemai arah ruas
+    // pertama dengan MISI_ARAH_BERANGKAT = 0, jadi "c0" HARUS dicatat sambil
+    // menghadap arah lorong pertama dari HOME. Dicatat menghadap tembok lain,
+    // SELURUH kolom arah mutlak bergeser dan robot berjalan ke arah yang salah
+    // sejak ruas pertama -- tanpa satu pun gejala di log. Bantuan perintah "c"
+    // hanya muncul kalau digitnya salah, dan operator yang mengetik "c0"
+    // langsung tidak pernah melihatnya. Karena itu pengingatnya di sini.
+    if (arah == 0)
+        Serial.println("  (c0 = arah LORONG PERTAMA dari HOME, bukan utara magnet)");
+    return true;
 }
 
 void Navigation::kompasSimpan() {
@@ -125,6 +197,30 @@ bool Navigation::diHeading(float target) const {
     return fabsf(wrap180(target - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
 }
 
+float Navigation::simpangHeading(float target) const {
+    if (isnan(target) || !_imu.hasData()) return NAN;
+    return wrap180(target - _imu.yawDeg());
+}
+
+float Navigation::headingArah(uint8_t arah) const {
+    if (arah > 3 || _headArah[arah] < 0.0f) return NAN;
+    return _headArah[arah];
+}
+
+void Navigation::kunciHeading(float der) {
+    _headKunci = der;
+    if (isnan(der)) return;
+    while (_headKunci >= 360.0f) _headKunci -= 360.0f;
+    while (_headKunci <    0.0f) _headKunci += 360.0f;
+}
+
+// Heading yang BENAR-BENAR dikunci mode arena: kunci mutlak kalau dipasang,
+// kalau tidak slot mata angin yang dipilih navMulai().
+float Navigation::headingTerkunci() const {
+    if (!isnan(_headKunci)) return _headKunci;
+    return (_arahKini >= 0) ? _headArah[_arahKini] : NAN;
+}
+
 bool Navigation::diArah(uint8_t arah) const {
     if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return false;
     return fabsf(wrap180(_headArah[arah] - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
@@ -141,6 +237,49 @@ void Navigation::kompasTabel() {
         Serial.print(i); Serial.print(" "); Serial.print(_arahNama[i]);
         if (_headArah[i] < 0) { Serial.println("\t: belum dicatat"); continue; }
         Serial.print("\t: "); Serial.print(_headArah[i], 1); Serial.println(" der");
+    }
+
+    // JARAK ANTAR MATA ANGIN DIPERIKSA DI SINI. Keempat angka di atas bisa
+    // kelihatan wajar satu per satu dan tetap salah sebagai satu set: yang
+    // menentukan bukan nilainya, melainkan jaraknya -- empat mata angin arena
+    // berjarak 90 der, selalu.
+    //
+    // Dipasang sesudah laporan R2C 16 Sep 2026: selisih SELATAN ke TIMUR cuma
+    // 30 der. Jarak yang menyusut seragam berarti magnetometer terdistorsi:
+    // medan luar menekan lingkaran heading jadi elips, dan seluruh putaran
+    // 360 der terbaca lebih kecil.
+    bool lengkap = true;
+    for (uint8_t i = 0; i < 4; i++) if (_headArah[i] < 0) lengkap = false;
+    if (!lengkap) {
+        Serial.println("\n  (jarak antar arah belum bisa diperiksa -- tabel belum lengkap)");
+        return;
+    }
+
+    Serial.println("\n  jarak ke arah berikutnya (seharusnya 90 der):");
+    bool buruk = false;
+    for (uint8_t i = 0; i < 4; i++) {
+        const uint8_t j = (uint8_t)((i + 1) & 3);
+        float d = _headArah[j] - _headArah[i];
+        while (d <    0.0f) d += 360.0f;
+        while (d >= 360.0f) d -= 360.0f;
+        const float galat = fabsf(d - 90.0f);
+        Serial.print("    "); Serial.print(_arahNama[i]);
+        Serial.print(" -> ");  Serial.print(_arahNama[j]);
+        Serial.print(" : ");   Serial.print(d, 1); Serial.print(" der");
+        if (galat > KOMPAS_GAP_TOL_DER) {
+            Serial.print("   << MELESET "); Serial.print(galat, 0); Serial.print(" der");
+            buruk = true;
+        }
+        Serial.println();
+    }
+    if (buruk) {
+        Serial.println("\n  !! TABEL KOMPAS TIDAK SAH. Robot akan berjalan ke arah yang salah.");
+        Serial.println("     Jarak menyusut SERAGAM = magnetometer terdistorsi:");
+        Serial.println("       - kabel IMU berdempetan dengan kabel daya servo");
+        Serial.println("       - IMU dekat besi, baut, atau motor");
+        Serial.println("       - IMU tidak mendatar saat dicatat");
+        Serial.println("     Meleset di SATU arah saja = arah itu dicatat sambil badan");
+        Serial.println("     belum lurus. Ulangi 'c<n>' untuk arah itu.");
     }
 }
 
@@ -242,6 +381,374 @@ void Navigation::pivotUpdate() {
     } else {
         _diamSejak = 0;
     }
+}
+
+// ====================================================================
+// RATAKAN KE DINDING SAMPING -- lihat catatan panjangnya di Navigation.h.
+// ====================================================================
+
+// LAJU GESER, dua-duanya, karena satu angka memang tidak cukup.
+//
+// Sumbu geser terkuantisasi SATU LANGKAH GAIT: badan tidak merayap, ia
+// melompat 2 x laju x stepLength tiap siklus. Pada laju 0,25 lompatannya
+// 30 mm (profil DATAR) -- itulah resolusi yang membuat sasaran 13 cm bisa
+// dikenai. Laju besar memperbesar lompatan itu, dan lompatan yang lebih besar
+// dari sisa jarak berarti terlewat.
+//
+// Tapi 0,25 SEPANJANG JALAN terlalu mahal, dan itu terukur: 3,3 cm/detik di
+// DATAR, 2,0 cm/detik di MERUNDUK. Ruas 12 menggeser sampai dinding terbaca
+// 13 cm dengan profil MERUNDUK -- pada 2 cm/detik, 20 cm menghabiskan 10
+// detik dari jatah 5 menit.
+//
+// Jadi laju dipilih dari SISA JARAK, persis seperti rem maju terhadap
+// NAV_PELAN_CM: kasar selagi jauh, kembali ke 0,25 begitu mendekat. Ketelitian
+// akhirnya tidak berubah sama sekali -- yang berubah cuma waktu tempuh
+// bagian yang jauh dari sasaran.
+static const float    RATA_LAJU      = 0.25f;   // halus, dekat sasaran (LANTAI)
+static const float    RATA_LAJU_JAUH = 0.80f;   // kasar, jauh dari sasaran
+static const float    RATA_PELAN_CM  = 15.0f;   // mulai melambat di sini
+static const uint32_t RATA_BATAS_MS = 12000;   // jaring terakhir
+
+// Laju geser (magnitudo, tanpa tanda) untuk sisa jarak sekian cm.
+// sisaCm < 0 berarti TIDAK DIKETAHUI -- penggaris sedang bisu; pakai yang
+// pelan, jangan melempar badan dengan cepat ke arah yang tak terukur.
+static float lajuGeser(float sisaCm) {
+    if (sisaCm < 0.0f) return RATA_LAJU;
+    float k = sisaCm / RATA_PELAN_CM;
+    if (k > 1.0f) k = 1.0f;
+    float v = RATA_LAJU_JAUH * k;
+    return (v < RATA_LAJU) ? RATA_LAJU : v;
+}
+
+// Jarak terdekat ke arah geser, atau -1 bila tak satu pun sensor sisi itu
+// memberi angka. Dua dudukan dipakai dan diambil yang TERDEKAT: yang menabrak
+// duluan bisa yang depan maupun yang belakang, tergantung badan sedang
+// menyerong ke mana.
+int Navigation::jarakGeser(bool keKanan) const {
+    int paling = -1;
+    const uint8_t ch[2] = { keKanan ? (uint8_t)LIDAR_KANAN_D : (uint8_t)LIDAR_KIRI_D,
+                            keKanan ? (uint8_t)LIDAR_KANAN_B : (uint8_t)LIDAR_KIRI_B };
+    for (uint8_t k = 0; k < 2; k++) {
+        int d = _lidar.getDistance(ch[k]);
+        if (d == LIDAR_MATI || d == LIDAR_JAUH) continue;
+        if (paling < 0 || d < paling) paling = d;
+    }
+    return paling;
+}
+
+bool Navigation::ratakanMulai(bool kiri, int cm, bool jagaBelakang) {
+    _rataOk = false;
+
+    if (!_robot.isArmed()) {
+        Serial.println("Ratakan DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
+        return false;
+    }
+    if (!_lidar.muxTerdeteksi()) {
+        Serial.println("Ratakan DITOLAK: LiDAR tidak terdeteksi.");
+        return false;
+    }
+    if (cm <= 0) {
+        Serial.println("Ratakan DITOLAK: sasaran harus lebih dari 0 cm.");
+        return false;
+    }
+
+    // Navigasi dihentikan LEBIH DULU, sebelum satu pun pemeriksaan di bawah
+    // bisa keluar duluan. Kalau ditaruh sesudahnya, perataan yang DITOLAK --
+    // atau yang sasarannya sudah tercapai -- meninggalkan mode arena tetap
+    // berjalan, dan Misi::gagal() tidak menghentikan navigasi sendiri. Robot
+    // akan terus berjalan MAJU sementara lognya bilang perataan gagal.
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah ratakan.");
+
+    // PENGGARIS: dudukan DEPAN dulu, dudukan BELAKANG sebagai cadangan. Tiap
+    // sisi punya DUA sensor, dan menolak bergerak selagi salah satunya masih
+    // membaca berarti membuang misi karena satu kanal bisu -- padahal
+    // jarakGeser() sudah lama memperlakukan sepasang itu sebagai satu sisi.
+    //
+    // HARGANYA NYATA, jadi peralihannya DICETAK: kedua dudukan ada di titik
+    // yang berbeda sepanjang badan. Kalau robot menyerong terhadap dinding,
+    // keduanya membaca angka yang berbeda, dan sasaran cm itu jadi diukur
+    // dari dudukan belakang. Yang hilang ketelitian; yang didapat, ruasnya
+    // tetap jalan.
+    uint8_t ch = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
+    int d0 = _lidar.getDistance(ch);
+    if (d0 == LIDAR_MATI || d0 == LIDAR_JAUH) {
+        const uint8_t alt = kiri ? LIDAR_KIRI_B : LIDAR_KANAN_B;
+        const int d1 = _lidar.getDistance(alt);
+        if (d1 != LIDAR_MATI && d1 != LIDAR_JAUH) {
+            Serial.print("Ratakan: sensor "); Serial.print(LidarArray::nama(ch));
+            Serial.print(" tidak memberi jarak -- penggaris pindah ke ");
+            Serial.print(LidarArray::nama(alt)); Serial.println(" (dudukan belakang).");
+            ch = alt;
+            d0 = d1;
+        }
+    }
+
+    // GAGAL TERTUTUP, dan sekarang hanya kalau DUA-DUANYA bisu. Menggeser
+    // tanpa penggaris persis yang menabrakkan robot ke dinding 6 Sep 2026.
+    if (d0 == LIDAR_MATI || d0 == LIDAR_JAUH) {
+        Serial.print("Ratakan DITOLAK: sensor sisi "); Serial.print(kiri ? "KIRI" : "KANAN");
+        Serial.println(" (kedua dudukan) tidak memberi jarak -- tidak ada penggaris.");
+        return false;
+    }
+    if (d0 == cm) {
+        Serial.print("Sudah di sasaran: "); Serial.print(d0); Serial.println(" cm.");
+        _rataOk = true;
+        return true;
+    }
+
+    // Sasaran LEBIH JAUH -> menjauh dari dinding itu; lebih dekat -> mendekat.
+    _rataNaik = (cm > d0);
+    const bool keKanan = kiri ? _rataNaik : !_rataNaik;
+    _rataGeser = keKanan ? RATA_LAJU : -RATA_LAJU;
+
+    // ponytail: penjaganya memakai pita "terlalu dekat" yang sama dengan
+    // kemudi dinding, jadi sasaran DI BAWAH wall.min tidak bisa diminta --
+    // perataannya akan ditolak sebelum sampai. Kalau suatu saat perlu merapat
+    // lebih dekat dari itu, penjaga ini yang harus dibedakan, bukan wall.min.
+    int sisa = jarakGeser(keKanan);
+    if (sisa >= 0 && sisa <= (int)WALL_MIN_CM) {
+        Serial.print("Ratakan DITOLAK: sudah ada sesuatu "); Serial.print(sisa);
+        Serial.print(" cm di arah geser (pita terlalu dekat ");
+        Serial.print(WALL_MIN_CM, 0); Serial.println(" cm).");
+        _rataGeser = 0.0f;
+        return false;
+    }
+
+    _rataCh = ch;
+    _rataCm = cm;
+    _mode   = NAV_RATA;
+    _tRata  = millis();
+    // Keadaan awal penggaris belakang, dicetak supaya operator tahu berapa
+    // jauh kompensasi harus bekerja sebelum 'V' selesai. Bisu berarti
+    // kompensasinya diam, bukan ditebak -- perataan tetap jalan, ia sudah
+    // berguna tanpa kompensasi ini sebelum kompensasi ini ada.
+    _rataBlkLapor = false;
+    _rataJagaBlk  = jagaBelakang;
+    if (!_rataJagaBlk) {
+        Serial.println("  (jarak belakang TIDAK dijaga -- diminta oleh ruas ini)");
+    } else {
+        const int b0 = _lidar.getDistance(LIDAR_BACK);
+        if (b0 == LIDAR_MATI || b0 == LIDAR_JAUH)
+            Serial.println("  (LiDAR belakang bisu -- jarak belakang TIDAK dijaga)");
+        else {
+            Serial.print("  belakang "); Serial.print(b0);
+            Serial.print(" cm, dijaga di "); Serial.print(RATA_BLK_SASARAN_CM);
+            Serial.println(" cm selama perataan.");
+        }
+    }
+    _majuKini = _turnKini = 0.0f;
+    // _rataGeser memegang ARAH (dan laju halus); yang dikirim ke kaki
+    // laju yang sudah disesuaikan dengan sisa jarak. Lihat lajuGeser().
+    _robot.walk(0.0f, copysignf(lajuGeser(fabsf((float)(d0 - cm))), _rataGeser), 0.0f);
+
+    Serial.print("Meratakan ke dinding "); Serial.print(kiri ? "KIRI" : "KANAN");
+    Serial.print(": "); Serial.print(d0); Serial.print(" -> "); Serial.print(cm);
+    Serial.print(" cm, geser "); Serial.println(keKanan ? "KANAN" : "KIRI");
+    return true;
+}
+
+// Satu langkah perataan. Dipanggil navUpdate() saat _mode == NAV_RATA.
+void Navigation::rataUpdate() {
+    // SASARAN dinilai LEBIH DULU dan TIAP TICK -- itu seluruh gunanya
+    // perintah ini. Robot berhenti di tengah langkah alih-alih menyelesaikan
+    // sapuan penuh, dan sapuan penuh itulah yang tidak punya resolusi.
+    int d = _lidar.getDistance(_rataCh);
+    if (d != LIDAR_MATI && d != LIDAR_JAUH &&
+        (_rataNaik ? (d >= _rataCm) : (d <= _rataCm))) {
+        _rataOk   = true;
+        _mode     = NAV_DIAM;
+        _majuKini = _turnKini = 0.0f;
+        _robot.stop();
+        Serial.print("Perataan SELESAI: dinding "); Serial.print(d);
+        Serial.print(" cm (sasaran "); Serial.print(_rataCm);
+        Serial.println(" cm).");
+        return;
+    }
+
+    int sisa = jarakGeser(_rataGeser > 0.0f);
+    if (sisa >= 0 && sisa <= (int)WALL_MIN_CM) {
+        navBerhenti("ada sesuatu di arah geser -- sasaran perataan tidak tercapai.");
+        return;
+    }
+    if (millis() - _tRata > RATA_BATAS_MS) {
+        navBerhenti("perataan tidak mencapai sasaran (batas waktu).");
+        return;
+    }
+
+    // Sisa jarak dinilai TIAP TICK, jadi lajunya turun sendiri saat mendekat.
+    // Penggaris bisu -> -1 -> laju halus, bukan laju kasar buta.
+    float keSasaran = (d == LIDAR_MATI || d == LIDAR_JAUH)
+                          ? -1.0f : fabsf((float)(d - _rataCm));
+
+    // JARAK BELAKANG DIJAGA DI RATA_BLK_SASARAN_CM selama menggeser.
+    //
+    // Dua hal sekaligus: menahan hanyut maju (sapuan kaki menyeret badan ke
+    // depan tiap siklus) DAN memperbaiki posisi yang memang sudah kelewat
+    // maju sebelum 'V' dimulai. Dikoreksi bersamaan dengan geser, bukan
+    // sesudahnya -- menunggu sampai perataan selesai berarti capit sudah
+    // terlanjur menabrak reruntuhan.
+    //
+    // Satu arah saja: hanya bacaan DI ATAS sasaran yang ditarik mundur. Robot
+    // yang sudah lebih dekat dari 10 cm dibiarkan, karena mendorongnya maju
+    // berarti mendorong capit ke arah reruntuhan -- risiko yang tidak dibayar
+    // apa pun. Karena itu berhenti sendiri di sasaran: begitu bacaan turun ke
+    // 10, syaratnya tidak terpenuhi lagi.
+    float maju = 0.0f;
+    if (_rataJagaBlk) {
+        const int b = _lidar.getDistance(LIDAR_BACK);
+        if (b != LIDAR_MATI && b != LIDAR_JAUH &&
+            b > RATA_BLK_SASARAN_CM + RATA_BLK_TOL_CM) {
+            maju = -RATA_BLK_MUNDUR;
+            if (!_rataBlkLapor) {
+                _rataBlkLapor = true;
+                Serial.print("  belakang "); Serial.print(b);
+                Serial.print(" cm > sasaran "); Serial.print(RATA_BLK_SASARAN_CM);
+                Serial.println(" cm -- ditarik mundur selagi menggeser.");
+            }
+        }
+    }
+    _robot.walk(maju, copysignf(lajuGeser(keSasaran), _rataGeser), 0.0f);
+}
+
+// ====================================================================
+// SETEL JARAK BELAKANG, dua arah ('J<cm>')
+// ====================================================================
+
+bool Navigation::setelBelakangMulai(int cm) {
+    _setelBlkOk = false;
+
+    if (!_robot.isArmed()) {
+        Serial.println("Setel jarak belakang DITOLAK: servo masih LEMAS. "
+                       "Topang robot lalu ketik 'b'.");
+        return false;
+    }
+    if (!_lidar.muxTerdeteksi()) {
+        Serial.println("Setel jarak belakang DITOLAK: LiDAR tidak terdeteksi.");
+        return false;
+    }
+    if (cm <= 0) {
+        Serial.println("Setel jarak belakang DITOLAK: sasaran harus lebih dari 0 cm.");
+        return false;
+    }
+
+    // Sama seperti ratakanMulai: hentikan navigasi LEBIH DULU, sebelum
+    // pemeriksaan mana pun bisa keluar duluan dan meninggalkan mode arena
+    // tetap berjalan maju.
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah setel jarak belakang.");
+
+    // GAGAL TERTUTUP. Tanpa penggaris belakang tidak ada yang bisa memberi
+    // tahu arah mana yang benar, apalagi kapan berhenti.
+    const int d0 = _lidar.getDistance(LIDAR_BACK);
+    if (d0 == LIDAR_MATI || d0 == LIDAR_JAUH) {
+        Serial.println("Setel jarak belakang DITOLAK: LiDAR BELAKANG tidak "
+                       "memberi jarak -- tidak ada penggaris.");
+        return false;
+    }
+    if (d0 == cm) {
+        Serial.print("Sudah di sasaran: "); Serial.print(d0); Serial.println(" cm.");
+        _setelBlkOk = true;
+        return true;
+    }
+
+    // ARAH DIPILIH DARI BACAAN, bukan dari tanda argumen. Bacaan di ATAS
+    // sasaran = terlalu jauh dari dinding belakang = MUNDUR. Di bawah =
+    // terlalu dekat = MAJU.
+    _setelBlkMaju = (d0 < cm);
+
+    // Sasaran di bawah pita "terlalu dekat" akan ditolak penjaga mundur tepat
+    // sebelum tercapai -- tolak sekarang, bukan di tengah gerakan. Hanya
+    // berlaku untuk arah mundur; yang MAJU justru menjauhi dinding itu.
+    if (!_setelBlkMaju && cm <= (int)WALL_MIN_CM) {
+        Serial.print("Setel jarak belakang DITOLAK: sasaran "); Serial.print(cm);
+        Serial.print(" cm <= wall.min "); Serial.print(WALL_MIN_CM, 0);
+        Serial.println(" cm -- penjaga akan menghentikannya sebelum sampai.");
+        return false;
+    }
+    // MAJU butuh penggaris DEPAN. Tanpa itu robot berjalan buta ke depan,
+    // dan di ruas K-3/K-4 yang ada di depan justru reruntuhan.
+    if (_setelBlkMaju) {
+        const int f0 = _lidar.getDistance(LIDAR_FRONT);
+        if (f0 == LIDAR_MATI) {
+            Serial.println("Setel jarak belakang DITOLAK: perlu MAJU, tapi "
+                           "LiDAR DEPAN tidak merespons.");
+            return false;
+        }
+        if (f0 != LIDAR_JAUH && f0 <= FRONT_STOP_CM) {
+            Serial.print("Setel jarak belakang DITOLAK: perlu MAJU, tapi depan "
+                         "sudah "); Serial.print(f0);
+            Serial.print(" cm (batas "); Serial.print(FRONT_STOP_CM);
+            Serial.println(" cm).");
+            return false;
+        }
+    }
+
+    _setelBlkCm = cm;
+    _mode       = NAV_SETEL_BLK;
+    _tSetelBlk  = millis();
+    _majuKini = _turnKini = 0.0f;
+    {
+        const float laju = lajuGeser((float)abs(d0 - cm));
+        _robot.walk(_setelBlkMaju ? laju : -laju, 0.0f, 0.0f);
+    }
+
+    Serial.print("Setel jarak belakang: "); Serial.print(d0);
+    Serial.print(" -> "); Serial.print(cm); Serial.print(" cm, ");
+    Serial.println(_setelBlkMaju ? "MAJU." : "MUNDUR.");
+    return true;
+}
+
+// Satu langkah. Dipanggil navUpdate() saat _mode == NAV_SETEL_BLK.
+void Navigation::setelBelakangUpdate() {
+    const int d = _lidar.getDistance(LIDAR_BACK);
+
+    // Penggaris bisu di TENGAH gerakan: berhenti. Tidak ada sensor lain yang
+    // menghadap ke belakang, jadi meneruskan berarti berjalan tanpa sasaran.
+    if (d == LIDAR_MATI) {
+        navBerhenti("LiDAR BELAKANG berhenti merespons di tengah setel jarak.");
+        return;
+    }
+
+    // SELESAI saat sasaran DILEWATI, dinilai menurut arah berangkatnya. Dua
+    // arah butuh dua perbandingan: yang mundur berhenti saat bacaan turun ke
+    // sasaran, yang maju saat bacaan naik ke sasaran. Satu perbandingan untuk
+    // keduanya akan membuat salah satunya berhenti seketika.
+    if (d != LIDAR_JAUH && (_setelBlkMaju ? (d >= _setelBlkCm) : (d <= _setelBlkCm))) {
+        _setelBlkOk = true;
+        _mode       = NAV_DIAM;
+        _majuKini = _turnKini = 0.0f;
+        _robot.stop();
+        Serial.print("Setel jarak belakang SELESAI: belakang "); Serial.print(d);
+        Serial.print(" cm (sasaran "); Serial.print(_setelBlkCm);
+        Serial.println(" cm).");
+        return;
+    }
+
+    // Penjaga per arah. Yang mundur mengawasi dinding belakang; yang maju
+    // mengawasi halangan depan. Menukar keduanya berarti berjalan tanpa
+    // penjaga sama sekali.
+    if (_setelBlkMaju) {
+        const int f = _lidar.getDistance(LIDAR_FRONT);
+        if (f == LIDAR_MATI) {
+            navBerhenti("LiDAR DEPAN berhenti merespons selagi maju.");
+            return;
+        }
+        if (f != LIDAR_JAUH && f <= FRONT_STOP_CM) {
+            navBerhenti("halangan di depan -- setel jarak belakang dihentikan.");
+            return;
+        }
+    } else if (d != LIDAR_JAUH && d <= (int)WALL_MIN_CM) {
+        navBerhenti("dinding belakang sudah terlalu dekat -- setel jarak dihentikan.");
+        return;
+    }
+
+    if (millis() - _tSetelBlk > MUNDUR_BATAS_MS) {
+        navBerhenti("setel jarak belakang tidak mencapai sasaran (batas waktu).");
+        return;
+    }
+
+    const float sisa = (d == LIDAR_JAUH) ? -1.0f : (float)abs(d - _setelBlkCm);
+    const float laju = lajuGeser(sisa);
+    _robot.walk(_setelBlkMaju ? laju : -laju, 0.0f, 0.0f);
 }
 
 void Navigation::pivotKompas(uint8_t arah) {
@@ -436,6 +943,10 @@ void Navigation::navMulai(ModeNav m) {
         float selisih = 0.0f;
         _arahKini = arahTerdekat(_imu.yawDeg(), selisih);
         if (_arahKini < 0) { Serial.println("Gagal: tak ada arah arena yang cocok."); return; }
+        // _arahKini tetap dihitung walau ada kunci mutlak: ia yang dipakai
+        // NAMA arah di cetakan. Yang TIDAK dipakai cuma nilainya sebagai
+        // sasaran kemudi, dan itu yang penting -- pada ruas menyerong 45 der
+        // tebakan ini berjarak sama dari dua mata angin.
         // WAJIB, bukan sekadar peringatan. Mode arena mengemudi berdasarkan
         // selisih heading, dan _pivotSign-lah yang menentukan ke arah mana
         // perintah putar menggeser yaw. Kalau tandanya salah, robot berbelok
@@ -596,7 +1107,10 @@ static const uint32_t SUDUT_SKEW_MAKS_MS = 100;
 // Data arena membuktikan ini perlu: ch1 (kiri belakang) macet di 5-6 cm
 // sementara ch0 membaca 16-29 cm. Tanpa penjaga ini pasangan itu melaporkan
 // serong 60 derajat yang tidak pernah terjadi.
-static const float SISI_BEDA_MAKS_CM = 4.0f;
+// SISI_BEDA_MAKS_CM pindah ke config.h 17 Sep 2026: ia yang menentukan sudut
+// TERBESAR yang bisa dibaca sepasang sensor sisi, dan cek_koreksi.cpp perlu
+// angka itu untuk membuktikan NAV_KOREKSI_SUDUT_DEG masih di dalamnya. Ambang
+// yang lebih besar daripada jangkauan ukurnya tidak pernah menyala.
 
 float Navigation::jarakSisi(bool kiri) {
     const uint8_t idD = kiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
@@ -701,6 +1215,24 @@ void Navigation::setTengah(bool ya) {
     _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
 }
 
+void Navigation::koreksiDiam(bool ya) {
+    if (_koreksiDiam == ya) return;
+    _koreksiDiam = ya;
+    _sedangKoreksi = false;          // jangan mewarisi koreksi yang tergantung
+    Serial.print("Koreksi arah: ");
+    if (ya) {
+        Serial.println("BERHENTI DULU, baru putar badan.");
+        Serial.print("  Berhenti bila sudut dinding lewat ");
+        Serial.print(NAV_KOREKSI_SUDUT_DEG, 0);
+        Serial.print(" der atau jarak meleset ");
+        Serial.print(NAV_KOREKSI_JARAK_CM, 0);
+        Serial.println(" cm. Jalan lagi sesudah sejajar.");
+        Serial.println("  Sudutnya dari KEDUA LiDAR sisi yang diikuti -- 'Y0' dulu kalau biasnya belum diukur.");
+    } else {
+        Serial.println("mengoreksi sambil berjalan (biasa).");
+    }
+}
+
 void Navigation::setKemudiMode(uint8_t m) {
     _wallSamar = (m & 1u) != 0;
     _wallSudut = (m & 2u) != 0;
@@ -732,10 +1264,20 @@ void Navigation::abaikanDepan(bool ya) {
 }
 
 void Navigation::navBerhenti(const char* alasan) {
+    // Kunci heading mutlak milik SATU ruas. Membiarkannya hidup sesudah
+    // berhenti berarti ruas berikutnya -- atau 'f' manual -- mewarisi serong
+    // ruas yang sudah lewat, diam-diam. Sama alasannya dengan abaikanDepan.
+    kunciHeading(NAN);
     // DI ATAS jalan keluar NAV_DIAM: berhenti apa pun -- 's', 'x', Enter, rem
     // jarak, misi gagal -- harus mengembalikan sensor depan, termasuk saat
     // navigasi memang sudah diam.
     abaikanDepan(false);
+    // Koreksi berhenti-dulu ikut dilepas, alasan yang sama persis: ia milik
+    // SATU perjalanan 'U'. Rem jarak di ujung tangga memanggil navBerhenti(),
+    // dan tanpa baris ini perintah 'F' berikutnya mewarisi robot yang berhenti
+    // tiap beberapa langkah di lantai datar -- tanpa ada yang menyebutnya.
+    // 'U' memasangnya SESUDAH navMulai(), jadi perjalanannya sendiri selamat.
+    koreksiDiam(false);
 
     // Sudah diam -> tidak ada yang perlu dihentikan. Dulu baris ini hanya
     // menyaring pemanggilan tanpa alasan, sehingga tiap 's'/'x'/Enter mencetak
@@ -743,11 +1285,14 @@ void Navigation::navBerhenti(const char* alasan) {
     // di .ino semuanya sudah punya robot.stop()/disarm() sendiri.
     if (_mode == NAV_DIAM) return;
 
-    bool pivot = (_mode == NAV_PIVOT);
+    const char* label = (_mode == NAV_PIVOT) ? "Pivot BERHENTI"
+                      : (_mode == NAV_SETEL_BLK) ? "Setel jarak belakang BERHENTI"
+                      : (_mode == NAV_RATA)  ? "Perataan BERHENTI"
+                                             : "Navigasi BERHENTI";
     _mode = NAV_DIAM;
     _majuKini = _turnKini = 0.0f;
     _robot.stop();
-    Serial.print(pivot ? "Pivot BERHENTI" : "Navigasi BERHENTI");
+    Serial.print(label);
     if (alasan) { Serial.print(": "); Serial.println(alasan); } else Serial.println(".");
 }
 
@@ -783,7 +1328,9 @@ void Navigation::navUpdate() {
     // ditaruh sesudahnya, 'w' manual tidak akan pernah terkena rem -- dan
     // justru jalan manual itulah satu-satunya cara berjalan lurus tanpa
     // dinding, yaitu pengukuran slip yang paling bersih.
-    if (_remJarakCm > 0.0f && _robot.jarakCm() >= _remJarakCm) {
+    // LINTASAN, bukan jarak maju bertanda: rem harus menggigit saat mundur dan
+    // saat kepiting juga. Lihat HexaGait::lintasMm().
+    if (_remJarakCm > 0.0f && _robot.lintasCm() >= _remJarakCm) {
         _remJarakCm = 0.0f;              // sekali pakai; jangan menyala lagi nanti
         navBerhenti("rem jarak tercapai.");   // mengurus mode navigasi
         _robot.stop();                        // mengurus 'w' manual
@@ -803,6 +1350,11 @@ void Navigation::navUpdate() {
 
     if (!_lidar.muxTerdeteksi()) { navBerhenti("LiDAR hilang."); return; }
 
+    // Perataan sisi tidak memakai kompas maupun kemudi dinding: penggarisnya
+    // satu sensor sisi, dan syarat hentinya dinilai di rataUpdate().
+    if (_mode == NAV_RATA)   { rataUpdate();   return; }
+    if (_mode == NAV_SETEL_BLK) { setelBelakangUpdate(); return; }
+
     // Waktu loop TIDAK dipakai untuk turunan PD -- itu sumber masalahnya dulu.
     // Turunan memakai stempel sampel LiDAR (lihat blok kemudi di bawah).
     uint32_t now = millis();
@@ -811,39 +1363,6 @@ void Navigation::navUpdate() {
     // sisi = +1 mengikuti dinding KIRI (yaw+ = belok kiri), -1 untuk kanan
     const int8_t  sisi      = ikutKiri ? +1 : -1;
     const uint8_t idSamping = ikutKiri ? LIDAR_KIRI_D : LIDAR_KANAN_D;
-
-    // ---- FASE BELOK (hanya mode terkunci arena) ----
-    // Berbelok ke mata angin berikutnya dengan kendali tertutup, bukan
-    // berputar buta selama sekian milidetik. Tetap non-blokir: satu langkah
-    // per pemanggilan, sama seperti fase jalan.
-    if (arenaTerkunci() && _fase == FASE_BELOK) {
-        if (_tPivot == 0) _tPivot = now;
-        if (now - _tPivot > NAV_PIVOT_BATAS_MS) {
-            navBerhenti("belok ke arah arena gagal (timeout).");
-            return;
-        }
-        // Rumus yang sama persis dengan pivot berdiri sendiri -- termasuk
-        // dorongan minimal supaya kaki tidak cuma menggeliat di tempat.
-        float err;
-        float turn = pivotLangkah(_headArah[_arahKini], err);
-
-        _majuKini = 0.0f; _turnKini = turn;
-        _robot.walk(0.0f, 0.0f, turn);
-
-        if (fabsf(err) <= HEADING_TOLERANCE_DEG) {
-            if (_diamSejak == 0) _diamSejak = now;
-            if (now - _diamSejak >= PIVOT_DIAM_MS) {
-                _fase = FASE_JALAN;
-                _tPivot = 0; _diamSejak = 0;
-                // mulai lagi PD dinding dari bersih
-                _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
-                Serial.print("Navigasi: sudah menghadap "); Serial.println(_arahNama[_arahKini]);
-            }
-        } else {
-            _diamSejak = 0;
-        }
-        return;
-    }
 
     int depan   = _lidar.getDistance(LIDAR_FRONT);
     int samping = _lidar.getDistance(idSamping);
@@ -858,14 +1377,23 @@ void Navigation::navUpdate() {
     // 2) Halangan di depan -> berputar MENJAUHI dinding yang diikuti.
     if (depan != LIDAR_JAUH && depan <= FRONT_STOP_CM) {
         if (arenaTerkunci()) {
-            // Ikut dinding KIRI -> saat mentok, belok KANAN = +90 der searah
-            // jarum jam = indeks arah berikutnya. Ikut dinding KANAN -> -1.
-            _arahKini = arahGeser(_arahKini, ikutKiri ? +1 : -1);
-            _fase = FASE_BELOK;
-            _tPivot = 0; _diamSejak = 0;
-            _robot.stop();
-            Serial.print("Navigasi: halangan depan -> belok ke ");
-            Serial.println(_arahNama[_arahKini]);
+            // BERHENTI. Mode arena DULU mengganti mata anginnya sendiri di
+            // sini lalu berputar 90 der -- perilaku pemecah labirin, tempat
+            // "mentok berarti belok" memang benar. Di robot ini lintasannya
+            // datang dari TABEL: tabel sudah menentukan tikungan mana yang ada
+            // di ujung ruas mana, dan navigasi tidak berhak menimpanya.
+            //
+            // Akibatnya bukan teori. 6 September 2026, saat mendekati tangga
+            // R-9, sensor depan membaca kaki tangga sebagai halangan; navigasi
+            // mencetak "halangan depan -> belok ke TIMUR" dan memutar robot 90
+            // der di tengah lompatan. Sisa jarak lompatan itu ditempuh ke arah
+            // yang salah dan mencemari pengukuran ruas 13.
+            //
+            // Misi memang sudah punya jaring pengaman untuk ini (ia
+            // membandingkan arahDituju() dengan arah ruasnya lalu gagal), tapi
+            // jaring itu hanya MENDETEKSI sesudah kejadian. Menghapus
+            // sebabnya lebih murah daripada memulihkan akibatnya.
+            navBerhenti("halangan di depan -- arah arena TIDAK diubah sendiri.");
             return;
         }
         if (_tBelok == 0) _tBelok = now;
@@ -1001,7 +1529,21 @@ void Navigation::navUpdate() {
         float lebar = WALL_MIN_CM - WALL_KAKI_CM;
         if (lebar < 1.0f) lebar = 1.0f;             // jaga-jaga bila disetel rapat
         float dalam = clampf((WALL_MIN_CM - jarak) / lebar, 0.0f, 1.0f);
-        float dorong = -sisiDekat * NAV_WALL_TURN_MAX;
+        // IKUT DINDING: dorongan penuh menjauh dari dinding yang terlalu dekat.
+        // Satu sisi, satu jawaban, tidak ada yang bisa membalik-balikkannya.
+        //
+        // MENENGAH: sisiDekat membalik pada derau begitu kedua dinding hampir
+        // sama dekat -- dan justru itu keadaan robot yang BENAR. errTengah sudah
+        // membawa arah yang sama, proporsional, dan tidak membalik di dekat nol;
+        // yang hilang cuma kekuatannya. Jadi di mode ini dorongan memakai
+        // errTengah sebagai TANDA sekaligus BESAR, penuh di NAV_TENGAH_PITA_CM.
+        float dorong;
+        if (adaTengah) {
+            dorong = -clampf(errTengah / NAV_TENGAH_PITA_CM, -1.0f, 1.0f)
+                     * NAV_WALL_TURN_MAX;
+        } else {
+            dorong = -sisiDekat * NAV_WALL_TURN_MAX;
+        }
         turn = (1.0f - dalam) * pd + dalam * dorong;
 
         if (dalam > 0.0f) {
@@ -1022,9 +1564,62 @@ void Navigation::navUpdate() {
 
     if (arenaTerkunci()) {
         // Dinding mengoreksi posisi LATERAL; arah hadap diurus heading arena.
-        turn += kemudiHeading(_headArah[_arahKini]);
+        turn += kemudiHeading(headingTerkunci());
     }
     turn = clampf(turn, -1.0f, 1.0f);
+
+    // 6) KOREKSI SAMBIL BERHENTI -- 'U' saja. Diminta R2C 17 Sep 2026.
+    //
+    // Di tanjakan, kemudi yang bekerja sambil melangkah membuat kaki ayun
+    // mendarat di tempat yang sudah bergeser sejak ayunannya dimulai. Jadi di
+    // sini MAJU dinolkan sampai badan sejajar dinding lagi; `turn` tetap yang
+    // dihitung PD di atas, tidak ada hukum kendali baru.
+    //
+    // DI SINI, bukan sebagai ModeNav baru. Mode baru menuntut navBerhenti(),
+    // dan itu menghapus abaikanDepan() -- yang di 'U' sengaja dipasang karena
+    // berkas sensor depan menembak muka anak tangga. Navigation juga tidak
+    // pernah menyalakan dirinya lagi; yang me-restart selama ini Misi, dan 'U'
+    // bukan misi. Mode tidak berganti berarti rem jarak ikut selamat, dan rem
+    // itu memakai lintasCm() yang tidak bertambah selagi robot diam.
+    if (_koreksiDiam) {
+        const float phi   = sudutDinding(ikutKiri);
+        // jarakSisi() memakai -1,0 sebagai "kedua sensor bisu", BUKAN NaN.
+        // NavKoreksi.h mengerti NaN saja, dan -1 yang lolos apa adanya terbaca
+        // sebagai dinding 20 cm terlalu dekat: bidikannya ter-clamp ke arah
+        // yang salah dan koreksinya tidak pernah selesai. Diterjemahkan di
+        // sini, di satu tempat, bukan di dalam header yang tidak tahu soal
+        // sentinel milik Navigation.
+        const float jrkMentah = jarakSisi(ikutKiri);
+        const float jrk   = (jrkMentah < 0.0f) ? NAN : jrkMentah;
+        const float bidik = navSudutBidik(jrk, WALL_SETPOINT_CM,
+                                          NAV_KOREKSI_JARAK_K,
+                                          NAV_KOREKSI_BIDIK_MAKS);
+        if (!_sedangKoreksi) {
+            if (navPerluKoreksi(phi, bidik, jrk, WALL_SETPOINT_CM,
+                                NAV_KOREKSI_SUDUT_DEG, NAV_KOREKSI_JARAK_CM)) {
+                _sedangKoreksi = true;
+                _tKoreksi = millis();
+                Serial.print("  KOREKSI: berhenti, sudut ");
+                Serial.print(phi, 1); Serial.print(" der, bidik ");
+                Serial.print(bidik, 1); Serial.print(" der, jarak ");
+                Serial.print(jrk, 0); Serial.println(" cm.");
+            }
+        } else if (navKoreksiSelesai(phi, bidik, NAV_KOREKSI_KELUAR_DEG)) {
+            _sedangKoreksi = false;
+            Serial.print("  KOREKSI selesai dalam ");
+            Serial.print(millis() - _tKoreksi); Serial.println(" ms -- jalan lagi.");
+        } else if (millis() - _tKoreksi > NAV_KOREKSI_BATAS_MS) {
+            // MENYERAH, lalu jalan lagi. Berdiri selamanya di tengah tanjakan
+            // lebih buruk daripada berjalan agak miring: rem jarak tidak
+            // pernah tercapai, dan dari luar robot cuma terlihat diam.
+            _sedangKoreksi = false;
+            Serial.print("  KOREKSI MENYERAH sesudah ");
+            Serial.print(NAV_KOREKSI_BATAS_MS);
+            Serial.print(" ms, sisa sudut "); Serial.print(phi, 1);
+            Serial.println(" der -- jalan lagi. Periksa 'Y0' dan sudutTabel().");
+        }
+        if (_sedangKoreksi) maju = 0.0f;
+    }
 
     _majuKini = maju;
     _turnKini = turn;
@@ -1033,6 +1628,17 @@ void Navigation::navUpdate() {
 
 void Navigation::navStatus() {
     Serial.println("\n--- STATUS NAVIGASI ---");
+    // Di bidang miring inilah satu-satunya angka yang memberi tahu robot sudah
+    // menukik atau belum: LiDAR depan justru menembak lantai di situ, jadi ia
+    // tidak bisa dipakai. Sebelumnya rollDeg()/pitchDeg() ada tapi tak pernah
+    // dipanggil siapa pun -- ketahuan saat dibutuhkan di bibir turunan.
+    Serial.print("  kemiringan  : ");
+    if (!_imu.hasData()) Serial.println("IMU belum memberi data");
+    else {
+        Serial.print("roll "); Serial.print(_imu.rollDeg(), 1);
+        Serial.print(" der, pitch "); Serial.print(_imu.pitchDeg(), 1);
+        Serial.println(" der  (pitch + = MENDONGAK)");
+    }
     Serial.print("  mode        : ");
     switch (_mode) {
         case NAV_DIAM:          Serial.println("DIAM"); break;
@@ -1041,6 +1647,8 @@ void Navigation::navStatus() {
         case NAV_ARENA_KIRI:    Serial.println("ikut dinding KIRI + kunci arena"); break;
         case NAV_ARENA_KANAN:   Serial.println("ikut dinding KANAN + kunci arena"); break;
         case NAV_PIVOT:         Serial.println("PIVOT di tempat"); break;
+        case NAV_RATA:          Serial.println("RATAKAN ke dinding samping"); break;
+        case NAV_SETEL_BLK:     Serial.println("SETEL jarak ke dinding belakang"); break;
     }
 
     if (_mode == NAV_PIVOT) {

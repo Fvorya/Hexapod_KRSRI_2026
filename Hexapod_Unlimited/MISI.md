@@ -8,9 +8,15 @@ Satu baris `RUAS[]` per potongan lintasan; mesin statusnya cuma lima
 (JALAN, PIVOT, SETEL, LENGAN, KONFIRM). Menyetel arena = mengubah angka, bukan
 mengubah alur.
 
-> **Capit belum terpasang.** Tiap ruas korban sekarang hanya **berhenti kosong**
-> 1,5 detik lalu lanjut. Sekuens lengan lengkapnya sudah ditulis utuh di
-> `Misi.cpp` dalam blok komentar — tinggal ditukar begitu capit ada.
+> **Capit SUDAH AKTIF** (`LENGAN_KORBAN_AKTIF 1` di `config.h`). Ruas korban
+> menjalankan sekuens lengan yang sebenarnya: `sekuensAmbil()` enam fase dan
+> `sekuensTaruh()` enam fase, keduanya di `Misi.cpp`, bukan lagi blok komentar.
+> Jatah waktu tiap fasenya dijaga `cek_lengan_laju.py`.
+>
+> Catatan lama di sini ("berhenti kosong 1,5 detik lalu lanjut") berlaku untuk
+> saklar 0 — yang tersisa sebagai jalan keluar kalau lengan harus dimatikan di
+> arena: ubah satu angka, robot tetap berhenti di gerbang korban dan tetap
+> memicu Raspi, tapi tidak satu servo lengan pun bergerak.
 
 ---
 
@@ -247,7 +253,9 @@ berangkat kalau ada baris yang melanggar — itu salah tulis, bukan salah setel.
 
 ## 3. Rute — dirombak 6 September 2026 (malam)
 
-Tabelnya **33 baris**. Yang menentukan bentuknya sekarang bukan lagi gambar
+Tabelnya **30 baris** (33 sampai 16 Sep 2026; tiga ruas perpindahan dibuang).
+Angka ini gampang basi — yang selalu benar keluaran `m4`, dan
+`cek_tabel_misi.py` mencetaknya tanpa perlu robot. Yang menentukan bentuknya sekarang bukan lagi gambar
 guidebook melainkan operator yang berdiri di arena; guidebook sudah meleset
 lima kali dan kalah tiap kali arena membantahnya.
 

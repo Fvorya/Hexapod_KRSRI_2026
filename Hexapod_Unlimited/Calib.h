@@ -4,7 +4,11 @@
 #include <stdint.h>
 #include "config.h"
 
-#define TOTAL_SERVOS (NUM_SERVOS + 2*ARM_NUM_SERVOS)
+// ARM_SLOT_N, bukan ARM_NUM_SERVOS: yang menentukan ukuran blob adalah slot
+// yang DIALOKASIKAN (3 per lengan, sejak dulu), bukan jumlah servo yang
+// benar-benar terpasang (4 depan + 1 belakang). Memakai ARM_NUM_SERVOS di sini
+// akan mengubah ukuran CalibBlob dan membuang seluruh kalibrasi tersimpan.
+#define TOTAL_SERVOS (NUM_SERVOS + 2*ARM_SLOT_N)
 
 enum ParamId {
     K_PULSE_MIN, K_PULSE_MAX, K_ARM_PULSE_MIN, K_ARM_PULSE_MAX,
@@ -15,6 +19,14 @@ enum ParamId {
     K_WALL_MIN,
     K_HEAD_UTARA, K_HEAD_TIMUR, K_HEAD_SELATAN, K_HEAD_BARAT,
     K_ARENA_MIRROR,   // 0 = arena hadap kanan (default), 1 = cermin (hadap kiri)
+    // SEKUENS CONDONG K-3/K-4. Di tabel parameter, bukan #define, supaya bisa
+    // disetel lewat 'Q<nama> <nilai>' lalu disimpan 'W' -- menyetelnya di
+    // arena tidak lagi menuntut flash ulang. Itu permintaan R2C 15 Sep 2026,
+    // dan alasannya praktis: satu putaran flash memakan menit yang tidak ada
+    // saat sesi latihan berjalan.
+    K_CONDONG_MM,     // geser badan maju sebelum lengan turun, mm
+    K_CONDONG_JEDA,   // jeda konfirmasi antara geser dan meluruskan, ms
+    K_CONDONG_YAW,    // 1 = luruskan badan ke heading ruas, 0 = jangan
     N_PARAMS
 };
 
@@ -83,6 +95,10 @@ extern CalibBlob gCalib;
 #define HEAD_TIMUR        gParam[K_HEAD_TIMUR]
 #define HEAD_SELATAN      gParam[K_HEAD_SELATAN]
 #define HEAD_BARAT        gParam[K_HEAD_BARAT]
+
+#define KORBAN_CONDONG_MM      gParam[K_CONDONG_MM]
+#define KORBAN_CONDONG_JEDA_MS ((uint32_t)gParam[K_CONDONG_JEDA])
+#define KORBAN_CONDONG_YAW     (gParam[K_CONDONG_YAW] > 0.5f)
 
 namespace Calib {
     void  begin();                              // applyDefaults + load (panggil di setup awal)

@@ -1,22 +1,36 @@
 #include <Arduino.h>
 #include "config.h"
 #include "Calib.h"      // WAJIB: gParam/gOffset/gTrim/gInvert (pulse min-max, GAIT_*, dll)
+#include "Skor.h"       // pembukuan poin menurut tabel penilaian guidebook
+#include "Tampilan.h"   // OLED + empat tombol D2..D5
 #include "EEMap.h"      // peta EEPROM + penjaga static_assert
 #include "Imu.h"
 #include "Hexapod.h"
 #include "Navigation.h"
 #include "LidarArray.h"
-#include "Mission.h"
+#include "Misi.h"
 
 // ====================================================================
 // DEKLARASI OBJEK GLOBAL
 // ====================================================================
 Imu imu;
 Hexapod robot;                // Digunakan oleh Navigation
-LidarArray lidar;              // 6x VL53L0X lewat mux TCA9548A di bus Wire
+LidarArray lidar;              // 6x VL53L1X lewat mux TCA9548A di bus Wire
 Navigation nav(imu, robot, lidar);  // Menyuntikkan referensi IMU, Motion, LiDAR
-// Lapisan misi. Ia MENYETIR nav, tidak menggantikannya -- lihat Mission.h.
-Mission misi(robot, nav, lidar);
+// Lapisan misi. Ia MENYETIR nav, tidak menggantikannya -- lihat Misi.h.
+// Lintasannya DATA (tabel RUAS[] di Misi.cpp), bukan satu state per potongan.
+Misi misi(robot, nav, lidar);
+
+// Pembukuan poin. Global karena Misi::ruasBerikut() yang mencatatnya, dan
+// menyuntikkannya lewat konstruktor berarti menyentuh empat berkas untuk satu
+// angka yang tidak pernah punya lebih dari satu contoh.
+Skor gSkor;
+Tampilan tampilan;
+
+// Jembatan tombol -> parser perintah, supaya tombol tidak punya jalur kedua
+// ke dalam Misi. handleCmd() didefinisikan jauh di bawah.
+static void handleCmd(char* s);
+static void kirimDariTombol(char* s) { handleCmd(s); }
 
 // ====================================================================
 // DEMO BODY KINEMATICS (non-blokir)
@@ -25,7 +39,54 @@ Mission misi(robot, nav, lidar);
 // kembali ke netral sebelum pindah sumbu -- tak pernah ada lompatan.
 // Kaki TETAP DI TEMPAT; yang bergerak hanya badan. Itulah gunanya: kalau
 // telapak ikut bergeser di lantai, berarti body kinematics belum benar.
-// ====================================================================
+// PAGAR GERAK MANUAL.
+//
+// Rem jarak "D<cm>" TIDAK bisa dipakai di sini, dan itu bukan soal selera:
+// HexaGait::jarakMm hanya menghitung komponen MAJU, jadi (a) geser samping
+// murni tidak menambahnya sama sekali, dan (b) gerak MUNDUR justru
+// MENGURANGINYA -- rem yang membandingkan "jarak >= sasaran" tak akan pernah
+// menggigit, dan robot mundur terus. Dua-duanya sudah terbukti di lantai.
+//
+// Yang dipakai sebagai gantinya: SENSOR YANG MENGHADAP ARAH JALANNYA. Maju
+// dijaga sensor depan, mundur oleh sensor belakang, kepiting oleh pasangan
+// sensor sisi yang dituju. Ia tidak peduli tanda, tidak peduli sumbu, dan
+// mengukur jarak yang sebenarnya alih-alih menghitung langkah.
+//
+// Batas waktu tetap ada sebagai jaring terakhir, untuk keadaan yang tidak
+// bisa dilihat sensor mana pun: sensor mati, atau robot menyangkut sehingga
+// jaraknya tidak pernah berubah.
+#define GERAK_AMAN_CM 15   // sama dengan pita "terlalu dekat" milik navigasi
+static uint32_t gerakSampai = 0;   // millis() saat gerak manual harus berhenti
+static float    gerakMaju   = 0.0f;  // tanda menentukan sensor mana yang menjaga
+static float    gerakGeser  = 0.0f;
+
+// Jarak ke arah yang sedang dituju, atau -1 bila tak ada yang bisa dinilai.
+// Pasangan sensor sisi diambil yang TERDEKAT: yang menabrak duluan bisa
+// dudukan depan maupun belakang, tergantung badan sedang menyerong ke mana.
+static int jarakArahJalan() {
+    int paling = -1;
+    auto pakai = [&](int d) {
+        if (d == LIDAR_MATI || d == LIDAR_JAUH) return;
+        if (paling < 0 || d < paling) paling = d;
+    };
+    if (gerakMaju  > 0.0f) pakai(lidar.getDistance(LIDAR_FRONT));
+    if (gerakMaju  < 0.0f) pakai(lidar.getDistance(LIDAR_BACK));
+    if (gerakGeser > 0.0f) { pakai(lidar.getDistance(LIDAR_KANAN_D));
+                             pakai(lidar.getDistance(LIDAR_KANAN_B)); }
+    if (gerakGeser < 0.0f) { pakai(lidar.getDistance(LIDAR_KIRI_D));
+                             pakai(lidar.getDistance(LIDAR_KIRI_B)); }
+    return paling;
+}
+
+
+// Urutan boot ada di bawah parser, tapi 's' harus bisa membatalkannya --
+// dan prototipe otomatis Arduino tidak menjangkau fungsi 'static'. Ikut
+// dipagari DEMO_BOOT: seluruh mesin boot hilang saat saklarnya 0, dan
+// prototipe tanpa definisi gagal di tahap LINK, bukan di tahap compile.
+#if DEMO_BOOT
+static void bootBatal(const char* alasan);
+#endif
+
 static bool     demoOn    = false;
 static uint32_t demoT0    = 0;
 static int8_t   demoAxis  = -1;
@@ -95,8 +156,22 @@ static void yawStreamUpdate() {
 
     float y = imu.yawDeg();
     Serial.print("yaw ");        Serial.print(y, 1);
+    Serial.print(" | roll ");    Serial.print(imu.rollDeg(), 1);
+    Serial.print(" | pitch ");   Serial.print(imu.pitchDeg(), 1);
     Serial.print(" der | gyroZ ");
     Serial.print(imu.gyroZ(), 1); Serial.print(" der/s");
+
+    // accelZ MENTAH, bukan hasil tare. Inilah satu-satunya angka yang tahu
+    // papan IMU menghadap ke mana: +1 g berarti tegak, -1 g berarti TERBALIK.
+    // roll dan pitch tidak bisa menjawabnya -- keduanya relatif terhadap tare(),
+    // jadi papan yang terpasang terbalik pun melapor 0 der sesudah ditare, dan
+    // yang rusak cuma kompensasi kemiringan di dalam fusi WIT: heading jadi
+    // menyusut dan tidak berulang, tanpa satu pun gejala di roll/pitch.
+    //
+    // magMagnitude juga mentah, satuan cacahan sensor. Nilai mutlaknya tidak
+    // berarti; yang berarti PERUBAHANNYA saat robot diam.
+    Serial.print(" | az "); Serial.print(imu.accelZ(), 2); Serial.print(" g");
+    Serial.print(" | mag "); Serial.print(imu.magMagnitude(), 0);
 
     // Kalau arah arena sudah dicatat, tunjukkan yang terdekat + simpangannya.
     // Inilah yang membuat aliran ini berguna saat kalibrasi kompas.
@@ -201,6 +276,22 @@ static const char* ambilToken(const char* s, char* out, uint8_t maks) {
     return n ? p : nullptr;
 }
 
+// "Y<sub><slot> <nilai>" -> true bila keduanya terbaca. Mulai mengurai di s+2,
+// jadi ia melewati 'Y' dan huruf subperintahnya sekaligus. Pemisah boleh spasi
+// atau '=', sama seperti 'Yt'.
+static bool ySlotNilai(const char* s, long& slot, float& nilai) {
+    const char* p = s + 2;
+    while (*p == ' ') p++;
+    if (!*p) return false;
+    char* akhir;
+    slot = strtol(p, &akhir, 10);
+    if (akhir == p) return false;
+    while (*akhir == ' ' || *akhir == '=') akhir++;
+    char* akhir2;
+    nilai = strtof(akhir, &akhir2);
+    return (akhir2 != akhir) && isfinite(nilai);
+}
+
 // Cocok persis dulu (Calib::findParam), lalu awalan yang unik supaya tidak
 // perlu mengetik "gait.profile_tau" lengkap di Serial Monitor.
 // -1 = tidak ketemu, -2 = ambigu (kandidatnya sudah dicetak).
@@ -228,6 +319,7 @@ static int cariParam(const char* nama) {
 static void cetakSatuParam(int i) {
     const ParamDef& d = PARAM_DEFS[i];
     float v = gParam[i];
+    Serial.printf("#PARAM %s %.6g %.6g %.6g %u\n", d.name, v, d.lo, d.hi, (unsigned)d.berlaku);
     Serial.print("  ");
     Serial.print(d.name);
     for (size_t k = strlen(d.name); k < 18; k++) Serial.print(' ');
@@ -287,7 +379,12 @@ static void handleCmd(char* s) {
     switch (c) {
         // --- 1. NAVIGASI: KOMPAS ARENA ---
         case 'c':
-            if (d1 > 3) { Serial.println("c0=UTARA c1=TIMUR c2=SELATAN c3=BARAT"); break; }
+            if (d1 > 3) {
+                Serial.println("c0 = arah LORONG PERTAMA dari HOME (bukan utara magnet).");
+                Serial.println("c1 c2 c3 = seperempat putaran searah jarum jam dari c0.");
+                Serial.println("Nama UTARA/TIMUR/SELATAN/BARAT hanya panggilan indeks 0..3.");
+                break;
+            }
             nav.kompasCatat(d1);
             break;
 
@@ -354,61 +451,132 @@ static void handleCmd(char* s) {
             nav.navMulai(NAV_ARENA_KANAN);
             break;
 
+        // 'U' = UNDAKAN. Lima perintah yang sudah ada, dirangkai dalam urutan
+        // yang benar -- dan urutannya bukan selera:
+        //
+        //   'i1' HARUS paling akhir. navMulai() memeriksa sensor depan hidup
+        //   sebelum melangkah, dan pemeriksaan itu SENGAJA dilewati kalau
+        //   depan sudah diabaikan (Navigation.cpp). Mengetik 'i1' duluan
+        //   berarti berjalan buta tanpa pernah tahu sensornya masih hidup.
+        //
+        //   Rem jarak WAJIB. Dengan depan buta, ketiga aturan depan mati;
+        //   tidak ada lagi apa pun yang menghentikan robot di ujung tangga.
+        //   Itu sebabnya perintah ini menolak jalan tanpa angka.
+        //
+        // Kemudinya MENENGAH: error = (kanan - kiri)/2, jadi ia mengunci
+        // garis tengah lorong dan bukan satu dinding. Dinding KANAN cuma
+        // cadangan kalau satu sisi hilang -- sama seperti ruas 24 di tabel.
+        case 'U': {
+            float p[1] = { 0.0f };
+            if (argFloats(s, p, 1) < 1 || p[0] <= 0.0f) {
+                Serial.println("U<cm> = NAIK TANGGA. Contoh: 'U103' untuk R-9.");
+                Serial.println("  Sama dengan mengetik, berurutan:");
+                Serial.println("    T5     profil TANJAK -- langkah 75 mm, satu-satunya yang terbukti naik anak tangga");
+                Serial.println("    Z0     kemudi IKUT DINDING, bukan menengah");
+                Serial.println("    F      ikut dinding KANAN -- kedua LiDAR kanan yang dipakai");
+                Serial.println("    D<cm>  rem jarak");
+                Serial.println("    i1     abaikan sensor depan -- PALING AKHIR, lihat komentar");
+                Serial.println("  Plus koreksi BERHENTI-DULU: robot berhenti, memutar badan sejajar dinding,");
+                Serial.println("  baru jalan lagi. Ukur bias sudutnya dengan 'Y0' di lorong lurus dulu.");
+                Serial.println("  Jaraknya WAJIB: dengan depan buta, rem satu-satunya yang menghentikan.");
+                Serial.println("  Berhenti apa pun ('s'/'x'/Enter/rem) memulihkan sensor depan.");
+                break;
+            }
+            robot.profileTanjak();
+            nav.setTengah(false);
+            nav.navMulai(NAV_DINDING_KANAN);
+            if (nav.navMode() == NAV_DIAM) {   // navMulai menolak, dan sudah
+                Serial.println("NAIK TANGGA dibatalkan -- sensor depan TIDAK jadi diabaikan.");
+                break;
+            }
+            nav.remJarakPasang(p[0]);
+            nav.abaikanDepan(true);
+            // PALING AKHIR bersama abaikanDepan: navMulai() yang menolak tidak
+            // boleh meninggalkan koreksi berhenti-dulu menyala untuk perintah
+            // navigasi berikutnya.
+            nav.koreksiDiam(true);
+            Serial.print("NAIK TANGGA: tanjak + dinding kanan, koreksi sambil berhenti, buta ke depan, rem ");
+            Serial.print(p[0], 0); Serial.println(" cm.");
+            break;
+        }
+
         // --- MISI (lapisan di atas navigasi) ---
+        // argFloats() membaca mulai s+1, jadi angka PERTAMA yang terbaca
+        // adalah digit perintahnya sendiri; argumennya ada di p[1] dst.
         case 'm': {
             if (!hasNum) { misi.status(); break; }
             switch (s[1]) {
-                case '0': misi.batal("dihentikan pengguna."); break;
+                case '0': gerakSampai = 0; misi.batal("dihentikan pengguna."); break;
                 case '1': misi.mulai();      break;
                 case '2': misi.jawab(true);  break;
                 case '3': misi.jawab(false); break;
                 case '4': {
-                    float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setMiringCm(p[1]);
-                    else Serial.println("Format: m4 <cm>, misal m4 35");
-                    break;
-                }
-                case '5': {
-                    float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setDepanCm(p[1]);
-                    else Serial.println("Format: m5 <cm>, misal m5 40");
+                    // p[0] adalah digit perintahnya sendiri ('4'), jadi
+                    // argumennya mulai di p[1]: 'm4 6 13' = ruas 6..13.
+                    float p[3] = {0, 0, 0};
+                    uint8_t n = argFloats(s, p, 3);
+                    if (n >= 3)      misi.mulaiDari((uint8_t)p[1], (uint8_t)p[2]);
+                    else if (n >= 2) misi.mulaiDari((uint8_t)p[1]);
+                    else             misi.tabel();
                     break;
                 }
                 case '6': {
                     float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setTurunCm(p[1]);
-                    else Serial.println("Format: m6 <cm>, misal m6 60");
+                    if (argFloats(s, p, 2) >= 2) misi.ukur((uint8_t)p[1]);
+                    else Serial.println("Format: m6 <idx>, misal m6 2");
                     break;
                 }
                 case '7': {
-                    float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setLantaiCm(p[1]);
-                    else Serial.println("Format: m7 <cm>, misal m7 80");
+                    float p[3] = {0, 0, 0};
+                    if (argFloats(s, p, 3) >= 3) misi.setRuasCm((uint8_t)p[1], p[2]);
+                    else Serial.println("Format: m7 <idx> <cm>, misal m7 2 55");
                     break;
                 }
                 case '8': {
+                    // m8 = balik, m8 1 = nyala, m8 0 = mati. p[0] digit
+                    // perintahnya sendiri, jadi modenya di p[1].
                     float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setAmbangBlk(p[1]);
-                    else Serial.println("Format: m8 <cm>, misal m8 40");
+                    misi.setTungguVision(argFloats(s, p, 2) >= 2 ? (int)p[1] : -1);
                     break;
                 }
-                case '9': {
-                    // argFloats() membaca mulai s+1, jadi angka PERTAMA yang
-                    // terbaca adalah '9' itu sendiri; nilainya ada di p[1].
-                    float p[2] = {0, 0};
-                    if (argFloats(s, p, 2) >= 2) misi.setAmbang(p[1]);
-                    else Serial.println("Format: m9 <cm>, misal m9 28");
-                    break;
-                }
+                case '9': misi.lepasKendali(); break;
                 default:
-                    Serial.println("m=status  m1=mulai  m0=batal  m2=korban  m3=bukan");
-                    Serial.println("m8<cm>=jarak korban 1 (sensor BELAKANG)   m9<cm>=ambang depan");
-                    Serial.println("m7<cm>=lebar lantai pecah   m6<cm>=panjang turunan (odometri)");
+                    Serial.println("m=status  m4=tabel lintasan  m1=mulai  m0=batal");
+                    Serial.println("m4 <idx>      = mulai dari satu ruas sampai akhir lintasan");
+                    Serial.println("m4 <awal> <akhir> = jalankan SEBAGIAN, misal m4 0 13 (HOME..kaki tangga)");
+                    Serial.println("m6 <idx>      = MODE UKUR: jalan tanpa henti, robot cetak cm-nya");
+                    Serial.println("m7 <idx> <cm> = setel panjang ruas");
+                    Serial.println("m2/m3         = saat menunggu konfirmasi: lanjut / ulangi ruas");
+                    Serial.println("m8 [0|1]      = ruas AMBIL parkir menunggu Raspi menengahkan (bawaan NYALA)");
+                    Serial.println("m9            = dari Raspi: 'aku sudah tidak memegang kaki', misi lanjut");
             }
             break;
         }
 
         case 'T': {   // profil medan: T = cetak, T0..T3 = pilih
+            if (s[1] == '?') { robot.cetakProfil(); break; }
+            if (s[1] == 'W') {
+                Serial.println(robot.simpanProfil() ? "#PROFIL_SIMPAN OK" : "#PROFIL_SIMPAN GAGAL");
+                robot.cetakProfil(); break;
+            }
+            if (s[1] == 'L') {
+                Serial.println(robot.muatProfil() ? "#PROFIL_MUAT OK" : "#PROFIL_MUAT GAGAL");
+                robot.cetakProfil(); break;
+            }
+            if (s[1] == 'D' && s[2] >= '0' && s[2] <= '5' && !s[3]) {
+                robot.resetProfil(s[2] - '0');
+                Serial.println("#PROFIL_UBAH OK"); robot.cetakProfil(); break;
+            }
+            if (s[1] == 'p') {
+                int id = -1, end = 0;
+                GaitProfile p = {};
+                bool ok = sscanf(s + 2, "%d %f %f %f %f %f %n", &id,
+                    &p.stepHeight, &p.stepLength, &p.cycleTime, &p.standHeight,
+                    &p.standRadius, &end) == 6 && !s[2 + end] && id >= 0 && id < 6;
+                ok = ok && robot.ubahProfil((uint8_t)id, p);
+                Serial.println(ok ? "#PROFIL_UBAH OK" : "#PROFIL_UBAH GAGAL");
+                robot.cetakProfil(); break;
+            }
             // Empat profil sudah lama ada di Hexapod (datar/tangga/merunduk/
             // sempit) lengkap dengan ramp GAIT_PROFILE_TAU yang menghaluskan
             // pergantiannya, tapi hanya profileFlat() yang pernah tersambung
@@ -420,6 +588,46 @@ static void handleCmd(char* s) {
             // ini. Tabrakan ini yang paling tidak berbahaya: 'T' tidak
             // menggerakkan robot, hanya mengganti profil, dan pergantiannya
             // di-ramp sehingga salah ketik pun tidak menyentak.
+            // PENYETELAN SATU KOLOM PROFIL, meniru pola 'b<mm>' yang sudah ada:
+            //   Th<mm> tinggi langkah    Tl<mm> panjang langkah
+            //   Tc<ms> waktu siklus      Tr<mm> radius kaki    Tb<mm> tinggi badan
+            //
+            // Kenapa perlu: satu-satunya jalan menyetel tinggi langkah dulu
+            // cuma 'Qgait.step_height', yang bertanda P_PERLU_B -- nilainya
+            // baru masuk saat profil di-set ulang, dan satu-satunya pemicunya
+            // 'b', yang sekaligus MENOLKAN pose badan dan mengembalikan profil
+            // ke DATAR. Di R-9, tempat bentuk KAIL memang harus tetap hidup,
+            // itu justru dua hal yang tidak boleh terjadi.
+            //
+            // Lewat setKolomProfil(), BUKAN setGaitProfile(): yang terakhir
+            // menghapus offset kaki dan akan meratakan bentuk KAIL diam-diam.
+            if (s[1] == 'h' || s[1] == 'l' || s[1] == 'c' ||
+                s[1] == 'r' || s[1] == 'b') {
+                // argFloats() membaca mulai argumennya sendiri, jadi s+1 di
+                // sini menaruh titik bacanya tepat sesudah huruf kolomnya --
+                // pola yang sama dengan 'Ds'.
+                float p[1] = {0};
+                if (argFloats(s + 1, p, 1) < 1) {
+                    Serial.println("Th<mm> tinggi langkah   Tl<mm> panjang langkah   Tc<ms> waktu siklus");
+                    Serial.println("Tr<mm> radius kaki      Tb<mm> tinggi badan");
+                    Serial.println("  Menyetel SATU kolom profil yang sedang berlaku: di-ramp, tanpa 'b',");
+                    Serial.println("  dan offset kaki per kaki (bentuk KAIL) TIDAK dihapus.");
+                    break;
+                }
+                const uint8_t kol =
+                    (s[1] == 'h') ? HexaGait::KOL_TINGGI_LANGKAH  :
+                    (s[1] == 'l') ? HexaGait::KOL_PANJANG_LANGKAH :
+                    (s[1] == 'c') ? HexaGait::KOL_WAKTU_SIKLUS    :
+                    (s[1] == 'r') ? HexaGait::KOL_RADIUS_KAKI     :
+                                    HexaGait::KOL_TINGGI_BADAN;
+                if (!robot.setKolomProfil(kol, p[0])) break;
+                // Awalan yang SAMA dengan 'Tp'/'TD' -- HUD sudah mengenalinya,
+                // jadi penyetelan ini tidak butuh pembacaan baru di sisi Raspi.
+                Serial.println("#PROFIL_UBAH OK");
+                robot.cetakProfil();
+                break;
+            }
+
             if (!hasNum) {
                 GaitProfile p = robot.gaitProfile();
                 Serial.println("\n--- PROFIL MEDAN (yang BERLAKU, hasil ramp) ---");
@@ -428,7 +636,33 @@ static void handleCmd(char* s) {
                 Serial.print("  waktu siklus   : "); Serial.print(p.cycleTime, 0);   Serial.println(" ms");
                 Serial.print("  tinggi badan   : "); Serial.print(p.standHeight, 1); Serial.println(" mm");
                 Serial.print("  radius kaki    : "); Serial.print(p.standRadius, 1); Serial.println(" mm");
-                Serial.println("  T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit");
+
+                // SUDUT SENDI TIAP KAKI, dari legAngles() -- fungsi yang sama
+                // yang memberi makan servo, bukan salinan rumusnya. Inilah
+                // satu-satunya cara menjawab "apakah coxa T4 sudah sama dengan
+                // T0?" tanpa busur derajat: catat kolom coxa di T0, ketik T4,
+                // bandingkan. Profil yang bentuknya seragam memberi coxa yang
+                // sama persis untuk keenam kaki di kedua profil.
+                //
+                // Dibaca saat robot BERDIRI DIAM. Kalau gait sedang berjalan,
+                // angka-angka ini ikut berayun -- yang terbaca ayunannya, bukan
+                // bentuk berdirinya.
+                Serial.println("  sudut sendi (berdiri diam; der):");
+                Serial.println("    kaki   coxa   femur   tibia");
+                static const char* NAMA_KAKI[6] = {
+                    "0 kn-dp", "1 kn-tg", "2 kn-bl", "3 ki-bl", "4 ki-tg", "5 ki-dp"
+                };
+                for (int leg = 0; leg < 6; leg++) {
+                    float cx, fm, tb;
+                    if (!robot.legAngles(leg, cx, fm, tb)) {
+                        Serial.print("    "); Serial.print(NAMA_KAKI[leg]);
+                        Serial.println("   (di luar jangkauan IK)");
+                        continue;
+                    }
+                    Serial.printf("    %-7s %+6.1f  %+6.1f  %+6.1f\n",
+                                  NAMA_KAKI[leg], (double)cx, (double)fm, (double)tb);
+                }
+                Serial.println("  T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit  T4=kail  T5=tanjak");
                 break;
             }
             switch ((int)v) {
@@ -436,8 +670,21 @@ static void handleCmd(char* s) {
                 case 1: robot.profileStairs(); Serial.println("Profil -> 1 TANGGA");             break;
                 case 2: robot.profileCrouch(); Serial.println("Profil -> 2 MERUNDUK / TURUNAN"); break;
                 case 3: robot.profileNarrow(); Serial.println("Profil -> 3 SEMPIT");             break;
+                case 4:
+                    robot.profileKail();
+                    Serial.println("Profil -> 4 KAIL (R-9: depan mengait, belakang naik)");
+                    Serial.println("  Bentuknya TIDAK seragam. Lihat robot berdiri dulu sebelum");
+                    Serial.println("  mempercayakannya ke misi; angkanya di config.h (KAIL_*).");
+                    break;
+                case 5:
+                    robot.profileTanjak();
+                    Serial.println("Profil -> 5 TANJAK (R-9 lambat: langkah 75, siklus 1300)");
+                    Serial.println("  Kaki depan MAJU 60 mm -- knop yang selama ini mati di KAIL.");
+                    Serial.println("  Ketik 'T' sekarang: kalau ada kaki '(di luar jangkauan IK)',");
+                    Serial.println("  turunkan KAIL_DEPAN_MAJU sebelum dipakai di tanjakan.");
+                    break;
                 default:
-                    Serial.println("T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit");
+                    Serial.println("T0=datar  T1=tangga  T2=merunduk/turunan  T3=sempit  T4=kail  T5=tanjak");
                     break;
             }
             Serial.println("  Berlaku SAMBIL BERJALAN dan di-ramp; tidak perlu 'b'.");
@@ -456,7 +703,168 @@ static void handleCmd(char* s) {
             }
             break;
 
-        case 'Y':   // Y = sudut dinding kedua sisi, Y0 = catat bias (robot sejajar)
+        // 'Y' = keluarga KALIBRASI SERVO. Bentuk telanjang dan 'Y0' milik
+        // sudut dinding; sisanya huruf KEDUA yang memilih subperintah.
+        //
+        // Berawalan karena KEHABISAN HURUF: seluruh 52 huruf sudah terpakai
+        // (CATATAN_MODIFIKASI.md bagian 6). Ditumpangkan ke 'Y', bukan 's' atau
+        // 'x', dengan sengaja -- salah ketik di dua huruf itu meninggalkan
+        // robot berjalan, dan 'Y' tidak menggerakkan apa pun kecuali 'Yj'.
+        //
+        //   Y       sudut badan terhadap dinding (SEPASANG sensor)
+        //   Y0      catat bias pemasangan sudut dinding
+        //   Yt ...  trim servo, MIKRODETIK (gigi horn)    -> EEPROM 1024, simpan 'YtW'
+        //   Yo ...  offset SUDUT servo, DERAJAT (datum)   -> EEPROM 0,    simpan 'W'
+        //   Yi ...  invert per servo                      -> EEPROM 1024, simpan 'YtW'
+        //   Yj ...  jog pulse MENTAH (TUNE_PIN_MAP)       -> tidak disimpan
+        //   Yz ...  offset tinggi telapak per kaki, mm    -> EEPROM 2048, langsung
+        //   Yd ...  offset JARAK per sensor LiDAR, cm     -> RAM saja
+        //
+        // DUA TOMBOL SIMPAN YANG BERBEDA untuk dua hal yang bersebelahan, dan
+        // itu memang keadaannya: offset duduk di CalibBlob (alamat 0), invert &
+        // trim duduk di ServoMap (alamat 1024). Menulis keduanya ke satu tempat
+        // tidak mungkin -- loadServoMap() menimpa invert/trim tiap boot, jadi
+        // 'W' atas trim tidak pernah berpengaruh.
+        case 'Y':
+            if (s[1] == 't') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0')      { robot.cetakTrim();  break; }
+                if (*arg == 'W')       { robot.simpanServoMap(); break; }
+                if (*arg == '!')       { robot.nolkanTrim(); break; }
+                char* akhir;
+                long slot = strtol(arg, &akhir, 10);
+                if (akhir == arg) {
+                    Serial.println("Format: 'Yt' tabel | 'Yt<slot> <us>' setel | 'YtW' simpan | 'Yt!' nolkan");
+                    break;
+                }
+                while (*akhir == ' ' || *akhir == '=') akhir++;
+                char* akhir2;
+                long us = strtol(akhir, &akhir2, 10);
+                if (akhir2 == akhir) {
+                    Serial.println("Nilai trim tidak terbaca. Contoh: 'Yt5 -40'");
+                    break;
+                }
+                if (slot < 0 || slot > 255) {
+                    Serial.println("Slot di luar jangkauan.");
+                    break;
+                }
+                robot.setTrim((uint8_t)slot, (int16_t)us);
+                break;
+            }
+
+            // Yo -- offset SUDUT per servo, derajat. Jawaban untuk DATUM LUTUT
+            // yang meleset ~+24 der (config.h): gOffset[] sudah ada di jalur
+            // servo dan sudah ikut Calib::save(), cuma belum punya penulis.
+            if (s[1] == 'o') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { robot.cetakOffset();   break; }
+                if (*arg == '!')  { robot.nolkanOffset();  break; }
+                long slot; float der;
+                if (!ySlotNilai(s, slot, der) || slot < 0) {
+                    Serial.println("Format: 'Yo' tabel | 'Yo<slot> <der>' setel | 'Yo!' nolkan");
+                    Serial.println("  Slot SAMA dengan 'Yt' (0..23). Satuannya DERAJAT, bukan us.");
+                    Serial.println("  Simpan dengan 'W' (EEPROM 0), BUKAN 'YtW'.");
+                    break;
+                }
+                robot.setOffset((uint8_t)slot, der);
+                break;
+            }
+
+            // Yi -- invert per servo. Tampilan dan penyimpanannya gratis:
+            // gInvert[] sudah ikut cetakTrim() dan simpanServoMap().
+            if (s[1] == 'i') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { robot.cetakTrim(); break; }
+                long slot; float on;
+                if (!ySlotNilai(s, slot, on) || slot < 0) {
+                    Serial.println("Format: 'Yi' tabel | 'Yi<slot> <0|1>' setel");
+                    Serial.println("  Slot sama dengan 'Yt'. Kolom ketiga tabel 'Yt' = nilai sekarang.");
+                    Serial.println("  DITOLAK selagi servo hidup -- 'x' dulu. Simpan dengan 'YtW'.");
+                    break;
+                }
+                robot.setInvert((uint8_t)slot, (uint8_t)(on > 0.5f));
+                break;
+            }
+
+            // Yj -- jog PULSE MENTAH. Hexapod::jog() sudah ada sejak awal dan
+            // tidak pernah dipanggil siapa pun; ini pemicunya.
+            if (s[1] == 'j') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') {
+                    Serial.println("Format: 'Yj<slot> <us>' -- jog PULSE MENTAH satu kanal servo.");
+                    Serial.println("  Slot memakai TUNE_PIN_MAP, BUKAN ruang slot 'Yt'/SLOT_NAMA.");
+                    Serial.println("  Untuk 0..17 (keenam kaki) urutannya KEBETULAN sama; 18 ke atas TIDAK.");
+                    Serial.println("  TUNE_PIN_MAP hanya memuat 3 servo per lengan, jadi GRIP DEPAN");
+                    Serial.println("  -- slot 'Yt' 21, yang dipetakan {0,15} -- TIDAK BISA dijangkau di sini.");
+                    Serial.println("  Tanpa pemeriksaan _enabled: pada robot yang LEMAS kanal ini hidup");
+                    Serial.println("  sendiri dan tetap hidup sampai 'x'. Itu memang yang dibutuhkan saat");
+                    Serial.println("  memasang horn -- topang robotnya dulu.");
+                    break;
+                }
+                long slot; float us;
+                if (!ySlotNilai(s, slot, us) || slot < 0 || slot >= NUM_TUNE_SERVOS) {
+                    Serial.print("Format: 'Yj<slot> <us>', slot 0..");
+                    Serial.println(NUM_TUNE_SERVOS - 1);
+                    break;
+                }
+                const float minta = us;
+                const uint16_t p = (uint16_t)clampf(us, 0.0f, 3000.0f);
+                robot.jog((uint8_t)slot, p);
+                Serial.print("Jog slot "); Serial.print(slot);
+                Serial.print(" -> "); Serial.print(p);
+                Serial.println(" us MENTAH (tanpa offset/trim/invert).");
+                if (fabsf(minta - p) > 1e-6f)
+                    Serial.println("  (permintaan dipangkas ke rentang 0..3000 us)");
+                Serial.println("  Kanal ini HIDUP sampai 'x'.");
+                break;
+            }
+
+            // Yz -- offset tinggi telapak per kaki, mm. Blok EEPROM 2048 milik
+            // TES_GERAK, jadi tulisannya baca-ubah-tulis.
+            if (s[1] == 'z') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') {
+                    Serial.println("Format: 'Yz<kaki> <mm>' -- offset tinggi telapak per kaki.");
+                    Serial.println("  Kaki 0..5 (0 kanan-depan .. 5 kiri-depan, lihat 'd').");
+                    Serial.println("  + = telapak NAIK (kaki terangkat), - = telapak memanjang ke BAWAH.");
+                    Serial.println("  Tersimpan di EEPROM 2048; field TES_GERAK lain dipertahankan.");
+                    Serial.println("  Berlaku SEKETIKA tanpa ramp -- robot boleh sedang berdiri.");
+                    break;
+                }
+                long leg; float mm;
+                if (!ySlotNilai(s, leg, mm) || leg < 0 || leg > 5) {
+                    Serial.println("Format: 'Yz<kaki> <mm>', kaki 0..5. Contoh: 'Yz2 -6'");
+                    break;
+                }
+                robot.setZOff((uint8_t)leg, mm);
+                break;
+            }
+
+            // Yd -- offset JARAK per sensor LiDAR. Satu-satunya anggota keluarga
+            // ini yang bukan milik servo: kalibrasi ST menuntut offset per
+            // modul, dan firmware ini tidak pernah punya satu pun.
+            if (s[1] == 'd') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { lidar.cetakOffset();  break; }
+                if (*arg == '!')  { lidar.nolkanOffset(); break; }
+                long ch; float cm;
+                if (!ySlotNilai(s, ch, cm) || ch < 0 || ch >= NUM_LIDAR) {
+                    Serial.println("Format: 'Yd' tabel | 'Yd<ch> <cm>' catat | 'Yd!' nolkan");
+                    Serial.println("  <cm> = jarak yang DIUKUR METERAN dari muka sensor ke dinding.");
+                    Serial.println("  Sensor harus sedang melihat dinding sungguhan -- 'l' harus");
+                    Serial.println("  memberi angka, bukan MATI/JAUH. RAM saja, ulangi tiap menyala.");
+                    break;
+                }
+                lidar.setOffset((uint8_t)ch, cm);
+                break;
+            }
+
             if (s[1] == '0') nav.kalibrasiSudut();
             else             nav.sudutTabel();
             break;
@@ -508,8 +916,12 @@ static void handleCmd(char* s) {
             }
             float p[1] = {0};
             if (argFloats(s, p, 1) < 1) {                 // 'D' polos
-                Serial.print("Jarak tempuh : "); Serial.print(robot.jarakCm(), 1);
+                Serial.print("Jarak maju   : "); Serial.print(robot.jarakCm(), 1);
                 Serial.println(" cm sejak terakhir dinolkan");
+                Serial.print("  geser     : "); Serial.print(robot.geserCm(), 1);
+                Serial.println(" cm  (kanan +, kiri -)");
+                Serial.print("  lintasan  : "); Serial.print(robot.lintasCm(), 1);
+                Serial.println(" cm  <- INI yang dipakai rem jarak");
                 Serial.print("  rem       : ");
                 if (nav.remJarakAda()) { Serial.print(nav.remJarakSasaran(), 1);
                                          Serial.println(" cm"); }
@@ -549,7 +961,11 @@ static void handleCmd(char* s) {
         }
 
         case 'I':   // Pindai bus I2C LiDAR + init ulang sensor yang belum aktif
-            lidar.pindaiI2C();
+            // I1 = uji PIN, bukan uji bus. Dipakai saat pindaian bilang garis
+            // tertahan rendah dan yang tersisa tinggal "pinnya sendiri rusak
+            // atau tidak".
+            if (s[1] == '1') lidar.periksaPinBus();
+            else             lidar.pindaiI2C();
             break;
 
         case 'M':   // Cetak peta EEPROM + cek kapasitas chip sebenarnya
@@ -574,7 +990,7 @@ static void handleCmd(char* s) {
             while (*sisa == ' ' || *sisa == '=') sisa++;
             char* akhir;
             float minta = strtof(sisa, &akhir);
-            if (akhir == sisa) { Serial.println("Nilai tidak terbaca. Misal: Qwall.kp 0.012"); break; }
+            if (akhir == sisa || !isfinite(minta)) { Serial.println("Nilai tidak terbaca. Misal: Qwall.kp 0.012"); break; }
 
             int i = cariParam(nm);
             if (i == -1) { Serial.print("Parameter tidak dikenal: "); Serial.println(nm); break; }
@@ -620,14 +1036,20 @@ static void handleCmd(char* s) {
                 default: break;
             }
             Serial.println("  Masih di RAM. Ketik 'W' supaya bertahan sesudah reset.");
+            cetakSatuParam(i);
             break;
         }
 
-        case 'W':   // Simpan seluruh blok Calib ke EEPROM 0
+        case 'W': {  // Simpan seluruh blok Calib ke EEPROM 0
             Calib::save();
+            CalibBlob cek;
+            EEPROM.get(EE_CALIB_ADDR, cek);
+            Serial.println(memcmp(&cek, &gCalib, sizeof cek) == 0
+                           ? "#CALIB_SIMPAN OK" : "#CALIB_SIMPAN GAGAL");
             Serial.println("Parameter disimpan ke EEPROM 0. Bertahan sesudah reset,");
             Serial.println("  KECUALI bila CALIB_VERSION dinaikkan -- blob lama lalu dibuang.");
             break;
+        }
 
         case 'e':
             nav.kompasSimpan();
@@ -747,10 +1169,62 @@ static void handleCmd(char* s) {
             uint8_t arm = (c == 'a') ? ARM_DEPAN : ARM_BELAKANG;
             const char* nama = (c == 'a') ? "DEPAN" : "BELAKANG";
 
-            float p[2] = {0, 0};
-            if (argFloats(s, p, 2) < 2) {
+            // Lengan BELAKANG cuma grip -- tidak ada sendi yang bisa dijangkau.
+            // Ditolak DI SINI dengan sebab yang jelas, bukan dibiarkan jatuh ke
+            // pesan "di luar jangkauan" yang menyesatkan.
+            if (arm == ARM_BELAKANG) {
+                Serial.println("Lengan BELAKANG tidak punya sendi -- hanya grip. Pakai 'G<0-100>'.");
+                Serial.println("  Letak capit belakang ditentukan letak BADAN, bukan sudut sendi.");
+                break;
+            }
+            // 'aa' / 'at' = SEKUENS korban, bukan satu pose. Keduanya memanggil
+            // sekuens yang sama persis yang dijalankan misi di ruas AMBIL dan
+            // TARUH, dengan jeda antar pose yang sama, jadi yang terlihat di
+            // meja adalah yang akan terjadi di arena.
+            if (s[1] == 'a' || s[1] == 't') {
+                misi.ujiLengan(s[1] == 'a');
+                break;
+            }
+            // 'as' = SUDUT LANGSUNG, tanpa IK. argFloats() memakai strtof dan
+            // berhenti seketika pada huruf, jadi "as90 ..." mengembalikan 0
+            // argumen untuk 'a' biasa -- kedua bentuk tidak bisa tertukar.
+            if (s[1] == 's') {
+                float q[3] = {0, 0, 0};
+                if (argFloats(s + 1, q, 3) < 3) {
+                    Serial.println("Format: as<bahu> <siku> <pergelangan>  (der geometris)");
+                    Serial.println("  Menembak KETIGA sendi langsung -- tidak lewat IK.");
+                    Serial.println("  Netral 'as0 0 0' = baseline config.h (bahu 90, siku 0, prg 90 servo).");
+                    Serial.println("  Dipakai untuk membidik pose dengan tangan lalu menuliskannya keras;");
+                    Serial.println("  jalur kalibrasinya sama dengan IK, jadi posenya berulang sama.");
+                    Serial.println("  'a<jangkauan> <tinggi>' kalau yang diketahui letak capitnya, bukan sudutnya.");
+                    break;
+                }
+                if (!robot.isArmed()) { Serial.println("Servo masih lemas -- ketik 'b' dulu."); break; }
+                if (!robot.armEnabled(arm)) {
+                    robot.armEnable(arm, true);
+                    Serial.println("Servo lengan DEPAN DIHIDUPKAN.");
+                }
+                float sv[3];
+                const bool sanggup = robot.setSudutLengan(arm, q[0], q[1], q[2], sv);
+                static const char* NAMA[3] = { "bahu       ", "siku       ", "pergelangan" };
+                for (uint8_t i = 0; i < 3; i++) {
+                    Serial.print("  "); Serial.print(NAMA[i]);
+                    Serial.print(" geo "); Serial.print(q[i], 1);
+                    Serial.print(" der -> servo "); Serial.print(sv[i], 1);
+                    Serial.println((sv[i] < 0.0f || sv[i] > 180.0f)
+                                   ? " der  << DI LUAR 0..180, DI-CLAMP" : " der");
+                }
+                if (!sanggup)
+                    Serial.println("  Pose TIDAK utuh: yang mentok berhenti di batasnya, sisanya sampai.");
+                Serial.println("  Servo merayap 120 der/detik -- beri jeda sebelum mengukur.");
+                break;
+            }
+
+            float p[3] = {0, 0, 0};
+            int nArg = argFloats(s, p, 3);
+            if (nArg < 2) {
                 Serial.print("Format: "); Serial.print(c);
-                Serial.println("<jangkauan> <tinggi>  (mm, dari pusat badan). Misal: a70 20");
+                Serial.println("<jangkauan> <tinggi> [pergelangan]  (mm, mm, der). Misal: a70 20 -15");
                 break;
             }
             if (!robot.isArmed()) { Serial.println("Servo masih lemas -- ketik 'b' dulu."); break; }
@@ -762,7 +1236,15 @@ static void handleCmd(char* s) {
             if (robot.moveArmTarget(arm, p[0], p[1])) {
                 Serial.print("Lengan "); Serial.print(nama);
                 Serial.print(" -> jangkauan "); Serial.print(p[0], 1);
-                Serial.print(" mm, tinggi ");   Serial.print(p[1], 1); Serial.println(" mm");
+                Serial.print(" mm, tinggi ");   Serial.print(p[1], 1); Serial.print(" mm");
+                // Pergelangan hanya disentuh kalau diminta: tanpa argumen ketiga
+                // ia harus TETAP di sudut terakhir, bukan tersentak ke nol.
+                if (nArg >= 3) {
+                    robot.setPergelangan(arm, p[2]);
+                    Serial.print(", pergelangan "); Serial.print(clampf(p[2], -90.0f, 90.0f), 1);
+                    Serial.print(" der");
+                }
+                Serial.println();
             } else {
                 Serial.println("!! Di luar jangkauan lengan -- sudut TIDAK dikirim.");
                 Serial.print("   Jangkauan sah dari pangkal bahu: ");
@@ -790,7 +1272,41 @@ static void handleCmd(char* s) {
             }
             robot.setGrip(arm, p[0]);
             Serial.print("Grip "); Serial.print(nama);
-            Serial.print(" -> "); Serial.print(clampf(p[0], 0.0f, 100.0f), 0); Serial.println("%");
+            // Persen yang DITERIMA setGrip(), bukan yang diketik: MG90S dipagari
+            // GRIP_PERSEN_MIN/MAKS, jadi 'g100' benar-benar berhenti di 95%.
+            Serial.print(" -> ");
+            Serial.print(clampf(p[0], GRIP_PERSEN_MIN, GRIP_PERSEN_MAKS), 0);
+            Serial.println("%");
+            break;
+        }
+
+        // REHAT: lengan terlipat di ATAS badan, capit menunduk. Ini pose
+        // ISTIRAHAT yang diperintah, BUKAN pose pemasangan horn: memasang
+        // horn pada pose ini memaksa ARM_BASE_BAHU 0 dan seluruh setengah
+        // bawah jangkauan hilang. Lihat config.h.
+        //
+        // Sasarannya DISETEL DI ROBOT (REHAT_* di config.h), tidak dihitung:
+        // yang harus dihindari lengan itu LiDAR dan kabel yang nyata.
+        case 'R': {
+            if (!robot.isArmed()) { Serial.println("Servo masih lemas -- ketik 'b' dulu."); break; }
+            if (!robot.armEnabled(ARM_DEPAN)) {
+                robot.armEnable(ARM_DEPAN, true);
+                Serial.println("Servo lengan DEPAN DIHIDUPKAN.");
+            }
+            // Angkanya DIBIDIK di robot (config.h), bukan diturunkan dari panjang
+            // link: pose rehat harus muat di atas badan yang nyata, dengan LiDAR
+            // dan kabelnya. Sama persis dengan mengetik 'as40 100 -20'.
+            float svR[3];
+            if (!robot.setSudutLengan(ARM_DEPAN, REHAT_BAHU, REHAT_SIKU,
+                                      REHAT_PERGELANGAN, svR)) {
+                Serial.printf("!! Pose rehat MENTOK: servo %.1f %.1f %.1f der\n",
+                              (double)svR[0], (double)svR[1], (double)svR[2]);
+                Serial.println("   Yang di luar 0..180 di-clamp. Setel REHAT_* di config.h.");
+                break;
+            }
+            Serial.printf("Lengan REHAT -> as%.0f %.0f %.0f  (terlipat di atas badan)\n",
+                          (double)REHAT_BAHU, (double)REHAT_SIKU, (double)REHAT_PERGELANGAN);
+            Serial.println("  'as0 0 0' untuk kembali ke baseline.");
             break;
         }
 
@@ -802,6 +1318,7 @@ static void handleCmd(char* s) {
 
         // --- 6. KESELAMATAN SERVO ---
         case 'x': // Lemas darurat: PWM mati, servo bebas
+            gerakSampai = 0;
             misi.batal("servo dilemaskan.");   // WAJIB sebelum nav: kalau tidak,
             nav.navBerhenti("servo dilemaskan.");  // misi menyalakan navigasi lagi
             nav.remJarakLepas();
@@ -851,47 +1368,223 @@ static void handleCmd(char* s) {
         }
 
         case 's': // Stop
+            gerakSampai = 0;
+            gerakMaju = gerakGeser = 0.0f;
             misi.batal("dihentikan pengguna.");
             nav.navBerhenti("dihentikan pengguna.");   // WAJIB: kalau tidak,
             robot.stop();                              // navUpdate() menyalakannya lagi
             nav.remJarakLepas();                       // jangan menyala di perjalanan berikutnya
+
+            // SEMUA YANG BERULANG IKUT BERHENTI. 's' adalah satu-satunya
+            // tombol panik yang diketik orang saat ada yang salah, dan
+            // sebelum ini ia cuma menghentikan KAKI. Aliran yaw dan LiDAR
+            // tetap mencetak, demo dan goyang tetap menggerakkan badan, dan
+            // urutan boot tetap berjalan menuju servo hidup -- jadi layar
+            // terus bergulir justru saat operator paling perlu membacanya,
+            // dan robot masih bergerak sesudah diperintahkan diam.
+            //
+            // Yang punya fungsi henti dipanggil lewat fungsinya, supaya
+            // alasannya ikut tercetak dan pose badan dinolkan sebagaimana
+            // mestinya. Dua aliran cetak cuma perlu benderanya dimatikan.
+#if DEMO_BOOT
+            bootBatal("dihentikan pengguna.");
+#endif
+            if (demoOn)   demoStop("dihentikan pengguna.");
+            if (goyangOn) goyangStop("dihentikan pengguna.");
+            if (yawOn) { yawOn = false; Serial.println("Aliran yaw berhenti."); }
+            if (lidOn) { lidOn = false; Serial.println("Aliran LiDAR berhenti."); }
+
             Serial.println("Robot berhenti.");
             break;
 
-        case 'V': {   // Vektor gerak manual: V<maju> <samping> <putar>
-            // TIDAK ADA yang disalin dari TES_GERAK: setMove(vx,vy,vyaw) di
-            // sana adalah fungsi yang sama dengan walk(maju,samping,putar) di
-            // sini -- slew, normalisasi langkah, dan tripodnya identik.
-            // Mundur = maju negatif, geser = samping bukan nol. Yang selama
-            // ini hilang cuma perintah serialnya; 'w' hanya bisa maju.
-            float p[3] = {0, 0, 0};
-            uint8_t n = argFloats(s, p, 3);
-            if (n < 1) {
-                Serial.println("Format: V<maju> <samping> <putar>, semuanya -1,0 .. 1,0");
-                Serial.println("  V-0.8      = MUNDUR");
-                Serial.println("  V0 0.8     = geser KANAN     V0 -0.8 = geser KIRI");
-                Serial.println("  V0.5 0.5   = serong depan-kanan");
-                Serial.println("  V0 0 0.5   = putar di tempat (tanpa kunci heading)");
-                Serial.println("  's' atau 'V0' untuk berhenti.");
+        case 'w': {  // Jalan manual. 'w' saja = maju; 'w <maju> <geser> [detik]'
+                     // membuka sumbu GESER SAMPING -- geser kanan(+)/kiri(-).
+                     // Sumbu itu ada di Hexapod::walk() dan HexaGait sejak awal,
+                     // tapi KEENAM pemanggil walk() di firmware ini selalu
+                     // mengisinya 0.0f, jadi ia belum pernah bergerak. Uji di
+                     // lantai terbuka dulu: 'w0 0.4 2' geser kanan 2 detik.
+            // Servo lemas = perintah gerak diterima, dicetak, lalu tidak terjadi
+            // apa-apa. Itu bukan cuma sia-sia: ia terbaca seperti sumbu yang
+            // rusak, dan sudah sempat menyesatkan sekali (6 Sep 2026 -- tiga
+            // uji geser dinyatakan "tidak bergerak" padahal PWM memang padam
+            // sejak flash sebelumnya). Hexapod::isArmed() sudah ada sejak awal
+            // tapi tidak dipakai perintah gerak mana pun.
+            if (!robot.isArmed()) {
+                Serial.println("DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
                 break;
             }
-            float maju    = clampf(p[0], -1.0f, 1.0f);
-            float samping = clampf(p[1], -1.0f, 1.0f);
-            float putar   = clampf(p[2], -1.0f, 1.0f);
+            float p[4] = {0, 0, 0, 0};
+            uint8_t n = argFloats(s, p, 4);
+            bool sah = true;
+            for (uint8_t i = 0; i < n; ++i) sah = sah && isfinite(p[i]);
+            if (!sah) { Serial.println("DITOLAK: vektor tidak sah."); break; }
             nav.navBerhenti("diambil alih perintah manual.");
-            robot.walk(maju, samping, putar);
-            Serial.print("Gerak: maju "); Serial.print(maju, 2);
-            Serial.print("  samping ");   Serial.print(samping, 2);
-            Serial.print("  putar ");     Serial.println(putar, 2);
-            Serial.println("  (+samping = KANAN, -samping = KIRI; +maju = DEPAN)");
+            if (n == 0) {
+                gerakSampai = 0;
+                robot.walk(NAV_FWD_SPEED, 0.0f, 0.0f);
+                Serial.println("Robot maju.");
+                break;
+            }
+            float maju  = clampf(p[0], -1.0f, 1.0f);
+            float geser = clampf(p[1], -1.0f, 1.0f);
+            float detik = (n >= 3) ? clampf(p[2], 0.15f, 30.0f) : 2.0f;
+            float putar = (n >= 4) ? clampf(p[3], -1.0f, 1.0f) : 0.0f;
+            // Dinilai SEBELUM berangkat: kalau sudah mepet, satu tick pun
+            // sudah terlambat pada 13 cm/detik.
+            gerakMaju = maju; gerakGeser = geser;
+            int sisa = jarakArahJalan();
+            if (sisa >= 0 && sisa <= GERAK_AMAN_CM) {
+                gerakMaju = gerakGeser = 0.0f;
+                gerakSampai = 0;
+                robot.stop();
+                Serial.print("DITOLAK: sudah ada sesuatu "); Serial.print(sisa);
+                Serial.print(" cm di arah itu (batas aman ");
+                Serial.print(GERAK_AMAN_CM); Serial.println(" cm).");
+                break;
+            }
+            // PENJAGA BUTA. jarakArahJalan() mengembalikan -1 saat tak satu pun
+            // sensor di arah jalan memberi angka, dan pemanggilnya -- di sini
+            // maupun di loop utama -- membaca -1 sebagai "tidak ada halangan".
+            // Penjaganya GAGAL TERBUKA, persis pada keadaan yang paling butuh
+            // dijaga. 6 September 2026 itulah yang menabrakkan robot berkali-
+            // kali: sensor sisi kehilangan sinyal justru saat robot mendekati
+            // dinding, gerak jalan terus, dan tidak ada satu baris pun yang
+            // memberi tahu operator bahwa ia sedang berjalan tanpa penjaga.
+            // Perilakunya sengaja TIDAK diubah -- menolak bergerak setiap kali
+            // sensor sisi buta akan membuat robot hampir tak bisa digerakkan,
+            // karena di arena keempat sensor sisi memang sering signal fail.
+            // Yang ditambahkan hanya kejujurannya.
+            if (sisa < 0) {
+                Serial.println("! PENJAGA BUTA: tak ada sensor sah di arah itu.");
+                Serial.println("  Hanya BATAS WAKTU yang akan menghentikan gerakan ini.");
+            }
+            gerakSampai = millis() + (uint32_t)(detik * 1000.0f);
+            robot.walk(maju, geser, putar);
+            Serial.print("Gerak manual: maju "); Serial.print(maju, 2);
+            Serial.print("  geser "); Serial.print(geser, 2);
+            Serial.print(geser > 0 ? " (KANAN)" : geser < 0 ? " (KIRI)" : "");
+            Serial.print("  selama "); Serial.print(detik, 1); Serial.println(" detik.");
+            if (geser != 0.0f) {
+                // Sudah diuji 6 Sep 2026, dan hasilnya perlu diketahui SEBELUM
+                // menekan Enter: perpindahannya terkuantisasi satu langkah
+                // penuh, jadi memperpendek durasi hampir tidak mengecilkannya.
+                // 'w 0 -0.6 3' -> ~32 cm; 'w 0 -0.6 0.5' -> ~36 cm. Bahkan dua
+                // perintah IDENTIK berbeda tiga kali lipat (+3 lalu +9 cm),
+                // karena semburan lebih pendek dari satu siklus gait menangkap
+                // fase sapuan kaki yang berbeda-beda.
+                Serial.println("  ! Sumbu geser TERKUANTISASI satu langkah: durasi hampir tak berpengaruh,");
+                Serial.println("    dan dua perintah yang sama bisa berbeda 3x. Jangan pakai untuk offset kecil.");
+            }
             break;
         }
 
-        case 'w': // Walk (Maju manual)
-            nav.navBerhenti("diambil alih perintah manual.");
-            robot.walk(NAV_FWD_SPEED, 0.0f, 0.0f);
-            Serial.println("Robot maju.");
+        case 'X': {  // X = cetak poin, X0/X1/X2 = lapor kebersihan R-7
+            // Kebersihan R-7 TIDAK BISA diukur sensor mana pun di robot ini,
+            // jadi ia dilaporkan operator. Tanpa jalur ini, dua angka terbesar
+            // di tabel penilaian (100 dan 200) tidak pernah masuk hitungan.
+            float p[1] = {0};
+            if (argFloats(s, p, 1) >= 1) {
+                gSkor.setBersihR7((uint8_t)p[0]);
+                Serial.print("Kebersihan R-7 dicatat: tingkat ");
+                Serial.println((int)p[0]);
+            }
+            gSkor.cetak(misi.waktuMisiDetik());
             break;
+        }
+
+        case 'J': {  // J<cm> = maju/mundur sampai LiDAR BELAKANG membaca <cm>
+            // DUA ARAH, dan arahnya dipilih firmware dari bacaan sekarang:
+            // bacaan di ATAS sasaran berarti terlalu jauh dari dinding
+            // belakang (MUNDUR), di bawah sasaran berarti terlalu dekat
+            // (MAJU). Operator cukup menyebut jarak yang diinginkan.
+            //
+            // Satu-satunya gerak maju/mundur berumpan-balik di firmware ini.
+            // 'w' bisa kedua arah, tapi buta terhadap sasaran dan
+            // perpindahannya terkuantisasi satu langkah gait -- tidak bisa
+            // dipakai memperbaiki selisih beberapa sentimeter.
+            //
+            // Seluruh penjaganya ada di Navigation::setelBelakangMulai dan
+            // setelBelakangUpdate, sama seperti 'V'. Penjaganya BERBEDA per
+            // arah: mundur diawasi LiDAR belakang, maju diawasi LiDAR depan.
+            float p[1] = {0};
+            if (argFloats(s, p, 1) < 1 || p[0] <= 0.0f) {
+                Serial.println("Format: J<cm> maju/mundur sampai LiDAR BELAKANG membaca <cm>.");
+                Serial.println("  misal 'J20' = setel jarak dinding belakang jadi 20 cm.");
+                Serial.println("  Arah dipilih sendiri: bacaan sekarang lebih besar dari");
+                Serial.println("  sasaran -> MUNDUR, lebih kecil -> MAJU. 'l' untuk melihat.");
+                break;
+            }
+            nav.setelBelakangMulai((int)p[0]);
+            break;
+        }
+
+        case 'H': {  // H<amp> = geser SATU siklus gait, + kanan, - kiri
+            // GESER TANPA LiDAR, dan itu memang gunanya: penengahan korban
+            // K-3/K-4 beracuan KAMERA, bukan dinding, jadi 'V' tidak bisa
+            // dipakai. Rotasi juga tidak -- capit terhalang reruntuhan.
+            //
+            // SATU SIKLUS PENUH, bukan durasi dalam detik. Uji 6 Sep 2026
+            // mencatat 'w 0 -0.6 3' -> ~32 cm dan 'w 0 -0.6 0.5' -> ~36 cm:
+            // semburan yang lebih pendek dari satu siklus berhenti di fase
+            // sapuan yang berbeda-beda, jadi dua perintah identik berbeda tiga
+            // kali lipat. Mengunci durasinya ke satu siklus membuat kuantisasi
+            // itu jadi SATUAN, bukan galat -- perpindahannya berulang, dan
+            // Raspi bisa memanggilnya berkali-kali untuk jarak yang lebih jauh.
+            //
+            // Berapa cm per siklus TIDAK diketahui firmware dan tidak ditebak
+            // di sini: ia bergantung amplitudo dan profil gait. Ukur sekali
+            // dengan penggaris, lalu simpan angkanya di sisi Raspi.
+            if (!robot.isArmed()) {
+                Serial.println("DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
+                break;
+            }
+            float p[1] = {0};
+            if (argFloats(s, p, 1) < 1 || p[0] == 0.0f) {
+                Serial.println("Format: H<amp> geser satu siklus gait. + kanan, - kiri.");
+                Serial.println("  misal 'H0.2' = satu siklus ke kanan pada amplitudo 0,2.");
+                Serial.println("  Amplitudo menentukan panjang langkah; ukur cm-nya sekali.");
+                break;
+            }
+            const float amp = clampf(p[0], -1.0f, 1.0f);
+            nav.navBerhenti("diambil alih perintah geser satu siklus.");
+            gerakMaju = 0.0f; gerakGeser = amp;
+            int sisa = jarakArahJalan();
+            if (sisa >= 0 && sisa <= GERAK_AMAN_CM) {
+                gerakGeser = 0.0f;
+                Serial.print("DITOLAK: sudah ada sesuatu "); Serial.print(sisa);
+                Serial.print(" cm di arah itu (batas aman ");
+                Serial.print(GERAK_AMAN_CM); Serial.println(" cm).");
+                break;
+            }
+            if (sisa < 0)
+                Serial.println("! PENJAGA BUTA: tak ada sensor sah di arah itu.");
+            // Siklus profil yang SEDANG berlaku, bukan GAIT_CYCLE_TIME tetap:
+            // T1/T2 punya siklus yang berbeda, dan memakai angka tetap akan
+            // memotong sapuan di tengah pada profil yang lebih lambat.
+            const uint32_t siklus = (uint32_t)robot.gaitProfile().cycleTime;
+            gerakSampai = millis() + siklus;
+            robot.walk(0.0f, amp, 0.0f);
+            Serial.print("Geser SATU siklus ("); Serial.print(siklus);
+            Serial.print(" ms) amplitudo "); Serial.print(amp, 2);
+            Serial.println(amp > 0 ? " (KANAN)" : " (KIRI)");
+            break;
+        }
+
+        case 'V': {  // V<cm> ratakan ke dinding KANAN, V-<cm> ke dinding KIRI
+            // Kenapa satu huruf untuk dua sisi: tandanya sudah membedakan, dan
+            // dua perintah terpisah berarti dua tempat untuk salah. Seluruh
+            // penjaganya (servo lemas, sensor buta, halangan di arah geser)
+            // ada di Navigation::ratakanMulai, dipakai bersama ruas HNT_SISI.
+            float p[1] = {0};
+            if (argFloats(s, p, 1) < 1 || p[0] == 0.0f) {
+                Serial.println("Format: V<cm> ratakan ke dinding KANAN, V-<cm> ke dinding KIRI.");
+                Serial.println("  misal 'V16' = geser sampai sensor KANAN-DPN membaca 16 cm,");
+                Serial.println("        'V-16' = sampai sensor KIRI-DPN membaca 16 cm.");
+                break;
+            }
+            nav.ratakanMulai(p[0] < 0.0f, (int)fabsf(p[0]));
+            break;
+        }
 
         case 'h': // Bantuan
             Serial.println("\n--- BANTUAN PERINTAH SERIAL ---");
@@ -912,6 +1605,7 @@ static void handleCmd(char* s) {
             Serial.println("  f      : Jalan mengikuti dinding KIRI");
             Serial.println("  F      : Jalan mengikuti dinding KANAN");
             Serial.println("  p / P  : Ikut dinding KIRI/KANAN + terkunci kompas arena");
+            Serial.println("  U<cm>  : NAIK TANGGA -- T4+Z1+F+D<cm>+i1 sekaligus, urutannya dijaga");
             Serial.println("  v      : Status navigasi + jarak sekitar");
             Serial.println("  i1/i0  : Abaikan / pakai lagi sensor depan (turunan; buta ke depan)");
             Serial.println("  N0..N3 : Kemudi dinding. bit0 = SAMAR(fuzzy), bit1 = turunan dari SUDUT");
@@ -919,21 +1613,37 @@ static void handleCmd(char* s) {
             Serial.println("  Z1/Z0  : Menengah lorong (kiri-kanan) / ikut satu dinding");
             Serial.println("  Y      : Sudut badan terhadap dinding, dari SEPASANG sensor tiap sisi");
             Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
+            Serial.println("           ('Y' juga INDUK keluarga kalibrasi servo -- lihat bawah)");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
-            Serial.println("  T[0-3] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
-            Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit");
+            Serial.println("  T[0-5] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
+            Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit  4=kail  5=tanjak");
+            Serial.println("  Th<mm> Tl<mm> Tc<ms> Tr<mm> Tb<mm> : setel SATU kolom profil");
+            Serial.println("           tinggi & panjang langkah, waktu siklus, radius kaki, tinggi badan");
+            Serial.println("           Di-ramp, tanpa 'b', dan offset kaki (bentuk KAIL) tetap utuh");
             Serial.println("  D      : Jarak tempuh, keadaan rem, dan skala odometri");
             Serial.println("  D<cm>  : Nolkan jarak lalu pasang rem di <cm> (misal D80)");
             Serial.println("  D0     : Nolkan jarak dan lepas rem");
             Serial.println("  Ds<f>  : Faktor slip odometri, RAM saja (misal Ds1.05)");
             Serial.println("  s/x/Enter : Hentikan navigasi");
-            Serial.println("  V<maju> <samping> <putar> : vektor gerak manual, -1..1");
-            Serial.println("           V-0.8 = mundur, V0 0.8 = geser kanan, V0 -0.8 = geser kiri");
             Serial.println("  y<ms>  : Aliran yaw dengan jeda tertentu (50-5000, misal y100)");
             Serial.println("EEPROM & KALIBRASI GERAK:");
             Serial.println("  K      : Tabel kalibrasi pivot (EEPROM 2048)");
             Serial.println("  S      : Simpan hasil kalibrasi 'C' ke EEPROM 2048");
             Serial.println("  M      : Cetak peta EEPROM + kapasitas chip");
+            Serial.println("KALIBRASI SERVO (keluarga 'Y' -- huruf KEDUA memilih subperintah):");
+            Serial.println("  Yt            : Tabel trim (us) + kolom invert tiap slot");
+            Serial.println("  Yt<slot> <us>: Trim servo -- koreksi gigi horn. 'YtW' simpan, 'Yt!' nolkan");
+            Serial.println("  Yo            : Tabel offset SUDUT (der) -- koreksi DATUM sendi");
+            Serial.println("  Yo<slot> <der>: Offset sudut (mis. lutut meleset +24). 'W' simpan, 'Yo!' nolkan");
+            Serial.println("  Yi<slot> <0|1>: Invert arah servo. DITOLAK saat servo hidup ('x' dulu)");
+            Serial.println("  Yj<slot> <us>: Jog PULSE MENTAH. TUNE_PIN_MAP -- BEDA dari slot 'Yt' di atas!");
+            Serial.println("                 Grip DEPAN tidak terjangkau 'Yj'; kanal hidup sampai 'x'.");
+            Serial.println("  Yz<kaki> <mm>: Offset tinggi telapak per kaki -> EEPROM 2048, berlaku seketika");
+            Serial.println("  Yd            : Tabel offset JARAK keenam LiDAR (cm)");
+            Serial.println("  Yd<ch> <cm>   : 'sensor ch sedang <cm> dari dinding' -> catat selisihnya");
+            Serial.println("  Yd!           : Nolkan semua offset LiDAR");
+            Serial.println("  Slot 0..23 sama untuk Yt/Yo/Yi. Y & Y0 = sudut dinding (lihat NAVIGASI).");
+            Serial.println("  DUA tombol simpan: 'W' = offset sudut (EEPROM 0); 'YtW' = trim & invert (1024).");
             Serial.println("PARAMETER (gain PD, gait, pulse -- tanpa kompilasi ulang):");
             Serial.println("  q          : Daftar semua parameter + rentang sahnya");
             Serial.println("  q<nama>    : Lihat satu parameter (mis. qwall)");
@@ -948,6 +1658,8 @@ static void handleCmd(char* s) {
             Serial.println("  b      : Berdiri diam (sekaligus menghidupkan servo)");
             Serial.println("  b[mm]  : Berdiri diam + atur tinggi badan (40-160, misal b100)");
             Serial.println("  w      : Jalan Maju");
+            Serial.println("  V<cm>  : Ratakan ke dinding KANAN (V-<cm> = dinding KIRI)");
+            Serial.println("           Geser menyamping sampai sensor sisi membaca <cm>.");
             Serial.println("  s      : Stop (servo tetap hidup)");
             Serial.println("  Enter  : Rem Darurat (vektor gerak = 0)");
             Serial.println("BODY KINEMATICS (kaki diam, badan bergerak):");
@@ -955,32 +1667,64 @@ static void handleCmd(char* s) {
             Serial.println("  r<rol> <pit> <yaw> : Set rotasi badan, derajat (misal: r10 0 0)");
             Serial.println("                 roll+ = miring KANAN, pitch+ = MENDONGAK, yaw+ = belok KIRI");
             Serial.println("  t<x> <y> <z> : Set geser badan, mm (misal: t0 0 -20 untuk merunduk)");
+            Serial.println("  J<cm>        : Maju/mundur sampai LiDAR BELAKANG membaca <cm>");
+            Serial.println("  X            : Perkiraan poin. X0/X1/X2 = lapor kebersihan R-7");
+            Serial.println("  H<amp>       : Geser SATU siklus gait, + kanan / - kiri (tanpa LiDAR)");
             Serial.println("  0            : Nolkan pose badan");
             Serial.println("  B            : Demo sapuan 6 sumbu (18 detik)");
             Serial.println("  z            : Goyang roll bergelombang, terus-menerus (pajangan)");
             Serial.println("  z<amp> <per> <fase> : amplitudo der, periode detik, fase pitch der");
             Serial.println("                 contoh: z12 2   atau  z15 3 90 (badan menelusuri kerucut)");
             Serial.println("LENGAN (bahu, siku, grip -- depan & belakang):");
-            Serial.println("  a<jkn> <tgi> : Lengan DEPAN ke jangkauan/tinggi mm (misal: a70 20)");
-            Serial.println("  A<jkn> <tgi> : Lengan BELAKANG");
+            Serial.println("  a<jkn> <tgi> [prg] : Lengan DEPAN jangkauan/tinggi mm, pergelangan der");
+            Serial.println("                       (tanpa <prg> pergelangan tak disentuh)");
+            Serial.println("  aa / at            : Jalankan SEKUENS korban AMBIL / TARUH utuh,");
+            Serial.println("                       sama persis dengan yang dipakai misi. 'm0' berhenti.");
+            Serial.println("  as<bhu> <sku> <prg>: Tembak KETIGA sendi langsung, der geometris,");
+            Serial.println("                       TANPA IK. as0 0 0 = baseline. Untuk hard-code pose.");
+            Serial.print(  "                       <jkn> menunjuk PERGELANGAN; grip ");
+            Serial.print(HAND_LENGTH, 0); Serial.println(" mm lebih jauh");
+            Serial.print(  "  NETRAL       : a");
+            Serial.print(fabsf(ARM_ORIGINS[ARM_DEPAN][1]) + UPPERARM_LENGTH, 0);
+            Serial.print(" "); Serial.print(ARM_ORIGINS[ARM_DEPAN][2] + FOREARM_LENGTH, 0);
+            Serial.println(" 0 lalu g50/G50 -- kelima servo lengan di 1500 us");
+            Serial.println("                 (lengan atas mendatar ke depan, lengan bawah tegak)");
+            Serial.printf("  REHAT        : as%.0f %.0f %.0f  -- terlipat di atas badan (= perintah 'R')\n",
+                          (double)REHAT_BAHU, (double)REHAT_SIKU, (double)REHAT_PERGELANGAN);
+            Serial.println("                 (pose istirahat; DIPERINTAH, bukan pose pasang horn)");
+            Serial.printf("  KORBAN siap  : as%.0f %.0f %.0f  -- mendekat, mengangkat, menggendong\n",
+                          (double)KORBAN_SIAP_BAHU, (double)KORBAN_SIAP_SIKU,
+                          (double)KORBAN_SIAP_PRG);
+            Serial.printf("  KORBAN jepit : as%.0f %.0f %.0f  -- turun dan menjepit\n",
+                          (double)KORBAN_JEPIT_BAHU, (double)KORBAN_JEPIT_SIKU,
+                          (double)KORBAN_JEPIT_PRG);
+            Serial.printf("  KORBAN lepas : as%.0f %.0f %.0f  -- titik lepas di safe zone\n",
+                          (double)KORBAN_LEPAS_BAHU, (double)KORBAN_LEPAS_SIKU,
+                          (double)KORBAN_LEPAS_PRG);
+            Serial.printf("                 (sudut sendi TETAP, tidak ikut profil; gerbang LiDAR\n");
+            Serial.printf("                  depan %d cm -- jalankan utuh dengan aa / at)\n",
+                          KORBAN_JARAK_CM);
             Serial.println("  g<0-100>     : Grip depan (0=menutup, 100=membuka)");
-            Serial.println("  G<0-100>     : Grip belakang");
+            Serial.println("  G<0-100>     : Grip belakang (lengan belakang HANYA punya grip)");
+            Serial.println("  R            : Lengan REHAT -- terlipat di atas badan (lihat di atas)");
             Serial.println("  n            : Matikan servo kedua lengan");
-            Serial.println("MISI (lapisan di atas navigasi):");
-            Serial.println("  m      : Status misi");
-            Serial.println("  m1     : MULAI misi -- menuju korban 1 (dinding kanan + kunci arena)");
-            Serial.println("  m0     : Batalkan misi");
-            Serial.println("  m2/m3  : Saat berhenti -> 'm2' benar korban, 'm3' bukan (jalan lagi)");
-            Serial.println("  m4<cm> : Lintasan gerak serong terakhir (misal m4 35)");
-            Serial.println("  m5<cm> : Ambang sensor DEPAN ruas terakhir (misal m5 40)");
-            Serial.println("  m6<cm> : Panjang bidang miring, odometri (misal m6 60)");
-            Serial.println("  m7<cm> : Lebar rintangan lantai pecah, odometri (misal m7 80)");
-            Serial.println("  m8<cm> : Jarak garis start -> korban 1, diukur sensor BELAKANG");
-            Serial.println("           (misal m8 40). Misi TIDAK memakai odometri 'D'.");
-            Serial.println("  m9<cm> : Setel ambang jarak korban (RAM saja, misal m9 28)");
+            Serial.println("MISI (lapisan di atas navigasi -- lintasan ada di tabel RUAS[]):");
+            Serial.println("  m           : Status misi");
+            Serial.println("  m4          : TABEL LINTASAN -- semua ruas, mana yang belum diukur");
+            Serial.println("  m1          : MULAI dari ruas 0 (HOME)");
+            Serial.println("  m4 <idx>    : Mulai dari satu ruas saja -- untuk menguji per rintangan");
+            Serial.println("  m6 <idx>    : MODE UKUR -- jalan tanpa syarat henti; hentikan di ujung");
+            Serial.println("                ruas, robot mencetak sendiri berapa cm yang ditempuh");
+            Serial.println("  m0          : Batalkan misi");
+            Serial.println("  m7 <idx><cm>: Setel panjang ruas (misal m7 2 55). RAM saja.");
+            Serial.println("  m2/m3       : Saat menunggu konfirmasi -> lanjut / ulangi ruas ini");
+            Serial.println("  Capit belum terpasang: ruas korban hanya BERHENTI KOSONG lalu lanjut.");
             Serial.println("KESELAMATAN & DIAGNOSTIK:");
             Serial.println("  x      : LEMAS -- PWM mati, servo bebas");
             Serial.println("  d      : Dump kalibrasi + hasil IK per kaki");
+            Serial.println("  TERGULING: |accelZ|<0.5 g ATAU |roll|>45 der selama 400 ms -> misi");
+            Serial.println("             batal + servo LEMAS sendiri. Ambang TERGULING_* di config.h,");
+            Serial.println("             ketiganya BELUM DIUKUR. Matikan dengan TERGULING_AKTIF 0.");
             break;
 
         default:
@@ -1093,6 +1837,11 @@ void setup() {
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 3000) {} // Tunggu serial maksimal 3 detik
 
+    // Port pemicu deteksi korban ke Raspi 5. Kalau KORBAN_SERIAL masih
+    // Serial (default), baris ini cuma pengulangan tak berbahaya -- ia ada
+    // supaya ganti define ke Serial1 tidak perlu ingat menambah begin().
+    KORBAN_SERIAL.begin(KORBAN_BAUD);
+
     Serial.println("\n\nMemulai Hexapod Unlimited...");
 
     // 0. KALIBRASI DULU -- HARUS SEBELUM robot.begin()!
@@ -1132,12 +1881,150 @@ void setup() {
     Serial.println("   Topang robot SEKARANG. Ketik apa saja lalu Enter untuk membatalkan.");
     Serial.println("   Matikan permanen: DEMO_BOOT 0 di config.h.");
 #endif
+
+    // OLED + tombol PALING AKHIR: ia menumpang bus Wire yang baru saja
+    // di-init LidarArray, dan layar yang menyala sebelum sensornya siap
+    // menampilkan angka yang belum ada.
+    tampilan.begin(&misi, &gSkor, kirimDariTombol, &nav);
 }
+
+// ====================================================================
+// DETEKSI TERGULING
+//
+// accelZ MENTAH sudah dibaca dan dicetak sejak awal (aliran 'y'), dan komentar
+// di sana menuliskannya sendiri: itulah satu-satunya angka yang tahu papan IMU
+// menghadap ke mana (+1 g tegak, -1 g TERBALIK). Tidak ada yang bertindak
+// atasnya -- padahal robot ini menaiki tangga dengan margin guling 29,4 mm
+// (cek_kail MERAH, CLAUDE.md).
+//
+// Kenapa perlu: kalau robot terguling di tengah misi, gait TETAP berjalan dan
+// servo TETAP memaksa kaki ke sasaran IK yang tidak berarti apa-apa lagi.
+//
+// accelZ DIPERCAYA LEBIH DULU daripada roll, dan itu bukan selera: roll datang
+// dari fusi yang mengandalkan magnetometer, sementara accelZ cuma satu sumbu
+// percepatan. Di arena berangka besi accelZ jauh lebih sulit dibohongi -- dan
+// saat robot benar-benar terguling, |az| jatuh ke sekitar nol karena gravitasi
+// pindah ke sumbu lain.
+//
+// roll SENGAJA tidak dipasang dekat kemiringan arena: profil TANJAK bekerja
+// pada 27,7 der dan itu NORMAL. Itu sebabnya ambangnya 45, bukan 30.
+//
+// Ini MENAMBAH satu cara baru misi bisa berhenti sendiri, jadi ia punya saklar
+// (TERGULING_AKTIF) -- saat menyetel ambangnya di robot, orang harus bisa
+// mematikannya.
+// ====================================================================
+#if TERGULING_AKTIF
+static bool     tergulingWaspada = false;   // syarat sudah benar, sedang menghitung
+static uint32_t tergulingT0      = 0;
+static bool     tergulingLapor   = false;
+
+static void tergulingUpdate() {
+    // Robot LEMAS bukan sedang terguling -- ia sedang ditopang di meja. Tanpa
+    // penjaga ini, tiap kali robot diangkat miring dalam keadaan lemas
+    // ambangnya menyala.
+    if (!robot.isArmed()) {
+        tergulingWaspada = false; tergulingLapor = false;
+        return;
+    }
+    // Angka IMU yang belum ada bukan bukti apa-apa: accelZ() mengembalikan 0
+    // sebelum frame pertama masuk, dan 0 itu MEMENUHI syarat terguling.
+    if (!imu.hasData()) { tergulingWaspada = false; return; }
+
+    const bool tegak  = fabsf(imu.accelZ()) >= TERGULING_AZ_G;
+    const bool miring = fabsf(imu.rollDeg()) > TERGULING_ROLL_DEG;
+    if (tegak && !miring) {
+        tergulingWaspada = false; tergulingLapor = false;
+        return;
+    }
+
+    const uint32_t now = millis();
+    if (!tergulingWaspada) { tergulingWaspada = true; tergulingT0 = now; return; }
+    if (tergulingLapor) return;                       // sudah ditangani sekali
+    if (now - tergulingT0 < TERGULING_TUNDA_MS) return;
+
+    tergulingLapor = true;
+    gerakSampai = 0;
+    gerakMaju = gerakGeser = 0.0f;
+    misi.batal("robot TERGULING.");
+    nav.navBerhenti("robot TERGULING.");
+    robot.disarm();       // PWM mati: robot berhenti memaksa kakinya
+    Serial.println("\n!! TERGULING TERDETEKSI !!");
+    Serial.print("   accelZ "); Serial.print(imu.accelZ(), 2);
+    Serial.print(" g, roll ");  Serial.print(imu.rollDeg(), 1);
+    Serial.println(" der, bertahan lebih dari tunda.");
+    Serial.println("   Servo DILEMASKAN. Ambangnya TERGULING_* di config.h -- BELUM DIUKUR;");
+    Serial.println("   setel di robot, atau matikan dengan TERGULING_AKTIF 0.");
+    tampilan.pesan("TERGULING - servo lemas");
+}
+#endif  // TERGULING_AKTIF
+
+// ====================================================================
+// PROFIL WAKTU LOOP ("PROF avg/max/util")
+//
+// Janji PROFILE_LOOP di config.h akhirnya ditepati: satu putaran loop()
+// diukur PENUH dengan micros(), lalu diringkas tiap jendela satu detik.
+//
+// Angka yang paling penting BUKAN rata-ratanya, melainkan berapa kali satu
+// putaran melewati 50 ms. HexaGait::dtSeconds() meng-clamp dt ke 0,05 detik,
+// jadi setiap putaran yang melewatinya membuat gait melangkah LEBIH PENDEK
+// daripada yang dicatat odometer -- dan odometer memakai dPhase dari dt yang
+// SAMA, sehingga keduanya salah bersama-sama dan saling membenarkan. Tidak
+// ada gejala lain yang bisa menunjukkan hal itu dari luar.
+//
+// "util" = rata-rata putaran dibagi periode acuan CONTROL_HZ (100 Hz = 10 ms).
+// Ia menjawab satu pertanyaan saja: masih di bawah anggaran rancangan?
+//
+// SENYAP saat yawOn atau lidOn menyala. Keduanya aliran TUNING, dan baris PROF
+// di tengahnya justru mengubur angka yang sedang dibaca -- itulah arti
+// "saat tak tuning" di komentar config.h.
+// ====================================================================
+#if PROFILE_LOOP
+static const uint32_t LOOP_LAMBAT_US = 50000;   // = clamp dt HexaGait::dtSeconds()
+
+static uint32_t profT0      = 0;            // awal jendela 1 detik
+static uint32_t profN       = 0;            // putaran terkumpul
+static uint32_t profJumlah  = 0;            // total mikrodetik
+static uint32_t profMaks    = 0;
+static uint32_t profMin     = 0xFFFFFFFFu;
+static uint32_t profLambat  = 0;            // putaran > LOOP_LAMBAT_US
+
+static void profilLoop(uint32_t tMulaiUs) {
+    const uint32_t dtUs = micros() - tMulaiUs;
+
+    if (profN == 0) profT0 = millis();
+    profN++;
+    profJumlah += dtUs;
+    if (dtUs > profMaks) profMaks = dtUs;
+    if (dtUs < profMin)  profMin  = dtUs;
+    if (dtUs > LOOP_LAMBAT_US) profLambat++;
+
+    if (millis() - profT0 < 1000) return;
+
+    if (!yawOn && !lidOn) {
+        const uint32_t avg   = profJumlah / profN;
+        const uint32_t acuan = 1000000UL / CONTROL_HZ;
+        Serial.printf("PROF n=%u avg=%u.%03u max=%u.%03u min=%u.%03u ms util=%u%% lambat50=%u\n",
+                      (unsigned)profN,
+                      (unsigned)(avg / 1000),      (unsigned)(avg % 1000),
+                      (unsigned)(profMaks / 1000), (unsigned)(profMaks % 1000),
+                      (unsigned)(profMin / 1000),  (unsigned)(profMin % 1000),
+                      (unsigned)(avg * 100UL / acuan), (unsigned)profLambat);
+        if (profLambat)
+            Serial.println("  !! ADA putaran > 50 ms: gait melangkah lebih pendek dari odometer.");
+    }
+
+    profN = 0; profJumlah = 0; profMaks = 0; profMin = 0xFFFFFFFFu; profLambat = 0;
+}
+#endif  // PROFILE_LOOP
 
 // ====================================================================
 // FUNGSI LOOP (Non-Blokir)
 // ====================================================================
 void loop() {
+#if PROFILE_LOOP
+    const uint32_t profT = micros();
+#endif
+
     // 1. BACA SENSOR (Prioritas Tinggi - Bebas Waktu)
     imu.update();
     lidar.update();     // satu sensor per putaran, non-blokir
@@ -1151,6 +2038,12 @@ void loop() {
     yawStreamUpdate();
     lidarStreamUpdate();
 
+    // 2b. KESELAMATAN: robot terguling? Ditaruh SEBELUM misi & navigasi supaya
+    //     keduanya tidak keburu memerintahkan langkah lagi di putaran yang sama.
+#if TERGULING_AKTIF
+    tergulingUpdate();
+#endif
+
     // 3. MISI lalu NAVIGASI OTONOM (keduanya non-blokir).
     //    URUTAN PENTING: misi lebih dulu. Keduanya membaca sampel LiDAR
     //    yang sama, dan yang lebih dulu berhak memutuskan -- itu yang
@@ -1158,8 +2051,20 @@ void loop() {
     //    berbelok menghindari benda yang justru sedang dicari.
     misi.update();
     nav.navUpdate();
+    tampilan.update();
 
     // 4. KENDALI GERAK & SERVO (Diatur internal oleh Hexapod)
+    // Watchdog berjalan setiap loop, termasuk saat browser/Pi berhenti mengirim.
+    if (gerakSampai) {
+        int jarak = jarakArahJalan();
+        if ((jarak >= 0 && jarak <= GERAK_AMAN_CM) ||
+            (int32_t)(millis() - gerakSampai) >= 0) {
+            gerakSampai = 0;
+            gerakMaju = gerakGeser = 0.0f;
+            robot.stop();
+            Serial.println("Gerak manual berhenti: batas waktu / jarak.");
+        }
+    }
     robot.update();
 
     // 5. PERINGATAN JANGKAUAN IK (dibatasi 1x/detik supaya tidak membanjiri)
@@ -1170,11 +2075,16 @@ void loop() {
     }
 
     // 6. PARSER SERIAL MONITOR
-    static char buf[40];
+    static char buf[96];
     static uint8_t len = 0;
+    // Byte sebelumnya, untuk mengenali CRLF. static, karena kedua byte sebuah
+    // akhir baris bisa tiba di dua pemanggilan loop() yang berbeda.
+    static char chLalu = 0;
 
     while (Serial.available()) {
         char ch = Serial.read();
+        char lalu = chLalu;
+        chLalu = ch;
 
 #if DEMO_BOOT
         // Byte APA PUN membatalkan demo menyala -- termasuk Enter kosong, yang
@@ -1186,12 +2096,26 @@ void loop() {
 
         // Eksekusi jika ditekan Enter
         if (ch == '\n' || ch == '\r') {
+            // Satu akhir baris CRLF adalah DUA byte. Yang kedua bukan baris
+            // kosong, jadi ia tidak boleh dibaca sebagai rem darurat: tanpa
+            // penjaga ini, terminal apa pun yang mengirim CRLF (konsol
+            // Windows, PuTTY bawaan, banyak monitor serial) membuat TIAP
+            // perintah langsung disusul rem darurat -- CR menjalankan
+            // perintahnya, LF menghentikan robot. Yang terlihat di lapangan
+            // adalah robot yang menerima perintah lalu berhenti sendiri.
+            //
+            // Enter kosong yang SUNGGUHAN tetap jadi rem darurat: byte
+            // sebelumnya bukan CR, atau CR itu sendiri yang tiba sendirian
+            // dan dialah yang memicu.
+            if (ch == '\n' && lalu == '\r') continue;
+
             buf[len] = 0; // Kunci string
 
             if (len) {
                 handleCmd(buf); // Masuk ke parser
             } else {
                 // Fitur Keselamatan: Tekan Enter kosong untuk rem darurat
+                gerakSampai = 0;
                 misi.batal("rem darurat.");
                 nav.navBerhenti("rem darurat.");
                 if (demoOn) demoStop("rem darurat.");
@@ -1206,4 +2130,11 @@ void loop() {
             buf[len++] = ch; // Tampung karakter ke buffer
         }
     }
+
+    // 7. PROFIL WAKTU SATU PUTARAN PENUH. Dipanggil PALING AKHIR, sesudah
+    //    parser, supaya yang terukur benar-benar seluruh isi loop() -- dan
+    //    pencetakannya sendiri tidak ikut masuk hitungan jendela berikutnya.
+#if PROFILE_LOOP
+    profilLoop(profT);
+#endif
 }

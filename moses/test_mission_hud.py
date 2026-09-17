@@ -189,7 +189,7 @@ basis = f"http://127.0.0.1:{srv.server_address[1]}"
 
 with urlopen(basis + "/") as r:
     halaman = r.read().decode()
-cek("GET / -> 200 HTML", "MISSION HUD" in halaman, True)
+cek("GET / -> 200 HTML", "Panel operator" in halaman, True)
 with urlopen(basis + "/state") as r:
     balik = json.load(r)
 cek("GET /state -> JSON sama", balik["state"], st["state"])
@@ -444,6 +444,12 @@ class LinkPalsu:
         # Tabel trim servo, diisi baris '#TRIM' jawaban 'Yt'. Kosong = belum
         # pernah dibaca, dan rakit_state() membacanya langsung.
         self.trim = {}
+        # Tiga tabel kalibrasi baru, semuanya dibaca rakit_state() langsung
+        # dari link dengan alasan yang sama: masing-masing sudah punya satu
+        # tempat tinggal di Teensy.
+        self.offset = {}
+        self.lidar_offset = {}
+        self.zoff = None
 
     def membawa(self):
         return self._bawa
@@ -958,6 +964,13 @@ def link_uji(teks):
     t._kompas_diminta = False
     t.trim = {}
     t.t_trim = 0.0
+    t.offset = {}
+    t.t_offset = 0.0
+    t.lidar_offset = {}
+    t.t_lidar_offset = 0.0
+    t.zoff = None
+    t._zoff_sisa = 0
+    t.t_zoff = 0.0
     return t
 
 # --- poll rutin: baris DISEMBUNYIKAN, tapi jarak tetap terbaca ---
@@ -1463,12 +1476,14 @@ print("\n34. Tata letak tab")
 h = M.HALAMAN
 cek("tetap 5 panel", len(re.findall(r'<div class="?panel', h)), 5)
 _tabs = h[h.index("<div id=tabs>"):h.index("<script>")]
-# 20 sejak 18 Sep 2026: kartu "Trim servo" ditambahkan, supaya trim tidak lagi
-# menuntut flash sketsa KALIBRASI. Sebelumnya 19 sejak 15 Sep ("K-3 / K-4").
-cek("20 kartu terdistribusi di dalam tab",
-    len(re.findall(r'<div class=card[ >]', _tabs)), 20)
+# 23 sejak 18 Sep 2026: tiga kartu kalibrasi servo & LiDAR ditambahkan --
+# "Offset sudut servo" (Yo), "Offset jarak LiDAR" (Yd), dan "Offset tinggi
+# telapak" (Yz) -- supaya keluarga 'Y' tidak lagi menuntut hafalan perintah.
+# Sebelumnya 20 sejak 18 Sep ("Trim servo"); 19 sejak 15 Sep ("K-3 / K-4").
+cek("23 kartu terdistribusi di dalam tab",
+    len(re.findall(r'<div class=card[ >]', _tabs)), 23)
 cek("div seimbang", h.count("<div"), h.count("</div>"))
-for nama in ("Robot", "Misi", "Korban", "Manual", "Kalibrasi"):
+for nama in ("Kontrol", "Misi", "Korban", "Terminal", "Kalibrasi"):
     cek(f"tab '{nama}' ada", f">{nama}</button>" in h, True)
 # Tab Robot tidak boleh lagi menumpuk 9 kartu
 awal = h.index("<!-- 0. ROBOT -->")
@@ -3829,9 +3844,9 @@ cek("'t<x> 0 0' masih dipakai (geser badan)",
     'f"t{sasar:.0f} 0 0"' in _src86, True)
 cek("'O<der>' masih dipakai (pivot badan)", 'f"O{' in _src86, True)
 
-# Jeda condong dikirim SENDIRI tiap sambungan, tanpa menunggu tombol.
-cek("condong.jeda dikirim otomatis saat sambung",
-    '"condong.jeda", kalib.condong_jeda_ms' in _src86, True)
+# Reconnect menghormati nilai yang disetel dan disimpan lewat editor Teensy.
+cek("reconnect tidak menimpa kalibrasi condong",
+    'link.kirim(f"Q{_nm} {_v:g}"' in _src86, False)
 cek("  dan RAM saja -- tidak ada 'W' otomatis kedua",
     _src86.count('aksi.jadwal(("W", 0.6))'), 1)
 
@@ -3884,5 +3899,124 @@ cek("kartu trim ada di HTML", "id=trim" in M.HALAMAN, True)
 cek("  tombol baca ulang mengirim 'Yt'", "cmd('man','Yt')" in M.HALAMAN, True)
 cek("  tombol simpan mengirim 'YtW'", "'YtW'" in M.HALAMAN, True)
 cek("  dan simpan bertanya dulu", "YtW" in M.HALAMAN and "confirm(" in M.HALAMAN, True)
+
+print("\n88. Kalibrasi servo & LiDAR lewat HUD (keluarga 'Y')")
+# Tiga perintah ditambahkan ke firmware 18 Sep 2026 (Yo/Yz/Yd) tanpa jalan
+# masuk dari HUD sama sekali. Bagian ini menjaga kedua sisinya tetap sinkron:
+# apa yang DICETAK firmware, dan apa yang bisa DITEKAN operator.
+
+# --- '#OFFSET' (Yo): offset SUDUT per servo, derajat ---
+_K_OFFSET = ["--- OFFSET SUDUT SERVO (der, koreksi DATUM) ---",
+             "#OFFSET 0 K0_COXA -3.0",
+             "#OFFSET 1 K0_FEMUR +0.0",
+             "#OFFSET 18 ARMR_BASE +24.5",
+             "  terisi: 2 dari 24 slot"]
+_lg88 = link_uji("")
+for _b in _K_OFFSET:
+    _lg88._parse(_b)
+cek("tiga baris '#OFFSET' terbaca", len(_lg88.offset), 3)
+cek("slot 0 tersimpan (nama + derajat)",
+    _lg88.offset[0], {"nama": "K0_COXA", "der": -3.0})
+cek("  dan tanda '+' ikut terbaca", _lg88.offset[18]["der"], 24.5)
+cek("baris ringkasan tidak jadi slot", 24 in _lg88.offset, False)
+
+# SATU SLOT DITIMPA, bukan tabel diganti utuh -- pola yang sama dengan #TRIM.
+_lg88._parse("#OFFSET 0 K0_COXA -4.5")
+cek("baris ulang menimpa slotnya saja", _lg88.offset[0]["der"], -4.5)
+cek("  dan tidak menghapus slot lain", len(_lg88.offset), 3)
+
+# Baris cacat diabaikan, bukan membuat slot palsu.
+_n_off88 = len(_lg88.offset)
+for _b in ("#OFFSET", "#OFFSET 3", "#OFFSET 3 K0_TIBIA",
+           "#OFFSET x K0_TIBIA 1.0", "#OFFSET 3 K0_TIBIA 1.0 der"):
+    _lg88._parse(_b)
+cek("baris '#OFFSET' cacat diabaikan", len(_lg88.offset), _n_off88)
+
+# --- '#LIDAR_OFFSET' (Yd): offset JARAK per sensor, cm ---
+_lg89 = link_uji("")
+for _b in ["--- OFFSET JARAK LIDAR (cm, RAM saja) ---",
+           "#LIDAR_OFFSET 0 KIRI-DPN +0.00 12",
+           "#LIDAR_OFFSET 5 DEPAN +2.40 124",
+           "#LIDAR_OFFSET 2 BELAKANG -1.20 -1"]:
+    _lg89._parse(_b)
+cek("tiga baris '#LIDAR_OFFSET' terbaca", len(_lg89.lidar_offset), 3)
+cek("offset & bacaan ikut tersimpan",
+    (_lg89.lidar_offset[5]["cm"], _lg89.lidar_offset[5]["baca"]), (2.4, 124))
+cek("  bacaan -1 (MATI/jauh) dibawa apa adanya",
+    _lg89.lidar_offset[2]["baca"], -1)
+
+# --- zOff dari tabel per-kaki milik 'd' ---
+# Firmware TIDAK punya perintah cetak zOff tersendiri; dump diagnostik
+# satu-satunya sumbernya -- sebabnya tabelnya dipagari HEADER-nya.
+_D88 = ["================ DEBUG HEXAPOD ================",
+        "kaki  zOff |    lx     ly     lz |   coxa   femur   tibia | inv c/f/t",
+        " 0   +0.0 |   78.0    0.0 -100.0 |   0.00  -10.57   82.02 | 1 1 0",
+        " 1   -2.5 |   90.0    0.0  -95.0 |   0.00  -12.00   80.00 | 1 1 0",
+        " 2   +4.0 |   78.0    0.0 -100.0 |   0.00  -10.57   82.02 | 1 1 0",
+        " 3   +0.0 |  -78.0    0.0 -100.0 |   0.00  -10.57   82.02 | 1 0 1",
+        " 4   +0.0 |  -90.0    0.0  -95.0 |   0.00  -12.00   80.00 | 1 0 1",
+        " 5   +0.0 |  -78.0    0.0 -100.0 |   0.00  -10.57   82.02 | 1 0 1",
+        "lengan pulse (us) : 500 .. 2500"]
+_lg90 = link_uji("")
+for _b in _D88:
+    _lg90._parse(_b)
+cek("enam baris zOff terbaca",
+    _lg90.zoff, [0.0, -2.5, 4.0, 0.0, 0.0, 0.0])
+cek("  dan jendelanya ditutup sesudahnya", _lg90._zoff_sisa, 0)
+cek("baris sesudah tabel TIDAK jadi zOff", _lg90.zoff[5], 0.0)
+
+# Tanpa header, baris berbentuk sama tidak dianggap zOff -- kekeliruan yang
+# sudah pernah terjadi pada tabel kompas ('0 UTARA : 12.5' terbaca sebagai ch0).
+_lg91 = link_uji("")
+_lg91._parse(" 0   +0.0 |   78.0    0.0 -100.0 |   0.00  -10.57   82.02 | 1 1 0")
+cek("tanpa header: bukan zOff", _lg91.zoff, None)
+
+# --- ikut /state, DAN dari link (bukan dari Kalib) ---
+_lp88 = LinkPalsu()
+_lp88.offset = dict(_lg88.offset)
+_lp88.lidar_offset = dict(_lg89.lidar_offset)
+_lp88.zoff = list(_lg90.zoff)
+_sd88 = M.rakit_state(M.Misi(), _lp88, M.Kalib(), M.Juri(M.Kalib(), NAMA),
+                      {"fps": 0.0, "t_inf": 0.0}, True, "")
+cek("/state membawa offset sudut", len(_sd88["offset"]), len(_lg88.offset))
+cek("  terurut menurut slot",
+    [o["slot"] for o in _sd88["offset"]], sorted(_lg88.offset))
+cek("/state membawa offset LiDAR",
+    len(_sd88["lidar_offset"]), len(_lg89.lidar_offset))
+cek("  terurut menurut channel",
+    [o["ch"] for o in _sd88["lidar_offset"]], sorted(_lg89.lidar_offset))
+cek("/state membawa zOff", _sd88["zoff"], list(_lg90.zoff))
+cek("  zOff belum dibaca dibedakan dari nol",
+    M.rakit_state(M.Misi(), LinkPalsu(), M.Kalib(), M.Juri(M.Kalib(), NAMA),
+                  {"fps": 0.0, "t_inf": 0.0}, True, "")["zoff"], None)
+cek("dan bukan dari Kalib", hasattr(M.Kalib(), "offset"), False)
+
+# --- kartu & tombolnya ada di halaman ---
+for _id in ("id=offset", "id=lidaroff", "id=zoff"):
+    cek(f"kartu '{_id}' ada di HTML", _id in M.HALAMAN, True)
+cek("  tombol baca 'Yo'", "cmd('man','Yo')" in M.HALAMAN, True)
+cek("  tombol baca 'Yd'", "cmd('man','Yd')" in M.HALAMAN, True)
+cek("  tombol baca zOff lewat 'd'", "cmd('man','d')" in M.HALAMAN, True)
+cek("  simpan offset lewat 'W', bukan 'YtW'",
+    "cmd('manpaksa','W')" in M.HALAMAN, True)
+cek("  nolkan offset 'Yo!'", "cmd('man','Yo!')" in M.HALAMAN, True)
+cek("  nolkan offset LiDAR 'Yd!'", "cmd('man','Yd!')" in M.HALAMAN, True)
+cek("  per slot mengirim 'Yo<slot> <der>'", "Yo${o.slot}" in M.HALAMAN, True)
+cek("  per kaki mengirim 'Yz<kaki> <mm>'", "Yz${i}" in M.HALAMAN, True)
+cek("  offset LiDAR dikirim lewat catatLidarOff",
+    "function catatLidarOff(ch)" in M.HALAMAN, True)
+cek("  dan yang diketik adalah jarak METERAN, bukan offsetnya",
+    "ukur dengan meteran" in M.HALAMAN, True)
+cek("  sensor MATI/jauh ditandai tak bisa dicatat",
+    "tak bisa dicatat" in M.HALAMAN, True)
+cek("  'Yd' dinyatakan RAM saja, bukan kalibrasi tetap",
+    "ulangi tiap robot menyala" in M.HALAMAN, True)
+# Yi & Yj sengaja TIDAK diberi tombol -- dan diamnya harus dijelaskan, bukan
+# dibiarkan jadi teka-teki ("kok tidak ada?").
+cek("  'Yi' & 'Yj' tidak dijadikan tombol",
+    "cmd('man','Yi" in M.HALAMAN or "cmd('man','Yj" in M.HALAMAN, False)
+cek("  dan sebabnya dikatakan",
+    "membalik satu kanal hampir 180 der" in M.HALAMAN, True)
+
 print(f"\n=== {ok} lulus, {fail} gagal ===")
 sys.exit(1 if fail else 0)

@@ -16,8 +16,13 @@
 #include <cmath>
 #include <cstdio>
 
-static const float SP = 19.0f;   // wall.setpoint; nilainya di Calib, bukan
-                                 // config.h, jadi disebut tegas di sini.
+// wall.setpoint; nilainya di Calib.cpp (PARAM_DEFS), bukan config.h, jadi
+// disebut tegas di sini -- dan HARUS diikutkan kalau bawaannya disetel.
+// 19 -> 16 pada 18 Sep 2026: bawaan Calib sudah 16 sejak 7 Sep (itulah angka
+// yang benar-benar dipakai operator di arena), jadi uji ini sempat mengukur
+// setpoint yang tidak lagi dipakai robot. Seluruh assert di bawah relatif
+// terhadap SP, jadi yang berubah cuma titik acuannya.
+static const float SP = 16.0f;
 
 static float bidik(float jarak) {
     return navSudutBidik(jarak, SP, NAV_KOREKSI_JARAK_K, NAV_KOREKSI_BIDIK_MAKS);
