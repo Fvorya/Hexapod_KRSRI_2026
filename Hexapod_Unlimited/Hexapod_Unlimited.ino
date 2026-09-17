@@ -1930,8 +1930,18 @@ static void tergulingUpdate() {
     // sebelum frame pertama masuk, dan 0 itu MEMENUHI syarat terguling.
     if (!imu.hasData()) { tergulingWaspada = false; return; }
 
-    const bool tegak  = fabsf(imu.accelZ()) >= TERGULING_AZ_G;
-    const bool miring = fabsf(imu.rollDeg()) > TERGULING_ROLL_DEG;
+    // TANDA accelZ ikut dihitung, bukan cuma besarnya. Tegak dan terbalik
+    // sama-sama memberi |accelZ| ~ 1 g; yang membedakan cuma tandanya, dan
+    // fabsf() membuangnya. TERGULING_AZ_TEGAK diukur di robot.
+    const bool tegak = (imu.accelZ() * TERGULING_AZ_TEGAK) >= TERGULING_AZ_G;
+
+    // JARAK KE TEGAK, bukan |roll|. IMU di robot ini terbaca +-180 der saat
+    // datar, jadi 'fabsf(roll) > 45' menyala pada robot yang berdiri sempurna
+    // -- 18 Sep 2026 ia melemaskan servo tepat sesudah 'b', tiap kali.
+    // Tegak boleh 0 ATAU +-180; yang berbahaya yang di TENGAH keduanya.
+    const float roll   = fabsf(imu.rollDeg());
+    const float simpang = (roll < 180.0f - roll) ? roll : 180.0f - roll;
+    const bool miring  = simpang > TERGULING_ROLL_DEG;
     if (tegak && !miring) {
         tergulingWaspada = false; tergulingLapor = false;
         return;
@@ -1951,7 +1961,12 @@ static void tergulingUpdate() {
     Serial.println("\n!! TERGULING TERDETEKSI !!");
     Serial.print("   accelZ "); Serial.print(imu.accelZ(), 2);
     Serial.print(" g, roll ");  Serial.print(imu.rollDeg(), 1);
-    Serial.println(" der, bertahan lebih dari tunda.");
+    // SIMPANGAN ikut dicetak, bukan cuma roll mentah. Roll 176 der pada IMU
+    // yang membaca +-180 saat datar TERLIHAT seperti hampir terbalik padahal
+    // simpangannya 4 der -- dan tanpa angka kedua ini, laporan itu menuduh
+    // robot yang berdiri tegak.
+    Serial.print(" der (simpang "); Serial.print(simpang, 1);
+    Serial.println(" der), bertahan lebih dari tunda.");
     Serial.println("   Servo DILEMASKAN. Ambangnya TERGULING_* di config.h -- BELUM DIUKUR;");
     Serial.println("   setel di robot, atau matikan dengan TERGULING_AKTIF 0.");
     tampilan.pesan("TERGULING - servo lemas");

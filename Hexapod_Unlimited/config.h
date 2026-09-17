@@ -1046,9 +1046,29 @@ const uint8_t LIDAR_MIN_CM[6] = {
 //
 // Saklar MATI disediakan karena ini MENAMBAH satu cara baru misi bisa berhenti
 // sendiri: saat menyetel ambangnya di robot, orang harus bisa mematikannya.
+// DIUKUR DI ROBOT 18 Sep 2026, sesudah pemeriksa ini melemaskan servo pada
+// robot yang berdiri tegak sempurna:
+//
+//     accelZ -0.99 g, roll 176.3 der
+//
+// Dua anggapan yang keliru, dan keduanya baru terlihat di robot ini:
+//
+//   1. DATAR ITU ROLL 0. Tidak di sini -- IMU terpasang sehingga datar
+//      terbaca +-180 der. 'fabsf(roll) > 45' karena itu menyala terus.
+//      Yang benar JARAK ke tegak, dan tegak boleh 0 ATAU +-180:
+//      min(|roll|, 180-|roll|).
+//   2. TANDA accelZ TIDAK PENTING. Justru itu satu-satunya yang membedakan
+//      tegak dari terbalik: keduanya memberi |accelZ| ~ 1 g. Dengan fabsf(),
+//      robot yang benar-benar terbalik lolos sebagai "tegak" -- pemeriksa
+//      terguling yang tidak bisa melihat robot terguling.
+//
+// TERGULING_AZ_TEGAK adalah TANDA accelZ saat robot berdiri, bukan besarnya.
+// -1 dibaca langsung dari log di atas. Kalau IMU dipasang ulang, ukur lagi:
+// ketik 'b', lihat accelZ di 'd', ambil tandanya saja.
 #define TERGULING_AKTIF      1        // 0 = MATI. Baku HIDUP.
-#define TERGULING_AZ_G       0.5f     // BELUM DIUKUR: |accelZ| di bawah ini
-#define TERGULING_ROLL_DEG  45.0f     // BELUM DIUKUR: |roll| di atas ini
+#define TERGULING_AZ_TEGAK  -1.0f     // DIUKUR: tanda accelZ saat berdiri
+#define TERGULING_AZ_G       0.5f     // BELUM DIUKUR: accelZ tegak di bawah ini
+#define TERGULING_ROLL_DEG  45.0f     // BELUM DIUKUR: simpangan roll di atas ini
 #define TERGULING_TUNDA_MS   400      // BELUM DIUKUR: harus bertahan selama ini
 
 // Batas parkir menunggu Raspi, milidetik.
