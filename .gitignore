@@ -41,9 +41,13 @@ __pycache__/
 
 # Snapshot pohon lama yang tertinggal di disk. Bukan salinan kerja -- dua pohon
 # dengan nama berkas sama adalah cara pasti menyunting yang salah.
-"Hexapod_Unlimited_v1.17/"
-"Hexapod_Unlimited_v1.17 (2)/"
-"moses v1.19/"
+# TANPA tanda kutip: gitignore memperlakukan " sebagai karakter biasa, jadi
+# pola berkutip tidak pernah cocok dan ketiga folder ini tetap muncul di
+# 'git status'. Spasi di nama folder tidak perlu di-escape di sini.
+/Hexapod_Unlimited_v1.17/
+/Hexapod_Unlimited_v1.17 (2)/
+/moses v1.19/
+/moses/mission_hud_v1.19/
 
 # ====================================================================
 # CATATAN 18 Sep 2026 -- aturan '/moses/*.py', '/moses/*.sh', '/moses/*.md',
