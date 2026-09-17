@@ -18,3 +18,10 @@ desktop.ini
 # ada di bundle git yang dibuat sebelum penulisan ulang.
 docs/
 test-pc/
+
+# Cadangan penyuntingan. Ditulis tangan saat mengubah berkas besar dan
+# ditinggal di disk dengan sengaja; tidak ada gunanya di riwayat git, yang
+# sudah menyimpan versi sebelumnya dengan lebih baik.
+*.bak
+*.bak[0-9]
+*.bak_*
