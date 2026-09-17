@@ -25,3 +25,24 @@ test-pc/
 *.bak
 *.bak[0-9]
 *.bak_*
+
+# Bobot model dan arsip. Besar, biner, dan dibuat ulang oleh quantize.py --
+# riwayat git bukan tempatnya. best.pt 6 MB, best_op13.onnx 12 MB.
+*.pt
+*.onnx
+*.zip
+
+# Salinan basi pohon HUD. Yang HIDUP moses/moses/; yang di tingkat atas
+# snapshot lama yang tertinggal, dan dua pohon dengan nama berkas sama adalah
+# cara pasti menyunting yang salah. Dibiarkan di disk, tidak ikut ke git.
+/moses/*.py
+/moses/*.sh
+/moses/*.md
+/moses/*.bat
+/moses/*.txt
+/moses/arsip/
+/moses/__pycache__/
+"Hexapod_Unlimited_v1.17/"
+"Hexapod_Unlimited_v1.17 (2)/"
+"moses v1.19/"
+__pycache__/
