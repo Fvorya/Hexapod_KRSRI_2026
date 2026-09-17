@@ -1079,8 +1079,25 @@ Huruf kedua memilih subperintah. Semua huruf besar-kecil sudah terpakai, jadi ke
 | `b` | Berdiri diam (sekaligus menyalakan servo bila masih lemas) |
 | `b<mm>` | Sama, sekaligus atur tinggi badan (40–160, di-ramp) |
 | `w` | Jalan maju |
+| `w <maju> <geser> [detik] [putar]` | Jalan manual tiga sumbu, `-1..1`. Argumen **keempat** adalah putar, dan urutan itu sengaja tidak ditukar supaya `w 0.5 0 3` tetap berarti sama. Batas 0,5–30 detik adalah satu-satunya penjaga saat penjaga jarak buta — jangan dibuka |
 | `s` | Stop (servo tetap hidup) |
 | Enter kosong | Rem darurat |
+
+### Profil medan (gait)
+| | |
+|---|---|
+| `T` | Cetak profil yang **berlaku** (hasil ramp) + sudut sendi tiap kaki |
+| `T[0-5]` | Ganti profil **sambil berjalan** (di-ramp, tanpa `b`): 0=datar, 1=tangga, 2=merunduk/turunan, 3=sempit, 4=kail, 5=tanjak |
+| `T?` / `TW` / `TL` | Cetak target / simpan ke EEPROM 2304 / muat dari EEPROM |
+| `TD<n>` | Buang override profil ke-n (kembali ke bawaan firmware) |
+| `Tp <id> <5 nilai>` | Pasang profil penuh: tinggi & panjang langkah, waktu siklus, tinggi badan, radius kaki |
+| `Th<mm>` `Tl<mm>` `Tc<ms>` `Tr<mm>` `Tb<mm>` | Setel **satu kolom** profil yang sedang berlaku |
+
+**`Th`/`Tl`/`Tc`/`Tr`/`Tb` bukan pemasangan profil, dan bedanya bukan istilah.** `Tp` (dan `b<mm>`, yang juga memasang profil) memakai `setGaitProfile()` → `HexaGait::setProfile()`, yang **menghapus offset kaki per kaki** — dan itu memang benar untuk pemasangan: profil berlaku sama rata untuk keenam kaki, jadi memasang profil apa pun berarti kembali ke bentuk seragam. Tetapi `Th60` saat profil KAIL aktif bukan pemasangan; ia penyetelan satu angka pada bentuk yang sedang dipakai. Karena itu ia lewat `HexaGait::setKolomProfil()`, yang hanya menyentuh **target** profil dan **tidak** menyentuh offset kaki. Tanpa itu, R-9 akan kehilangan bentuk kailnya diam-diam hanya karena seseorang menyetel tinggi langkah.
+
+Sebelum ini satu-satunya jalan menyetel tinggi langkah adalah `Qgait.step_height`, yang bertanda `P_PERLU_B`: nilainya baru masuk saat profil di-set ulang, dan satu-satunya pemicunya `b` — yang sekaligus menolkan pose badan **dan** mengembalikan profil ke DATAR. Di R-9 itu justru dua hal yang tidak boleh terjadi.
+
+Kolomnya divalidasi terhadap rentang yang sama dengan `Tp` (`profilSah()`); nilai di luar rentang **ditolak dengan menyebut kolom dan batasnya**, bukan di-clamp diam-diam. `#PROFIL_UBAH OK` + `#PROFIL` yang dicetak sesudahnya adalah awalan yang sama dengan `Tp`/`TD`, jadi HUD sudah mengenalinya tanpa pembacaan baru.
 
 ### Body kinematics
 | | |

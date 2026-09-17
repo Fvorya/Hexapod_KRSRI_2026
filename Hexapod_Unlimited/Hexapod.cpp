@@ -586,12 +586,60 @@ void Hexapod::profileNarrow() {
                        GAIT_CYCLE_TIME + 100.0f, STAND_HEIGHT, STAND_RADIUS - 25.0f }, 3);
 }
 
+// RENTANG SAH TIAP KOLOM PROFIL -- satu tempat.
+//
+// Dulu batas ini ditulis sebagai rangkaian perbandingan di dalam profilSah(),
+// dan perintah 'Th'/'Tl'/... butuh ANGKA YANG SAMA untuk pesan penolakannya.
+// Dua salinan angka yang sama adalah persis cara pemeriksa dan pesannya
+// menyimpang diam-diam -- kelas bug yang sudah berkali-kali menggigit di
+// firmware ini. Sekarang keduanya membaca tabel ini.
+//
+// Urutannya WAJIB sama dengan HexaGait::KolomProfil.
+static const struct { float lo, hi; } KOL_BATAS[HexaGait::N_KOL_PROFIL] = {
+    {   0.0f,  120.0f },   // tinggi langkah, mm
+    {   0.0f,  150.0f },   // panjang langkah, mm
+    { 300.0f, 3000.0f },   // waktu siklus, ms
+    {  40.0f,  160.0f },   // tinggi badan, mm
+    {  30.0f,  120.0f },   // radius kaki, mm
+};
+
+static const char* const KOL_NAMA[HexaGait::N_KOL_PROFIL] = {
+    "tinggi langkah", "panjang langkah", "waktu siklus", "tinggi badan", "radius kaki"
+};
+
 static bool profilSah(const GaitProfile& p) {
-    return isfinite(p.stepHeight) && p.stepHeight >= 0 && p.stepHeight <= 120 &&
-           isfinite(p.stepLength) && p.stepLength >= 0 && p.stepLength <= 150 &&
-           isfinite(p.cycleTime) && p.cycleTime >= 300 && p.cycleTime <= 3000 &&
-           isfinite(p.standHeight) && p.standHeight >= 40 && p.standHeight <= 160 &&
-           isfinite(p.standRadius) && p.standRadius >= 30 && p.standRadius <= 120;
+    const float v[HexaGait::N_KOL_PROFIL] = {
+        p.stepHeight, p.stepLength, p.cycleTime, p.standHeight, p.standRadius
+    };
+    for (uint8_t i = 0; i < HexaGait::N_KOL_PROFIL; i++) {
+        if (!isfinite(v[i]) || v[i] < KOL_BATAS[i].lo || v[i] > KOL_BATAS[i].hi)
+            return false;
+    }
+    return true;
+}
+
+// 'Th' / 'Tl' / 'Tc' / 'Tr' / 'Tb'. Lihat HexaGait::setKolomProfil() untuk
+// kenapa ini BUKAN pemasangan profil.
+bool Hexapod::setKolomProfil(uint8_t kolom, float nilai) {
+    if (kolom >= HexaGait::N_KOL_PROFIL) {
+        Serial.println("Kolom profil tidak dikenal.");
+        return false;
+    }
+    if (!isfinite(nilai) || nilai < KOL_BATAS[kolom].lo || nilai > KOL_BATAS[kolom].hi) {
+        Serial.print("DITOLAK: '"); Serial.print(KOL_NAMA[kolom]);
+        Serial.print("' = "); Serial.print(nilai, 1);
+        Serial.print(" di luar rentang sah "); Serial.print(KOL_BATAS[kolom].lo, 0);
+        Serial.print(" .. "); Serial.print(KOL_BATAS[kolom].hi, 0); Serial.println(".");
+        return false;
+    }
+    if (!_gait.setKolomProfil(kolom, nilai)) return false;
+
+    // Profil tersimpan TIDAK ditandai di sini. Yang menandai 'TW'
+    // (simpanProfil()), dan ia sudah membaca targetProfile() -- jadi
+    // penyetelan ini ikut tersimpan tanpa jalur kedua.
+    Serial.print(KOL_NAMA[kolom]); Serial.print(" -> ");
+    Serial.print(nilai, 1); Serial.println(" (di-ramp; offset kaki TIDAK dihapus)");
+    return true;
 }
 
 void Hexapod::pilihProfil(uint8_t id) {

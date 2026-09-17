@@ -85,6 +85,15 @@ public:
     // sendiri lewat setProfile().
     void setOffsetKaki(const Vec3 off[6]) { _gait.setOffsetKaki(off); }
 
+    // SETEL SATU KOLOM profil yang sedang berlaku -- perintah 'Th'/'Tl'/'Tc'/
+    // 'Tr'/'Tb'. Bukan pemasangan profil: offset kaki per kaki (bentuk KAIL)
+    // TIDAK dihapus dan kunci lutut tidak dilepas. Lihat catatan lengkapnya di
+    // HexaGait::setKolomProfil().
+    //
+    // false bila kolomnya tidak dikenal atau nilainya di luar rentang sah;
+    // SEBABNYA DICETAK, jadi pemanggil tidak perlu mengulang batasnya di sana.
+    bool setKolomProfil(uint8_t kolom, float nilai);
+
     // Profil yang BERLAKU sekarang -- hasil ramp, bukan yang terakhir diminta.
     // Selama transisi angkanya ada di tengah jalan; itu yang membuatnya
     // berguna, baik untuk 'T' maupun untuk uji.

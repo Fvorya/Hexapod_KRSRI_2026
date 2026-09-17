@@ -264,7 +264,7 @@ Gabungan dengan urutan di catatan pertama:
 | 5 | Offset LiDAR `Yd` | B1 | ~15 baris | Tiap ruas berumpan-balik ikut membaik | **SELESAI** |
 | 6 | Ukur geometri kaki | catatan 1 | lapangan | Penutup yang sudah diminta CLAUDE.md | **MENUNGGU PENGUKURAN** |
 | 7 | Batch `CALIB_VERSION` | catatan 1 | sedang | Sesudah 6, supaya default langsung benar | belum (butuh 6) |
-| 8 | `Th`/`Tl`/… + putar di `w` | catatan 1 | kecil | Tidak memblokir apa pun | belum (putar di `w` sudah ada) |
+| 8 | `Th`/`Tl`/… + putar di `w` | catatan 1 | kecil | Tidak memblokir apa pun | **SELESAI** |
 | 9 | Kompensasi CG | B2 | ~12 baris | Butuh 1 dan 6 lebih dulu supaya terukur | belum (butuh 6) |
 | 10 | Tegangan bus servo | B3 | HW + kecil | Butuh pembagi tegangan dulu | belum (butuh HW) |
 

@@ -24,6 +24,18 @@ ternyata berbeda dari dugaan ditulis apa adanya, bukan dirapikan.
 | 4. Deteksi terguling | **SELESAI** | Tiga ambang di `config.h` + saklar, ditandai BELUM DIUKUR. |
 | 5. Offset LiDAR `Yd` | **SELESAI** | RAM saja, dikurangkan di satu tempat sesudah median+EMA. |
 
+**Tambahan 18 Sep 2026 — butir 8 di urutan kerja (§5) juga sudah selesai:**
+`Th`/`Tl`/`Tc`/`Tr`/`Tb` (setel satu kolom profil) ada di firmware lewat
+`HexaGait::setKolomProfil()`, rinciannya di §1. Keluarga kalibrasi `Y` —
+termasuk `Yo`/`Yz`/`Yd` yang tadinya hanya bisa diketik — sekarang juga punya
+jalan masuk dari HUD Raspi, jadi tidak ada lagi yang menuntut hafalan nama
+perintah atau nomor slot di sisi operator.
+
+Yang masih menunggu, dan alasannya masing-masing: butir 3 (laju OLED) menunggu
+robot menyala lalu satu baris `PROF` dibaca; butir 2, 6, dan 7 menunggu
+pengukuran geometri kaki; butir 5 (`Yl`) menunggu keputusan; butir 9–10
+menunggu perangkat keras.
+
 ### Butir 2 — apa yang nyatanya berbeda dari dugaan
 
 - **`Yo` dan `Yi` punya tombol simpan yang BERBEDA, dan itu bukan pilihan
@@ -124,6 +136,28 @@ selama ini dijaga di firmware ini. Dua jalan:
 
 Saya condong ke **(a)** — penyetelan tinggi langkah paling dibutuhkan justru
 di R-9, tempat offset kaki memang harus tetap hidup.
+
+**DIKERJAKAN 18 Sep 2026, dan (a) yang diambil.** `HexaGait::setKolomProfil()`
+hanya menyentuh `_tgtProf`; `HexaGait::setProfile()` tidak disentuh sama sekali,
+jadi invarian "satu pintu pemasangan profil" tetap utuh. Tiga hal yang ternyata
+berbeda dari dugaan di atas:
+
+- **Basisnya TARGET, bukan `gaitProfile()` yang sedang berlaku.** Usul di atas
+  berbunyi "ambil `robot.gaitProfile()`, ganti satu kolom, pasang lagi". Itu
+  salah halus: `gaitProfile()` mengembalikan profil yang **sedang di-ramp**, jadi
+  mengetik `Th60` di tengah transisi profil akan membekukan separuh nilai ramp
+  yang kebetulan sedang lewat ke dalam bentuk yang baru. Yang disetel karena itu
+  `_tgtProf` — satu kolom target, sisanya tidak diganggu.
+- **Rentangnya tidak bisa dibiarkan di dua tempat.** `profilSah()` sudah memuat
+  batas tiap kolom sebagai rangkaian perbandingan, dan pesan penolakan `Th`
+  butuh angka yang sama. Angka yang ditulis dua kali adalah persis cara
+  pemeriksa dan pesannya menyimpang, jadi batasnya dipindah ke satu tabel
+  `KOL_BATAS[]` yang dibaca keduanya. `profilSah()` diubah bentuknya, tapi
+  batasnya sendiri tidak berubah satu angka pun.
+- **`#PROFIL_UBAH OK` dipakai ulang apa adanya.** HUD sudah mengenali awalan itu
+  dari `Tp`/`TD`, jadi penyetelan kolom tidak menuntut pembacaan baru di sisi
+  Raspi — satu hal yang tidak terlihat dari berkas ini.
+
 
 ---
 
@@ -323,8 +357,9 @@ Status per 18 Sep 2026 ditulis di ujung tiap butir.
    kalibrasi tersimpan. Enam baris `PARAM_DEFS` untuk offset LiDAR ikut di sini.
 4. **`Th`/`Tl`/`Tc`/`Tr`/`Tb`** + argumen putar di `w`. Dua-duanya kecil,
    taruh terakhir karena tidak memblokir apa pun.
-   → **BELUM.** Argumen putar di `w` sudah lebih dulu ada di pohon (bukan dari
-   batch ini); `Th`/`Tl`/… belum.
+   → **SELESAI.** Argumen putar di `w` sudah lebih dulu ada di pohon (bukan dari
+   batch ini); `Th`/`Tl`/… dikerjakan 18 Sep lewat `setKolomProfil()`, jadi
+   offset kaki tidak lagi diratakan diam-diam saat kolom disetel.
 5. **`Yl` rata badan** — hanya kalau kamu memutuskan iya di bagian 3C.
    → **BELUM**, dan keputusannya belum diambil. Satu-satunya usul di berkas ini
    yang bisa menjatuhkan robot kalau tandanya terbalik.

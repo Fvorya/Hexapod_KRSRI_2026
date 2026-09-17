@@ -588,6 +588,46 @@ static void handleCmd(char* s) {
             // ini. Tabrakan ini yang paling tidak berbahaya: 'T' tidak
             // menggerakkan robot, hanya mengganti profil, dan pergantiannya
             // di-ramp sehingga salah ketik pun tidak menyentak.
+            // PENYETELAN SATU KOLOM PROFIL, meniru pola 'b<mm>' yang sudah ada:
+            //   Th<mm> tinggi langkah    Tl<mm> panjang langkah
+            //   Tc<ms> waktu siklus      Tr<mm> radius kaki    Tb<mm> tinggi badan
+            //
+            // Kenapa perlu: satu-satunya jalan menyetel tinggi langkah dulu
+            // cuma 'Qgait.step_height', yang bertanda P_PERLU_B -- nilainya
+            // baru masuk saat profil di-set ulang, dan satu-satunya pemicunya
+            // 'b', yang sekaligus MENOLKAN pose badan dan mengembalikan profil
+            // ke DATAR. Di R-9, tempat bentuk KAIL memang harus tetap hidup,
+            // itu justru dua hal yang tidak boleh terjadi.
+            //
+            // Lewat setKolomProfil(), BUKAN setGaitProfile(): yang terakhir
+            // menghapus offset kaki dan akan meratakan bentuk KAIL diam-diam.
+            if (s[1] == 'h' || s[1] == 'l' || s[1] == 'c' ||
+                s[1] == 'r' || s[1] == 'b') {
+                // argFloats() membaca mulai argumennya sendiri, jadi s+1 di
+                // sini menaruh titik bacanya tepat sesudah huruf kolomnya --
+                // pola yang sama dengan 'Ds'.
+                float p[1] = {0};
+                if (argFloats(s + 1, p, 1) < 1) {
+                    Serial.println("Th<mm> tinggi langkah   Tl<mm> panjang langkah   Tc<ms> waktu siklus");
+                    Serial.println("Tr<mm> radius kaki      Tb<mm> tinggi badan");
+                    Serial.println("  Menyetel SATU kolom profil yang sedang berlaku: di-ramp, tanpa 'b',");
+                    Serial.println("  dan offset kaki per kaki (bentuk KAIL) TIDAK dihapus.");
+                    break;
+                }
+                const uint8_t kol =
+                    (s[1] == 'h') ? HexaGait::KOL_TINGGI_LANGKAH  :
+                    (s[1] == 'l') ? HexaGait::KOL_PANJANG_LANGKAH :
+                    (s[1] == 'c') ? HexaGait::KOL_WAKTU_SIKLUS    :
+                    (s[1] == 'r') ? HexaGait::KOL_RADIUS_KAKI     :
+                                    HexaGait::KOL_TINGGI_BADAN;
+                if (!robot.setKolomProfil(kol, p[0])) break;
+                // Awalan yang SAMA dengan 'Tp'/'TD' -- HUD sudah mengenalinya,
+                // jadi penyetelan ini tidak butuh pembacaan baru di sisi Raspi.
+                Serial.println("#PROFIL_UBAH OK");
+                robot.cetakProfil();
+                break;
+            }
+
             if (!hasNum) {
                 GaitProfile p = robot.gaitProfile();
                 Serial.println("\n--- PROFIL MEDAN (yang BERLAKU, hasil ramp) ---");
@@ -1575,8 +1615,11 @@ static void handleCmd(char* s) {
             Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
             Serial.println("           ('Y' juga INDUK keluarga kalibrasi servo -- lihat bawah)");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
-            Serial.println("  T[0-4] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
-            Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit  4=kail");
+            Serial.println("  T[0-5] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
+            Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit  4=kail  5=tanjak");
+            Serial.println("  Th<mm> Tl<mm> Tc<ms> Tr<mm> Tb<mm> : setel SATU kolom profil");
+            Serial.println("           tinggi & panjang langkah, waktu siklus, radius kaki, tinggi badan");
+            Serial.println("           Di-ramp, tanpa 'b', dan offset kaki (bentuk KAIL) tetap utuh");
             Serial.println("  D      : Jarak tempuh, keadaan rem, dan skala odometri");
             Serial.println("  D<cm>  : Nolkan jarak lalu pasang rem di <cm> (misal D80)");
             Serial.println("  D0     : Nolkan jarak dan lepas rem");

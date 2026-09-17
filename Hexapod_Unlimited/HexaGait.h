@@ -47,6 +47,45 @@ public:
     void setOffsetKaki(const Vec3 off[6]) {
         for (int i = 0; i < 6; i++) _tgtOff[i] = off[i];
     }
+
+    // KOLOM PROFIL, berurutan sama dengan isi struct GaitProfile.
+    enum KolomProfil : uint8_t {
+        KOL_TINGGI_LANGKAH = 0,
+        KOL_PANJANG_LANGKAH,
+        KOL_WAKTU_SIKLUS,
+        KOL_TINGGI_BADAN,
+        KOL_RADIUS_KAKI,
+        N_KOL_PROFIL
+    };
+
+    // PENYETELAN SATU KOLOM PROFIL, TANPA menyentuh offset kaki.
+    //
+    // setProfile() menghapus _tgtOff, dan itu memang BENAR untuk PEMASANGAN
+    // profil: profil berlaku untuk keenam kaki sama rata, jadi memasang profil
+    // apa pun berarti "kembali ke bentuk seragam". Tapi 'Th60' saat profil KAIL
+    // aktif BUKAN pemasangan profil -- ia penyetelan satu angka pada bentuk
+    // yang sedang dipakai. Memakai setProfile() di sana akan meratakan bentuk
+    // KAIL diam-diam, dan bentuk itu justru yang membuat R-9 bisa dinaiki.
+    //
+    // Invarian "satu pintu pemasangan profil" TIDAK dilanggar: ini bukan pintu
+    // kedua, karena ia tidak pernah memasang profil.
+    //
+    // Yang disetel adalah TARGET (_tgtProf), bukan yang sedang berlaku.
+    // Mengetik 'Th60' di tengah transisi profil harus berarti "tinggi langkah
+    // 60", bukan "bekukan separuh nilai ramp yang kebetulan sedang lewat".
+    //
+    // Nilai TIDAK diperiksa di sini: rentangnya milik Hexapod::setKolomProfil(),
+    // supaya batasnya cuma ada di satu tempat bersama profilSah().
+    bool setKolomProfil(uint8_t kolom, float nilai) {
+        switch (kolom) {
+            case KOL_TINGGI_LANGKAH:  _tgtProf.stepHeight  = nilai; return true;
+            case KOL_PANJANG_LANGKAH: _tgtProf.stepLength  = nilai; return true;
+            case KOL_WAKTU_SIKLUS:    _tgtProf.cycleTime   = nilai; return true;
+            case KOL_TINGGI_BADAN:    _tgtProf.standHeight = nilai; return true;
+            case KOL_RADIUS_KAKI:     _tgtProf.standRadius = nilai; return true;
+            default: return false;
+        }
+    }
     GaitProfile profile() const { return _prof; }
     GaitProfile targetProfile() const { return _tgtProf; }
 
