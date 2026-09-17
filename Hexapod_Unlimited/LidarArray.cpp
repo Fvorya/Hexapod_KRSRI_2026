@@ -1,4 +1,5 @@
 #include "LidarArray.h"
+#include "types.h"   // clampf
 
 #define VL53L1X_ADDR              0x29   // sama dengan VL53L0X -- wiring mux tak berubah
 
@@ -466,6 +467,21 @@ void LidarArray::update() {
     // 2) EMA (Exponential Moving Average) untuk menghaluskan data
     _dist[_cur] = (_dist[_cur] < 0) ? m
                 : (1.0f - LIDAR_EMA_ALPHA) * _dist[_cur] + LIDAR_EMA_ALPHA * m;
+
+    // 3) KOREKSI OFFSET PER SENSOR -- SATU-SATUNYA tempat ia dikurangkan.
+    //
+    // Di sini median dan EMA sudah selesai, dan BELUM ada satu pun pembaca yang
+    // melihat angkanya: getDistance(), jarakHalus(), dan turunan PD semuanya
+    // membaca _dist. Mengurangkannya di satu titik ini membuat keenamnya ikut
+    // terkoreksi tanpa satu salinan aturan pun yang bisa menyimpang.
+    //
+    // Jangan pindahkan ke getDistance(): di sana ia harus ditulis dua kali
+    // (getDistance dan jarakHalus), dan yang satu pasti terlupa suatu hari.
+    //
+    // Penyaring di ATAS baris ini (LIDAR_MIN_CM, LIDAR_MAX_CM, range_status)
+    // sengaja tetap bekerja pada bacaan MENTAH: ia memilah kesahihan jawaban
+    // sensor, dan offset tidak mengubah apa yang dilihat sensornya.
+    _dist[_cur] -= _offset[_cur];
     _lastOk[_cur] = millis();
 }
 
@@ -774,6 +790,95 @@ void LidarArray::cetakBaris() {
         if (i < NUM_LIDAR - 1) Serial.print(" | ");
     }
     Serial.println();
+}
+
+// ====================================================================
+// OFFSET JARAK PER SENSOR (perintah 'Yd')
+//
+// Kenapa ada: ST mewajibkan kalibrasi OFFSET per modul VL53L1X, dan mengulangi
+// RefSPAD serta crosstalk-nya begitu ada kaca/akrilik penutup. Firmware ini
+// tidak mengalibrasi satu pun dari keenamnya. Yang ada cuma WALL_BIAS_* yang
+// itu bias SUDUT -- selisih bacaan SEPASANG sensor -- bukan offset jarak.
+// Sementara WALL_KAKI_CM 7,0 diturunkan dari satu pengukuran yang mengasumsikan
+// keenam sensor sepakat. Sesudah 'Yd', setpoint itu akhirnya berarti jarak yang
+// sama di keenam sensor.
+//
+// Pustaka Pololu tidak mengekspos API kalibrasi ST. JANGAN tukar pustaka untuk
+// ini: VL53L1X_ULD menuntut menulis ulang seluruh mesin state non-blokir yang
+// sudah terbukti bekerja.
+// ====================================================================
+
+// Pagar, BUKAN hasil ukur. Offset per modul yang wajar itu orde beberapa
+// milimeter sampai satu sentimeter; 10 cm sudah jauh di luar itu dan hampir
+// pasti angka meteran yang salah ketik.
+static const float LIDAR_OFFSET_MAKS_CM = 10.0f;
+
+void LidarArray::setOffset(uint8_t ch, float cm) {
+    if (ch >= NUM_LIDAR) {
+        Serial.print("Yd DITOLAK: channel "); Serial.print(ch);
+        Serial.print(" di luar 0.."); Serial.println(NUM_LIDAR - 1);
+        return;
+    }
+    if (!isfinite(cm) || cm <= 0.0f) {
+        Serial.println("Yd DITOLAK: jarak meteran harus lebih besar dari 0 cm.");
+        return;
+    }
+
+    // MENOLAK kalau sensornya tidak sedang melihat dinding yang SAH. Mencatat
+    // offset dari bacaan MATI atau JAUH adalah cara paling rapi merusak keenam
+    // sensor sekaligus: angkanya tidak berarti apa-apa, dan sesudah itu setiap
+    // jarak sensor itu ikut meleset tanpa satu pun gejala di layar.
+    const float baca = jarakHalus(ch);
+    if (baca < 0.0f) {
+        const int d = getDistance(ch);
+        Serial.print("Yd DITOLAK: sensor ch"); Serial.print(ch);
+        Serial.print(" ("); Serial.print(LIDAR_NAMA[ch]); Serial.print(") sedang ");
+        Serial.println(d == LIDAR_MATI ? "MATI -- tidak merespons."
+                                       : "JAUH -- tak ada dinding di jangkauannya.");
+        Serial.println("        Arahkan robot ke dinding sampai 'l' memberi angka, lalu ulangi.");
+        return;
+    }
+
+    // Bacaan SEKARANG sudah termasuk offset lama, jadi yang dicatat SELISIHNYA.
+    // Dengan begitu 'Yd' boleh diulang untuk memperhalus, tanpa menuntut
+    // operator mengingat offset sebelumnya.
+    const float minta = _offset[ch] + (baca - cm);
+    const float baru  = clampf(minta, -LIDAR_OFFSET_MAKS_CM, LIDAR_OFFSET_MAKS_CM);
+    _offset[ch] = baru;
+
+    Serial.print("Offset ch"); Serial.print(ch); Serial.print(" (");
+    Serial.print(LIDAR_NAMA[ch]); Serial.print(") : bacaan ");
+    Serial.print(baca, 1); Serial.print(" cm, meteran "); Serial.print(cm, 1);
+    Serial.print(" cm -> offset "); Serial.print(baru, 2); Serial.println(" cm");
+    if (fabsf(baru - minta) > 1e-3f) {
+        Serial.print("  (diminta "); Serial.print(minta, 2);
+        Serial.print(", DI-CLAMP ke +-"); Serial.print(LIDAR_OFFSET_MAKS_CM, 0);
+        Serial.println(" cm -- periksa angka meterannya)");
+    }
+    Serial.println("  RAM SAJA: ulangi tiap robot menyala (seperti 'Ds' dan 'Y0').");
+}
+
+void LidarArray::nolkanOffset() {
+    for (uint8_t i = 0; i < NUM_LIDAR; i++) _offset[i] = 0.0f;
+    Serial.println("Seluruh offset jarak LiDAR DINOLKAN -- RAM saja.");
+}
+
+void LidarArray::cetakOffset() {
+    Serial.println("--- OFFSET JARAK LIDAR (cm, RAM saja) ---");
+    for (uint8_t i = 0; i < NUM_LIDAR; i++) {
+        const int d = getDistance(i);
+        Serial.printf("#LIDAR_OFFSET %u %s %+.2f %d\n",
+                      i, LIDAR_NAMA[i], (double)_offset[i], d);
+        Serial.print("  ch"); Serial.print(i); Serial.print(' ');
+        Serial.print(LIDAR_NAMA[i]);
+        for (uint8_t k = strlen(LIDAR_NAMA[i]); k < 10; k++) Serial.print(' ');
+        Serial.printf(": offset %+5.2f cm", (double)_offset[i]);
+        if      (d == LIDAR_MATI) Serial.println("   (MATI)");
+        else if (d == LIDAR_JAUH) Serial.println("   (jauh / tak ada objek)");
+        else { Serial.print("   bacaan terkoreksi "); Serial.print(d); Serial.println(" cm"); }
+    }
+    Serial.println("  'Yd<ch> <cm>' catat | 'Yd!' nolkan semua");
+    Serial.println("  RAM saja -- ulangi tiap robot menyala. Lihat catatan di LidarArray.h.");
 }
 
 // Pemindai I2C: memastikan mux dan keenam sensor benar-benar ada SEBELUM

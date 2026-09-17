@@ -678,6 +678,7 @@ static void handleCmd(char* s) {
         //   Yi ...  invert per servo                      -> EEPROM 1024, simpan 'YtW'
         //   Yj ...  jog pulse MENTAH (TUNE_PIN_MAP)       -> tidak disimpan
         //   Yz ...  offset tinggi telapak per kaki, mm    -> EEPROM 2048, langsung
+        //   Yd ...  offset JARAK per sensor LiDAR, cm     -> RAM saja
         //
         // DUA TOMBOL SIMPAN YANG BERBEDA untuk dua hal yang bersebelahan, dan
         // itu memang keadaannya: offset duduk di CalibBlob (alamat 0), invert &
@@ -801,6 +802,26 @@ static void handleCmd(char* s) {
                     break;
                 }
                 robot.setZOff((uint8_t)leg, mm);
+                break;
+            }
+
+            // Yd -- offset JARAK per sensor LiDAR. Satu-satunya anggota keluarga
+            // ini yang bukan milik servo: kalibrasi ST menuntut offset per
+            // modul, dan firmware ini tidak pernah punya satu pun.
+            if (s[1] == 'd') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { lidar.cetakOffset();  break; }
+                if (*arg == '!')  { lidar.nolkanOffset(); break; }
+                long ch; float cm;
+                if (!ySlotNilai(s, ch, cm) || ch < 0 || ch >= NUM_LIDAR) {
+                    Serial.println("Format: 'Yd' tabel | 'Yd<ch> <cm>' catat | 'Yd!' nolkan");
+                    Serial.println("  <cm> = jarak yang DIUKUR METERAN dari muka sensor ke dinding.");
+                    Serial.println("  Sensor harus sedang melihat dinding sungguhan -- 'l' harus");
+                    Serial.println("  memberi angka, bukan MATI/JAUH. RAM saja, ulangi tiap menyala.");
+                    break;
+                }
+                lidar.setOffset((uint8_t)ch, cm);
                 break;
             }
 
@@ -1575,6 +1596,9 @@ static void handleCmd(char* s) {
             Serial.println("  Yj<slot> <us>: Jog PULSE MENTAH. TUNE_PIN_MAP -- BEDA dari slot 'Yt' di atas!");
             Serial.println("                 Grip DEPAN tidak terjangkau 'Yj'; kanal hidup sampai 'x'.");
             Serial.println("  Yz<kaki> <mm>: Offset tinggi telapak per kaki -> EEPROM 2048, berlaku seketika");
+            Serial.println("  Yd            : Tabel offset JARAK keenam LiDAR (cm)");
+            Serial.println("  Yd<ch> <cm>   : 'sensor ch sedang <cm> dari dinding' -> catat selisihnya");
+            Serial.println("  Yd!           : Nolkan semua offset LiDAR");
             Serial.println("  Slot 0..23 sama untuk Yt/Yo/Yi. Y & Y0 = sudut dinding (lihat NAVIGASI).");
             Serial.println("  DUA tombol simpan: 'W' = offset sudut (EEPROM 0); 'YtW' = trim & invert (1024).");
             Serial.println("PARAMETER (gain PD, gait, pulse -- tanpa kompilasi ulang):");
