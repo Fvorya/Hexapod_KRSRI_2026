@@ -21,8 +21,13 @@ REM jadi di Pi tesnya mati dengan FileNotFoundError -- dan 600 tes lain
 REM yang tidak ada hubungannya ikut tidak pernah jalan. Tesnya sudah
 REM dibuat melewati berkas yang hilang; ini sisi satunya, supaya tidak
 REM ada yang perlu dilewati sejak awal.
-set "BERKAS=mission_hud.py test_mission_hud.py cek_serial.py sidik_firmware.py sidik_imu.py flash_teensy.py run_hud.sh siapkan_teensy_pi.sh install_service.sh hemat_daya.sh simpan_arsip.sh cek_salinan.sh"
-if /i "%~1"=="--all" set "BERKAS=%BERKAS% detect.py"
+REM operator_control.py DAN detect.py ADA DI DAFTAR UTAMA, bukan --all.
+REM Keduanya di-import mission_hud.py saat start. 18 Sep 2026 HUD mati di
+REM Pi dengan "ModuleNotFoundError: No module named 'operator_control'"
+REM karena modul barunya tidak pernah ikut terkirim -- dan detect.py dulu
+REM di balik --all dengan alasan "ukurannya besar", padahal 16 KB. Modul
+REM yang di-import program TIDAK boleh bergantung pada flag yang mudah lupa.
+set "BERKAS=mission_hud.py test_mission_hud.py operator_control.py test_operator.py detect.py test_detect.py bench.py test_bench.py cek_serial.py sidik_firmware.py sidik_imu.py flash_teensy.py run.sh run_hud.sh siapkan_teensy_pi.sh install_service.sh hemat_daya.sh simpan_arsip.sh cek_salinan.sh"
 
 echo.
 echo [upload] tujuan : %PI%:~/%DIR%/

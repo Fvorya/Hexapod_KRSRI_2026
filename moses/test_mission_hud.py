@@ -2325,8 +2325,14 @@ _diri = open(_os.path.abspath(__file__), encoding="utf-8").read()
 # sini karena dua penjaga di bawah sama-sama memakainya.
 _LAPTOP_SAJA = {
     "upload_to_pi.sh": "versi bash dari .bat, dijalankan DI laptop",
-    "detect.py": "ikut lewat --all saja, ukurannya besar",
     "test_mission_hud.py": "berkas ini sendiri",
+    # detect.py DIKELUARKAN dari daftar ini 18 Sep 2026. Alasan lamanya
+    # "ikut lewat --all saja, ukurannya besar" keliru dua kali: berkasnya
+    # 16 KB, dan mission_hud.py meng-import-nya saat start. Modul yang
+    # di-import program tidak boleh bergantung pada flag yang mudah lupa --
+    # hari itu HUD mati di Pi karena operator_control.py kena persis itu.
+    "build_sizes.sh": "mengekspor best.pt ke beberapa imgsz lalu kuantisasi; "
+                      "butuh toolchain ekspor yang tidak ada di Pi",
     # Ditambahkan 17 Sep 2026, sesudah penjaga di bawah menahan tujuh berkas
     # sekaligus. Lima di antaranya memang harus ada di Pi dan sekarang ikut
     # terkirim; dua ini TIDAK, dan sebabnya bukan ukuran:
