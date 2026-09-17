@@ -106,7 +106,7 @@ function opSearch(query){
     group.querySelectorAll('.param-row').forEach(row=>{row.hidden=!!term&&!row.textContent.toLowerCase().includes(term);if(!row.hidden)found=true;});
     group.hidden=!found;if(term&&found)group.open=true;
   });
-  document.querySelectorAll('#kalib>div,#kalib34>div,#trim>div').forEach(row=>{row.hidden=!!term&&!row.textContent.toLowerCase().includes(term);});
+  document.querySelectorAll('#kalib>div,#kalib34>div,#trim>div,#offset>div,#lidaroff>div,#zoff>div').forEach(row=>{row.hidden=!!term&&!row.textContent.toLowerCase().includes(term);});
   panel.querySelectorAll(':scope > .card:not(.calibration-intro)').forEach(card=>{
     card.hidden=!!query&&!card.textContent.toLowerCase().includes(query.toLowerCase());
     if(query&&!card.hidden){const d=card.querySelector('details.card-details');if(d)d.open=true;}

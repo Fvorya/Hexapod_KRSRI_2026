@@ -94,7 +94,7 @@ except ImportError:
 # di-upload. Sampai 18 Sep 2026 ia masih berbunyi "2026-09-06 v1.7" padahal
 # isinya sudah memuat rantai AMBIL, serah-terima m2/m9, dan kartu trim servo
 # (17 Sep) -- yaitu penanda yang membohongi orang yang memeriksanya.
-VERSI = "2026-09-18 · v1.18 + serah-terima m2/m9 + trim servo"
+VERSI = "2026-09-18 · v1.18 + serah-terima m2/m9 + trim servo + offset servo/LiDAR/zOff"
 
 KORBAN = "KORBAN"
 RINTANG = "RINTANG"
@@ -1611,6 +1611,28 @@ class Teensy:
         # dibaca lalu menekan simpan akan menulis nol itu ke EEPROM.
         self.trim = {}
         self.t_trim = 0.0
+        # OFFSET SUDUT SERVO, {slot: {"nama","der"}}, jawaban 'Yo'.
+        #
+        # BUKAN trim, dan tinggal di blok EEPROM yang BERBEDA: offset di
+        # CalibBlob alamat 0 (disimpan 'W'), trim di ServoMap alamat 1024
+        # (disimpan 'YtW'). Dua kartu terpisah dengan dua tombol simpan
+        # terpisah -- bukan kerapian, melainkan karena 'W' atas trim memang
+        # tidak berpengaruh apa pun (loadServoMap() menimpanya tiap boot).
+        # Kosong = BELUM PERNAH DIBACA, alasan yang sama dengan trim.
+        self.offset = {}
+        self.t_offset = 0.0
+        # OFFSET JARAK LiDAR, {ch: {"nama","cm","baca"}}, jawaban 'Yd'.
+        # Di firmware ia RAM saja -- hilang tiap Teensy menyala -- jadi kartunya
+        # WAJIB mengatakan itu, bukan menampilkannya seperti kalibrasi tetap.
+        self.lidar_offset = {}
+        self.t_lidar_offset = 0.0
+        # OFFSET TINGGI TELAPAK per kaki, mm, dari tabel per-kaki milik 'd'.
+        # Firmware TIDAK punya perintah cetak tersendiri untuk ini (hanya
+        # penulisnya, 'Yz'), jadi satu-satunya sumber angkanya dump diagnostik.
+        # None = belum pernah dibaca; [None]*6 = sedang terbaca sebagian.
+        self.zoff = None
+        self._zoff_sisa = 0
+        self.t_zoff = 0.0
         # UJUNG SATUNYA dari serah-terima. Firmware mencetak "#LEPAS <ruas>"
         # sesudah sekuens capit selesai, artinya: "aku mau melangkah lagi --
         # kamu masih memegang kaki?". Pi menjawab 'm9'. Tanpa jalur ini Teensy
@@ -1891,6 +1913,37 @@ class Teensy:
     RE_TRIM = re.compile(
         r"^#TRIM\s+(\d+)\s+(\S+)\s+([01])\s+([+-]?\d+)\s*$", re.I)
 
+    # OFFSET SUDUT SERVO. Dicetak Hexapod::cetakOffset() sebagai jawaban 'Yo':
+    #     #OFFSET 0 K0_COXA -3.0
+    #     slot nama derajat
+    #
+    # Nama ikut dikirim firmware supaya HUD tidak menyimpan peta slot kedua yang
+    # diam-diam berbohong begitu urutan slot di EEMap.h berubah -- alasan yang
+    # sama dengan #TRIM dan #TOMBOL.
+    RE_OFFSET = re.compile(
+        r"^#OFFSET\s+(\d+)\s+(\S+)\s+([+-]?[\d.]+)\s*$", re.I)
+
+    # OFFSET JARAK LiDAR, jawaban 'Yd':
+    #     #LIDAR_OFFSET 5 DEPAN +2.40 124
+    #     channel nama offset_cm bacaan_cm
+    #
+    # Bacaan ikut dibawa karena offset TIDAK bisa dinilai tanpa dia: "+2,4 cm"
+    # cuma berarti kalau ketahuan sensornya sedang melihat apa. Firmware
+    # mengirim -1 saat sensornya MATI atau JAUH.
+    RE_LIDAR_OFF = re.compile(
+        r"^#LIDAR_OFFSET\s+(\d+)\s+(\S+)\s+([+-]?[\d.]+)\s+(-?\d+)\s*$", re.I)
+
+    # TABEL PER-KAKI MILIK 'd'. Firmware tidak punya perintah cetak zOff
+    # tersendiri, jadi dump diagnostik satu-satunya sumbernya. Dibuka oleh
+    # HEADER-nya lalu menelan ENAM baris sesudahnya -- pola yang sama dengan
+    # tabel kompas, dan alasannya sama: tanpa pagar header, tabel angka mana
+    # pun yang kebetulan berbentuk serupa akan terbaca sebagai zOff.
+    #
+    #   kaki  zOff |    lx     ly     lz |   coxa   femur   tibia | ...
+    #    0   +0.0 |   78.0    0.0 -100.0 | ...
+    RE_ZOFF_HEAD  = re.compile(r"^\s*kaki\s+zOff\s*\|", re.I)
+    RE_ZOFF_BARIS = re.compile(r"^\s*([0-5])\s+([+-]?\d+(?:\.\d+)?)\s*\|")
+
     def _catat_jawab(self, baris):
         """Tempelkan baris ini ke perintah terakhir, kalau ia jawabannya.
 
@@ -1919,6 +1972,24 @@ class Teensy:
 
     def _parse(self, baris):
         parse_operator(self, baris)
+
+        # TABEL zOff DARI 'd'. Diperiksa PALING AWAL, sebelum parser lain:
+        # ia satu-satunya yang berjendela (menelan enam baris sesudah headernya)
+        # dan barisnya berbentuk angka semua.
+        if self._zoff_sisa > 0:
+            m = self.RE_ZOFF_BARIS.match(baris)
+            if m:
+                if self.zoff is None:
+                    self.zoff = [None] * 6
+                self.zoff[int(m.group(1))] = float(m.group(2))
+                self._zoff_sisa -= 1
+                return
+        elif self.RE_ZOFF_HEAD.match(baris):
+            self.zoff = [None] * 6
+            self._zoff_sisa = 6
+            self.t_zoff = time.time()
+            return
+
         m = self.RE_PEMICU.match(baris.strip())
         if m:
             self.pemicu = (m.group(1).upper(), int(m.group(2)), time.time())
@@ -1942,6 +2013,28 @@ class Teensy:
                 "us":     int(m.group(4)),
             }
             self.t_trim = time.time()
+            return
+
+        m = self.RE_OFFSET.match(baris.strip())
+        if m:
+            # DITIMPA PER SLOT, sama seperti #TRIM: 'Yo' mencetak 24 baris
+            # berurutan, dan satu baris yang hilang di tengah tidak boleh
+            # menghapus slot yang sudah benar.
+            self.offset[int(m.group(1))] = {
+                "nama": m.group(2),
+                "der":  float(m.group(3)),
+            }
+            self.t_offset = time.time()
+            return
+
+        m = self.RE_LIDAR_OFF.match(baris.strip())
+        if m:
+            self.lidar_offset[int(m.group(1))] = {
+                "nama": m.group(2),
+                "cm":   float(m.group(3)),
+                "baca": int(m.group(4)),
+            }
+            self.t_lidar_offset = time.time()
             return
 
         m = self.RE_LEPAS.match(baris.strip())
@@ -4762,6 +4855,54 @@ input.lebar{width:170px}
           <tr><td class=mid>bukan trim</td><td class=kecil>Kalau satu sendi menuntut lebih dari &plusmn;200 us, yang salah bukan trim: horn terpasang di gigi yang salah, atau invert terbalik. Firmware menjepitnya di 200.</td></tr>
         </table>
       </div>
+
+      <div class=card>
+        <h2>Offset sudut servo <span class=mid>(EEPROM 0)</span></h2>
+        <div class=mid>Koreksi <b>datum sudut</b> tiap sendi, derajat &mdash; bukan
+        trim. Kartu di atas menyetel letak gigi horn; medan ini mengoreksi
+        modelnya: kalau IK menjawab lutut 82 der sementara busur derajat di robot
+        menunjukkan 106, yang salah datumnya, bukan gigi hornnya. Dijepit
+        &plusmn;30 der oleh firmware. Firmware: <b>Yo</b>.</div>
+        <button data-tip="Firmware: Yo. Mencetak 24 baris '#OFFSET'. Tekan ini DULU sebelum menyetel -- tabel yang belum pernah dibaca tidak tahu angka yang sedang berlaku." onclick="cmd('man','Yo')">Baca ulang (Yo)</button>
+        <div id=offset class=kecil>belum dibaca &mdash; tekan Baca ulang</div>
+        <button class=danger data-tip="Firmware: W. Menulis SELURUH blok kalibrasi ke EEPROM 0 -- bukan cuma offset sudut, tapi juga gain dinding/arah, pulse, dan wall.*. Firmware membaca balik hasilnya dan melapor kalau gagal." onclick="if(confirm('SIMPAN seluruh blok kalibrasi ke EEPROM 0.\n\nYang tersimpan sekarang akan DITIMPA -- dan itu termasuk gain, wall.*, dan pulse.*, bukan cuma offset sudut.\n\nSudah tekan Baca ulang dan angkanya benar?'))cmd('manpaksa','W')">Simpan ke EEPROM (W)</button>
+        <button class=danger data-tip="Firmware: Yo!. Nolkan seluruh offset sudut di RAM. EEPROM belum berubah sampai 'W' ditekan." onclick="if(confirm('NOLKAN seluruh offset sudut di RAM.\n\nEEPROM belum berubah sampai Simpan ditekan.'))cmd('man','Yo!')">Nolkan semua (Yo!)</button>
+        <table>
+          <tr><td class=mid width=80>bukan trim</td><td class=kecil>Kalau satu sendi menuntut lebih dari &plusmn;30 der, yang salah bukan datumnya: kemungkinan besar panjang link di <b>config.h</b> yang belum terukur, dan menutupinya dengan offset besar membuang sudut servo di satu ujung.</td></tr>
+          <tr><td class=mid>dua tombol simpan</td><td class=kecil><b>W</b> menulis EEPROM 0 dan berlaku untuk offset sudut <i>dan</i> seluruh parameter kalibrasi. Trim &amp; invert ada di blok yang lain (EEPROM 1024) dan disimpan <b>YtW</b>. Dua tombol yang berbeda itu memang harus berbeda &mdash; 'W' atas trim tidak berpengaruh apa pun.</td></tr>
+          <tr><td class=mid>Yi &amp; Yj</td><td class=kecil><b>Tidak ada tombolnya di sini, dan itu disengaja.</b> <b>Yi</b> membalik satu kanal hampir 180 der seketika &mdash; firmware menolaknya selagi servo hidup &mdash; dan <b>Yj</b> menghidupkan PWM mentah satu kanal (<b>TUNE_PIN_MAP</b>, ruang slot yang berbeda dari tabel di atas) tanpa memeriksa apakah robot sedang ditopang. Keduanya pekerjaan tangan di meja, bukan tombol yang boleh tertekan saat robot berdiri di arena. Pakai kotak <b>Serial &mdash; kirim apa saja</b>.</td></tr>
+        </table>
+      </div>
+
+      <div class=card>
+        <h2>Offset jarak LiDAR <span class=mid>(RAM saja)</span></h2>
+        <div class=mid>VL53L1X menuntut kalibrasi <b>offset per modul</b>, dan
+        kalau ada kaca/akrilik penutup ia harus diulang sesudah kacanya dipasang.
+        Firmware tidak mengalibrasi satu pun dari keenamnya, sementara
+        <b>wall.setpoint</b> mengasumsikan keenamnya sepakat.
+        Caranya: hadapkan robot ke dinding, <b>ukur dengan meteran</b> dari muka
+        sensor, isikan angkanya. Firmware: <b>Yd</b>.</div>
+        <button data-tip="Firmware: Yd. Mencetak enam baris '#LIDAR_OFFSET' berikut bacaan terkoreksinya. Sensor yang MATI atau JAUH dilaporkan -1, dan pada keadaan itu pencatatan offset DITOLAK firmware -- mencatat dari bacaan tak sah adalah cara paling rapi merusak keenam sensor sekaligus." onclick="cmd('man','Yd')">Baca ulang (Yd)</button>
+        <div id=lidaroff class=kecil>belum dibaca &mdash; tekan Baca ulang</div>
+        <button class=danger data-tip="Firmware: Yd!. Nolkan keenam offset jarak di RAM." onclick="if(confirm('NOLKAN keenam offset jarak LiDAR di RAM.'))cmd('man','Yd!')">Nolkan semua (Yd!)</button>
+        <table>
+          <tr><td class=mid width=80>RAM saja</td><td class=kecil>Firmware menyimpannya di RAM, seperti <b>Ds</b> dan <b>Y0</b> &mdash; <b>ulangi tiap robot menyala</b>. Menyimpannya menuntut baris baru di tabel parameter, dan itu menaikkan <b>CALIB_VERSION</b> yang membuang seluruh kalibrasi tersimpan.</td></tr>
+        </table>
+      </div>
+
+      <div class=card>
+        <h2>Offset tinggi telapak <span class=mid>(EEPROM 2048)</span></h2>
+        <div class=mid>Kaki yang menggantung saat robot berdiri dikoreksi di
+        sini, milimeter. <b>+ = telapak naik</b> (kaki terangkat),
+        <b>&minus; = telapak memanjang ke bawah</b>. <b>Langsung tersimpan</b> ke
+        EEPROM 2048 dan berlaku seketika &mdash; tidak ada tombol simpan
+        terpisah, dan robot boleh sedang berdiri. Firmware: <b>Yz</b>.</div>
+        <button data-tip="Firmware: d. Dump diagnostik, dan satu-satunya cara MEMBACA zOff -- firmware tidak punya perintah cetak tersendiri untuknya. Dump-nya panjang (tabel per kaki + tabel lengan), jadi ia muncul di log serial, bukan di kartu ini saja." onclick="cmd('man','d')">Baca ulang lewat 'd'</button>
+        <div id=zoff class=kecil>belum dibaca &mdash; tekan Baca ulang</div>
+        <table>
+          <tr><td class=mid width=80>milik bersama</td><td class=kecil>EEPROM 2048 dipakai bersama sketsa TES_GERAK. Firmware menulisnya baca-ubah-tulis, jadi angka rata-badan dan jacobian milik sketsa itu TIDAK terbuang saat 'Yz' dipakai.</td></tr>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -4832,6 +4973,15 @@ function trimGeser(slot,d){
   const el=$('tr_'+slot); if(!el) return;
   const v=Math.max(-200,Math.min(200,(parseInt(el.value||'0',10)||0)+d));
   el.value=v; cmd('man','Yt'+slot+' '+v);
+}
+// Catat satu offset LiDAR. Yang diketik adalah jarak METERAN; firmware yang
+// menghitung selisihnya. Kotak kosong tidak dikirim sama sekali -- 'Yd5 ' tanpa
+// angka cuma akan ditolak firmware dengan pesan yang jauh dari mata operator.
+function catatLidarOff(ch){
+  const el=$('lo_'+ch); if(!el) return;
+  const v=el.value.trim(); if(!v) return;
+  cmd('man','Yd'+ch+' '+v);
+  el.value='';
 }
 function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
 // Satu elemen yang hilang dari HTML pernah MEMATIKAN SELURUH HUD: $('id')
@@ -5052,6 +5202,59 @@ async function tarikSekali(){
     if(!el || el===document.activeElement) return;
     if(el.value!=String(t.us)) el.value=t.us;
   });
+  // OFFSET SUDUT SERVO. Pola yang sama persis dengan trim, dan alasannya juga
+  // sama: dibangun ulang hanya kalau JUMLAH barisnya berubah, dan tabel kosong
+  // berarti BELUM PERNAH DIBACA -- bukan "semua nol".
+  if($('offset').dataset.n!=String(d.offset.length)){
+    if(!d.offset.length){
+      $('offset').innerHTML='belum dibaca &mdash; tekan Baca ulang';
+    }else{
+      $('offset').innerHTML=d.offset.map(o=>`<div>${o.slot} ${o.nama}
+        <input id="of_${o.slot}" size=6
+          onchange="cmd('man','Yo${o.slot} '+this.value)"> der</div>`).join('');
+    }
+    $('offset').dataset.n=String(d.offset.length);
+  }
+  d.offset.forEach(function(o){
+    var el=$('of_'+o.slot);
+    if(!el || el===document.activeElement) return;
+    if(Number(el.value)!==o.der) el.value=o.der;
+  });
+  // OFFSET JARAK LiDAR. Kotaknya adalah jarak METERAN yang baru diukur, BUKAN
+  // offsetnya -- disengaja: yang dipegang operator di depan robot adalah angka
+  // penggaris, dan firmware yang menghitung selisihnya.
+  if($('lidaroff').dataset.n!=String(d.lidar_offset.length)){
+    if(!d.lidar_offset.length){
+      $('lidaroff').innerHTML='belum dibaca &mdash; tekan Baca ulang';
+    }else{
+      $('lidaroff').innerHTML=d.lidar_offset.map(o=>`<div>${o.ch} ${o.nama}
+        offset ${o.cm>0?'+':''}${o.cm} cm &middot;
+        ${o.baca<0?'<b>MATI/jauh &mdash; tak bisa dicatat</b>':'baca '+o.baca+' cm'}
+        <input id="lo_${o.ch}" size=5 placeholder="meteran">
+        <button onclick="catatLidarOff(${o.ch})">Catat</button></div>`).join('');
+    }
+    $('lidaroff').dataset.n=String(d.lidar_offset.length);
+  }
+  // zOff. null = BELUM PERNAH DIBACA, dan itu bukan "semua nol" -- sama
+  // seperti trim: menggambar nol yang tidak pernah dibaca lalu mengubahnya
+  // akan menulis nol itu ke EEPROM.
+  if($('zoff').dataset.n!=String(d.zoff===null?'-':6)){
+    if(d.zoff===null){
+      $('zoff').innerHTML='belum dibaca &mdash; tekan Baca ulang';
+    }else{
+      $('zoff').innerHTML=d.zoff.map((v,i)=>`<div>kaki ${i}
+        <input id="zo_${i}" size=6 value="${v===null?'':v}"
+          onchange="cmd('man','Yz${i} '+this.value)"> mm</div>`).join('');
+    }
+    $('zoff').dataset.n=String(d.zoff===null?'-':6);
+  }
+  if(d.zoff){
+    d.zoff.forEach(function(v,i){
+      var el=$('zo_'+i);
+      if(!el || el===document.activeElement || v===null) return;
+      if(Number(el.value)!==v) el.value=v;
+    });
+  }
   d.kalib.forEach(function(k){
     var el=$('kb_'+k.nama);
     if(!el || el===document.activeElement) return;   // jangan ganggu yang diketik
@@ -5503,6 +5706,15 @@ def rakit_state(misi, link, kalib, juri, stats, armed, pesan_kalib, kamera=None,
         # yang KETIGA, dan cermin basi persis masalah condong_mm 25 kemarin.
         # Kosong = belum pernah dibaca; tabnya menampilkan "tekan Baca ulang".
         "trim": [{"slot": s, **v} for s, v in sorted(link.trim.items())],
+        # OFFSET SUDUT & OFFSET LiDAR: dari LINK juga, alasannya sama dengan
+        # trim -- masing-masing sudah punya satu tempat tinggal di Teensy dan
+        # menyalinnya ke Kalib hanya menambah cermin yang bisa basi.
+        "offset": [{"slot": s, **v} for s, v in sorted(link.offset.items())],
+        "lidar_offset": [{"ch": c, **v}
+                         for c, v in sorted(link.lidar_offset.items())],
+        # zOff: None berarti BELUM PERNAH DIBACA (bukan "semua nol"). Kartunya
+        # harus bisa membedakan keduanya -- sama seperti trim.
+        "zoff": link.zoff,
         "log": list(link.log)[-40:],
     }
 

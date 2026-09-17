@@ -11,7 +11,7 @@ Salin ke folder aplikasi Raspi, bersama `detect.py` dan model yang sudah dipakai
 - `operator.css`
 - `operator.js`
 
-Jalankan aplikasi dengan argumen/service yang biasa digunakan. Buka alamat Raspi dari laptop dan muat ulang halaman. Firmware Teensy dalam repo ini juga perlu dikompilasi dan diunggah agar kontrol putar, watchdog, dan profil EEPROM tersedia. Tidak ada flash/deploy otomatis dari perubahan ini.
+Jalankan aplikasi dengan argumen/service yang biasa digunakan. Buka alamat Raspi dari laptop dan muat ulang halaman. Firmware Teensy dalam repo ini juga perlu dikompilasi dan diunggah agar kontrol putar, watchdog, profil EEPROM, dan keempat perintah kalibrasi servo & LiDAR (`Yt`/`Yo`/`Yz`/`Yd`) tersedia. Tidak ada flash/deploy otomatis dari perubahan ini.
 
 ## Kontrol manual
 
@@ -39,6 +39,23 @@ Tinggi badan adalah target model. Bentuk khusus kaki pada Kail/Tanjak tetap meng
 ## Kalibrasi
 
 Tab Kalibrasi menyediakan pencarian, kelompok parameter Teensy beserta rentang serta waktu berlakunya, trim servo, kompas, dan setelan vision. Edit parameter Teensy dengan tombol Terapkan pada barisnya, lalu Simpan kalibrasi ke EEPROM. Trim dan kompas memakai tombol simpan masing-masing. Nilai vision tersimpan sebagai JSON di Raspi, bukan EEPROM Teensy.
+
+Empat kartu kalibrasi servo & LiDAR memetakan keluarga perintah `Y` firmware, supaya tidak ada nama atau nomor slot yang perlu dihafal:
+
+| Kartu | Firmware | Simpan |
+|---|---|---|
+| Trim servo | `Yt` baca, `Yt<slot> <us>` setel | `YtW` → EEPROM 1024 |
+| Offset sudut servo | `Yo` baca, `Yo<slot> <der>` setel | `W` → EEPROM 0 |
+| Offset jarak LiDAR | `Yd` baca, `Yd<ch> <cm>` catat, `Yd!` nolkan | RAM saja, ulangi tiap nyala |
+| Offset tinggi telapak | `Yz<kaki> <mm>` (baca lewat `d`) | langsung ke EEPROM 2048 |
+
+Dua catatan yang menentukan bentuk kartunya, dan keduanya datang dari sisi firmware:
+
+- **Trim dan offset sudut memakai tombol simpan yang BERBEDA** karena tinggal di blok EEPROM yang berbeda (1024 vs 0). Menulis trim ke EEPROM 0 tidak berpengaruh apa pun — `loadServoMap()` menimpanya tiap boot. Kartunya karena itu dipisah, bukan digabung supaya rapi.
+- **`Yi` (invert) dan `Yj` (jog pulse mentah) sengaja TIDAK punya tombol.** Keduanya membalik satu kanal hampir 180° atau menghidupkan PWM mentah tanpa memeriksa apa pun, dan HUD dipegang orang yang tidak selalu tahu robotnya sedang ditopang. Keduanya tetap bisa dikirim lewat kotak *Serial — kirim apa saja*; alasan itu tercetak di kartunya sendiri, bukan dibiarkan jadi teka-teki.
+- **Offset LiDAR dicatat dari angka METERAN**, bukan dari selisih: yang dipegang operator di depan robot adalah angka penggaris, dan firmware yang menghitung. Pencatatan ditolak firmware kalau sensornya `MATI`/`JAUH`, dan kartunya menandai baris itu "tak bisa dicatat".
+
+**Offset tinggi telapak dibaca lewat `d`, bukan lewat perintah cetak tersendiri** — firmware belum punya satu pun. HUD mem-parse tabel per-kaki milik dump diagnostik, dan hanya sesudah baris header `kaki  zOff |` muncul; tanpa pagar itu tabel angka lain bisa terbaca sebagai zOff. Dump-nya panjang, jadi ia tetap muncul di log serial.
 
 Reconnect USB tidak lagi otomatis mengganti `condong.jeda` dan `condong.yaw`: nilai firmware yang telah dikalibrasi dihormati. Tombol Kirim + simpan condong tetap tersedia jika ingin memakai nilai dari pengaturan Raspi.
 
