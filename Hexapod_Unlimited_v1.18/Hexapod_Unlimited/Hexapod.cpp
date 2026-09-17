@@ -429,8 +429,8 @@ void Hexapod::profileKail() {
 // MENGGARUK tapak (bukan gagal naik), itu knop berikutnya: pasang
 // _lututKunci = (1 << 0) | (1 << 5) tepat sebelum kurung tutup.
 void Hexapod::profileTanjak() {
-    pasangProfil({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH - 15.0f,
-                   GAIT_CYCLE_TIME + 400.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI });
+    pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH - 15.0f,
+                   GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI });
 
     // Telapak belakang diputar ke -y pada radius yang SAMA, jadi jangkauan D
     // tidak berubah sedikit pun -- yang berubah cuma arahnya.
