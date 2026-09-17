@@ -99,6 +99,130 @@ void Hexapod::cetakTrim() {
     Serial.println("  'Yt<slot> <us>' setel, 'YtW' simpan, 'Yt!' nolkan semua.");
 }
 
+// ====================================================================
+// OFFSET SUDUT, INVERT, DAN zOff -- perintah 'Yo' / 'Yi' / 'Yz'
+// ====================================================================
+
+// Pagar, BUKAN hasil ukur. +-30 der sudah lebih besar daripada meleset datum
+// terparah yang tercatat (lutut +24 der di config.h); yang menuntut lebih dari
+// ini bukan offset yang kurang melainkan panjang link yang salah, dan
+// menutupinya dengan offset besar membuang sudut servo di satu ujung.
+#define OFFSET_MAKS_DER  30.0f
+
+// Pagar, BUKAN hasil ukur. Seluruh offset KAIL yang dipakai cuma 40 mm (depan)
+// dan 42 mm (belakang); yang melewatinya akan di-clamp IK diam-diam.
+#define ZOFF_MAKS_MM     60.0f
+
+void Hexapod::setOffset(uint8_t slot, float der) {
+    if (slot >= TOTAL_SERVOS) {
+        Serial.print("Offset DITOLAK: slot "); Serial.print(slot);
+        Serial.print(" di luar 0.."); Serial.println(TOTAL_SERVOS - 1);
+        return;
+    }
+    if (!isfinite(der)) { Serial.println("Offset DITOLAK: nilai tidak sah."); return; }
+
+    const float minta = der;
+    der = clampf(der, -OFFSET_MAKS_DER, OFFSET_MAKS_DER);
+    gOffset[slot] = der;
+
+    Serial.print("Offset sudut "); Serial.print(SLOT_NAMA[slot]);
+    Serial.print(" (slot "); Serial.print(slot); Serial.print(") = ");
+    Serial.print(der, 1);
+    Serial.println(" der -- RAM saja, 'W' untuk menyimpan (EEPROM 0, BUKAN 'YtW').");
+    if (fabsf(der - minta) > 1e-6f) {
+        Serial.print("  (diminta "); Serial.print(minta, 1);
+        Serial.print(", DI-CLAMP ke +-"); Serial.print(OFFSET_MAKS_DER, 0);
+        Serial.println(" der)");
+    }
+}
+
+void Hexapod::cetakOffset() {
+    // AWALAN '#OFFSET', berkas terpisah dari '#TRIM' dengan sengaja. cetakTrim()
+    // TIDAK disentuh: HUD Raspi mencocokkan awalan '#TRIM' dan jumlah kolomnya,
+    // dan menyelipkan kolom offset di sana akan memecahkan pembacanya di sisi
+    // Raspi tanpa satu pun gejala di robot.
+    Serial.println("--- OFFSET SUDUT SERVO (der, koreksi DATUM sudut) ---");
+    uint8_t terisi = 0;
+    for (uint8_t i = 0; i < TOTAL_SERVOS && i < EE_SM_SLOTS; i++) {
+        if (gOffset[i] != 0.0f) terisi++;
+        Serial.printf("#OFFSET %u %s %+.1f\n", i, SLOT_NAMA[i], (double)gOffset[i]);
+    }
+    Serial.print("  terisi: "); Serial.print(terisi);
+    Serial.print(" dari ");     Serial.print(TOTAL_SERVOS); Serial.println(" slot");
+    Serial.println("  'Yo<slot> <der>' setel | 'W' simpan | 'Yo!' nolkan.");
+    Serial.println("  BEDA dari trim: trim = us (gigi horn), offset = der (datum sudut).");
+}
+
+void Hexapod::nolkanOffset() {
+    for (uint8_t i = 0; i < TOTAL_SERVOS; i++) gOffset[i] = 0.0f;
+    Serial.println("Seluruh offset sudut DINOLKAN -- RAM saja, 'W' untuk menyimpan.");
+}
+
+bool Hexapod::setInvert(uint8_t slot, uint8_t on) {
+    // DITOLAK selagi servo hidup. Membalik satu kanal menggeser servo itu
+    // hampir 180 der SEKETIKA, tanpa ramp apa pun -- kelas bahaya yang sama
+    // persis dengan 'Qpulse.min' yang bertanda P_SERVO_LEMAS.
+    if (_servos.isEnabled()) {
+        Serial.println("Ditolak: membalik invert menggeser servo hampir 180 der tanpa ramp.");
+        Serial.println("        Ketik 'x' (lemas) dulu, ubah, lalu 'b' lagi.");
+        return false;
+    }
+    if (slot >= TOTAL_SERVOS || slot >= EE_SM_SLOTS) {
+        Serial.print("Invert DITOLAK: slot "); Serial.print(slot);
+        Serial.print(" di luar 0.."); Serial.println(EE_SM_SLOTS - 1);
+        return false;
+    }
+    const uint8_t baru = on ? 1 : 0;
+    if (gInvert[slot] == baru) {
+        Serial.print(SLOT_NAMA[slot]); Serial.print(" (slot "); Serial.print(slot);
+        Serial.println(") sudah begitu -- tidak ada yang diubah.");
+        return true;
+    }
+    gInvert[slot] = baru;
+    Serial.print("Invert "); Serial.print(SLOT_NAMA[slot]);
+    Serial.print(" (slot "); Serial.print(slot); Serial.print(") = ");
+    Serial.println(baru ? "1 (arah DIBALIK)" : "0 (arah normal)");
+    // Tampilan dan penyimpanan gratis: gInvert[] sudah ikut cetakTrim() dan
+    // sudah ikut simpanServoMap(), jadi tombol simpannya 'YtW' -- BUKAN 'W'.
+    Serial.println("  RAM saja, 'YtW' untuk menyimpan (EEPROM 1024, BUKAN 'W').");
+    return true;
+}
+
+bool Hexapod::setZOff(uint8_t leg, float mm) {
+    if (leg > 5)       { Serial.println("zOff DITOLAK: kaki 0..5."); return false; }
+    if (!isfinite(mm)) { Serial.println("zOff DITOLAK: nilai tidak sah."); return false; }
+
+    const float minta = mm;
+    mm = clampf(mm, -ZOFF_MAKS_MM, ZOFF_MAKS_MM);
+
+    // BACA DULU, baru timpa satu field. Blok 2048 MILIK TES_GERAK: lvlR/lvlP,
+    // refR/refP dan jac[4] di dalamnya hanya bisa didapat dengan menjalankan
+    // sketsa itu, dan menulis nol ke sana membuangnya untuk selama-lamanya.
+    GerakStore s;
+    EEPROM.get(EE_GERAK_ADDR, s);
+    const bool sah = (s.m0 == 0x6E && s.m1 == 0x2C && s.ver == 2 &&
+                      s.sum == eeSum(&s, offsetof(GerakStore, sum)));
+    if (!sah) {
+        memset(&s, 0, sizeof(s));
+        s.m0 = 0x6E; s.m1 = 0x2C; s.ver = 2;
+        Serial.println("zOff: blok EEPROM 2048 belum sah -> dibuat baru (rata badan & jac = 0).");
+    }
+
+    s.zoff[leg] = mm;
+    s.sum = eeSum(&s, offsetof(GerakStore, sum));
+    EEPROM.put(EE_GERAK_ADDR, s);
+    loadZOff();      // segarkan _zOff[] dari yang barusan ditulis (sekalian memverifikasi)
+
+    Serial.print("zOff kaki "); Serial.print(leg); Serial.print(" = ");
+    Serial.print(mm, 1); Serial.println(" mm -- tersimpan di EEPROM 2048.");
+    if (fabsf(mm - minta) > 1e-6f) {
+        Serial.print("  (diminta "); Serial.print(minta, 1);
+        Serial.print(", DI-CLAMP ke +-"); Serial.print(ZOFF_MAKS_MM, 0);
+        Serial.println(" mm)");
+    }
+    return true;
+}
+
 bool Hexapod::simpanServoMap() {
     // BACA DULU, baru timpa. drv[] dan ch[] adalah hasil pemetaan TES_SERVO --
     // firmware ini tidak pernah memakainya (penomoran drivernya kebalikan dari

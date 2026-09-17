@@ -276,6 +276,22 @@ static const char* ambilToken(const char* s, char* out, uint8_t maks) {
     return n ? p : nullptr;
 }
 
+// "Y<sub><slot> <nilai>" -> true bila keduanya terbaca. Mulai mengurai di s+2,
+// jadi ia melewati 'Y' dan huruf subperintahnya sekaligus. Pemisah boleh spasi
+// atau '=', sama seperti 'Yt'.
+static bool ySlotNilai(const char* s, long& slot, float& nilai) {
+    const char* p = s + 2;
+    while (*p == ' ') p++;
+    if (!*p) return false;
+    char* akhir;
+    slot = strtol(p, &akhir, 10);
+    if (akhir == p) return false;
+    while (*akhir == ' ' || *akhir == '=') akhir++;
+    char* akhir2;
+    nilai = strtof(akhir, &akhir2);
+    return (akhir2 != akhir) && isfinite(nilai);
+}
+
 // Cocok persis dulu (Calib::findParam), lalu awalan yang unik supaya tidak
 // perlu mengetik "gait.profile_tau" lengkap di Serial Monitor.
 // -1 = tidak ketemu, -2 = ambigu (kandidatnya sudah dicetak).
@@ -647,12 +663,27 @@ static void handleCmd(char* s) {
             }
             break;
 
-        // 'Y' = keluarga KALIBRASI. Bentuk telanjang dan 'Y0' milik sudut
-        // dinding; 'Yt...' milik trim servo, ditambahkan 18 Sep 2026.
+        // 'Y' = keluarga KALIBRASI SERVO. Bentuk telanjang dan 'Y0' milik
+        // sudut dinding; sisanya huruf KEDUA yang memilih subperintah.
         //
-        // Berawalan karena KEHABISAN HURUF: seluruh 52 huruf sudah terpakai.
-        // Ditumpangkan ke 'Y', bukan 's' atau 'x', dengan sengaja -- salah
-        // ketik di dua huruf itu meninggalkan robot berjalan.
+        // Berawalan karena KEHABISAN HURUF: seluruh 52 huruf sudah terpakai
+        // (CATATAN_MODIFIKASI.md bagian 6). Ditumpangkan ke 'Y', bukan 's' atau
+        // 'x', dengan sengaja -- salah ketik di dua huruf itu meninggalkan
+        // robot berjalan, dan 'Y' tidak menggerakkan apa pun kecuali 'Yj'.
+        //
+        //   Y       sudut badan terhadap dinding (SEPASANG sensor)
+        //   Y0      catat bias pemasangan sudut dinding
+        //   Yt ...  trim servo, MIKRODETIK (gigi horn)    -> EEPROM 1024, simpan 'YtW'
+        //   Yo ...  offset SUDUT servo, DERAJAT (datum)   -> EEPROM 0,    simpan 'W'
+        //   Yi ...  invert per servo                      -> EEPROM 1024, simpan 'YtW'
+        //   Yj ...  jog pulse MENTAH (TUNE_PIN_MAP)       -> tidak disimpan
+        //   Yz ...  offset tinggi telapak per kaki, mm    -> EEPROM 2048, langsung
+        //
+        // DUA TOMBOL SIMPAN YANG BERBEDA untuk dua hal yang bersebelahan, dan
+        // itu memang keadaannya: offset duduk di CalibBlob (alamat 0), invert &
+        // trim duduk di ServoMap (alamat 1024). Menulis keduanya ke satu tempat
+        // tidak mungkin -- loadServoMap() menimpa invert/trim tiap boot, jadi
+        // 'W' atas trim tidak pernah berpengaruh.
         case 'Y':
             if (s[1] == 't') {
                 const char* arg = s + 2;
@@ -680,6 +711,99 @@ static void handleCmd(char* s) {
                 robot.setTrim((uint8_t)slot, (int16_t)us);
                 break;
             }
+
+            // Yo -- offset SUDUT per servo, derajat. Jawaban untuk DATUM LUTUT
+            // yang meleset ~+24 der (config.h): gOffset[] sudah ada di jalur
+            // servo dan sudah ikut Calib::save(), cuma belum punya penulis.
+            if (s[1] == 'o') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { robot.cetakOffset();   break; }
+                if (*arg == '!')  { robot.nolkanOffset();  break; }
+                long slot; float der;
+                if (!ySlotNilai(s, slot, der) || slot < 0) {
+                    Serial.println("Format: 'Yo' tabel | 'Yo<slot> <der>' setel | 'Yo!' nolkan");
+                    Serial.println("  Slot SAMA dengan 'Yt' (0..23). Satuannya DERAJAT, bukan us.");
+                    Serial.println("  Simpan dengan 'W' (EEPROM 0), BUKAN 'YtW'.");
+                    break;
+                }
+                robot.setOffset((uint8_t)slot, der);
+                break;
+            }
+
+            // Yi -- invert per servo. Tampilan dan penyimpanannya gratis:
+            // gInvert[] sudah ikut cetakTrim() dan simpanServoMap().
+            if (s[1] == 'i') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') { robot.cetakTrim(); break; }
+                long slot; float on;
+                if (!ySlotNilai(s, slot, on) || slot < 0) {
+                    Serial.println("Format: 'Yi' tabel | 'Yi<slot> <0|1>' setel");
+                    Serial.println("  Slot sama dengan 'Yt'. Kolom ketiga tabel 'Yt' = nilai sekarang.");
+                    Serial.println("  DITOLAK selagi servo hidup -- 'x' dulu. Simpan dengan 'YtW'.");
+                    break;
+                }
+                robot.setInvert((uint8_t)slot, (uint8_t)(on > 0.5f));
+                break;
+            }
+
+            // Yj -- jog PULSE MENTAH. Hexapod::jog() sudah ada sejak awal dan
+            // tidak pernah dipanggil siapa pun; ini pemicunya.
+            if (s[1] == 'j') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') {
+                    Serial.println("Format: 'Yj<slot> <us>' -- jog PULSE MENTAH satu kanal servo.");
+                    Serial.println("  Slot memakai TUNE_PIN_MAP, BUKAN ruang slot 'Yt'/SLOT_NAMA.");
+                    Serial.println("  Untuk 0..17 (keenam kaki) urutannya KEBETULAN sama; 18 ke atas TIDAK.");
+                    Serial.println("  TUNE_PIN_MAP hanya memuat 3 servo per lengan, jadi GRIP DEPAN");
+                    Serial.println("  -- slot 'Yt' 21, yang dipetakan {0,15} -- TIDAK BISA dijangkau di sini.");
+                    Serial.println("  Tanpa pemeriksaan _enabled: pada robot yang LEMAS kanal ini hidup");
+                    Serial.println("  sendiri dan tetap hidup sampai 'x'. Itu memang yang dibutuhkan saat");
+                    Serial.println("  memasang horn -- topang robotnya dulu.");
+                    break;
+                }
+                long slot; float us;
+                if (!ySlotNilai(s, slot, us) || slot < 0 || slot >= NUM_TUNE_SERVOS) {
+                    Serial.print("Format: 'Yj<slot> <us>', slot 0..");
+                    Serial.println(NUM_TUNE_SERVOS - 1);
+                    break;
+                }
+                const float minta = us;
+                const uint16_t p = (uint16_t)clampf(us, 0.0f, 3000.0f);
+                robot.jog((uint8_t)slot, p);
+                Serial.print("Jog slot "); Serial.print(slot);
+                Serial.print(" -> "); Serial.print(p);
+                Serial.println(" us MENTAH (tanpa offset/trim/invert).");
+                if (fabsf(minta - p) > 1e-6f)
+                    Serial.println("  (permintaan dipangkas ke rentang 0..3000 us)");
+                Serial.println("  Kanal ini HIDUP sampai 'x'.");
+                break;
+            }
+
+            // Yz -- offset tinggi telapak per kaki, mm. Blok EEPROM 2048 milik
+            // TES_GERAK, jadi tulisannya baca-ubah-tulis.
+            if (s[1] == 'z') {
+                const char* arg = s + 2;
+                while (*arg == ' ') arg++;
+                if (*arg == '\0') {
+                    Serial.println("Format: 'Yz<kaki> <mm>' -- offset tinggi telapak per kaki.");
+                    Serial.println("  Kaki 0..5 (0 kanan-depan .. 5 kiri-depan, lihat 'd').");
+                    Serial.println("  + = telapak NAIK (kaki terangkat), - = telapak memanjang ke BAWAH.");
+                    Serial.println("  Tersimpan di EEPROM 2048; field TES_GERAK lain dipertahankan.");
+                    Serial.println("  Berlaku SEKETIKA tanpa ramp -- robot boleh sedang berdiri.");
+                    break;
+                }
+                long leg; float mm;
+                if (!ySlotNilai(s, leg, mm) || leg < 0 || leg > 5) {
+                    Serial.println("Format: 'Yz<kaki> <mm>', kaki 0..5. Contoh: 'Yz2 -6'");
+                    break;
+                }
+                robot.setZOff((uint8_t)leg, mm);
+                break;
+            }
+
             if (s[1] == '0') nav.kalibrasiSudut();
             else             nav.sudutTabel();
             break;
@@ -1428,6 +1552,7 @@ static void handleCmd(char* s) {
             Serial.println("  Z1/Z0  : Menengah lorong (kiri-kanan) / ikut satu dinding");
             Serial.println("  Y      : Sudut badan terhadap dinding, dari SEPASANG sensor tiap sisi");
             Serial.println("  Y0     : Catat bias pemasangan -- beri saat robot SEJAJAR lorong");
+            Serial.println("           ('Y' juga INDUK keluarga kalibrasi servo -- lihat bawah)");
             Serial.println("  T      : Cetak profil medan yang sedang berlaku");
             Serial.println("  T[0-4] : Ganti profil SAMBIL BERJALAN (di-ramp, tanpa 'b')");
             Serial.println("           0=datar  1=tangga  2=merunduk/turunan  3=sempit  4=kail");
@@ -1441,6 +1566,17 @@ static void handleCmd(char* s) {
             Serial.println("  K      : Tabel kalibrasi pivot (EEPROM 2048)");
             Serial.println("  S      : Simpan hasil kalibrasi 'C' ke EEPROM 2048");
             Serial.println("  M      : Cetak peta EEPROM + kapasitas chip");
+            Serial.println("KALIBRASI SERVO (keluarga 'Y' -- huruf KEDUA memilih subperintah):");
+            Serial.println("  Yt            : Tabel trim (us) + kolom invert tiap slot");
+            Serial.println("  Yt<slot> <us>: Trim servo -- koreksi gigi horn. 'YtW' simpan, 'Yt!' nolkan");
+            Serial.println("  Yo            : Tabel offset SUDUT (der) -- koreksi DATUM sendi");
+            Serial.println("  Yo<slot> <der>: Offset sudut (mis. lutut meleset +24). 'W' simpan, 'Yo!' nolkan");
+            Serial.println("  Yi<slot> <0|1>: Invert arah servo. DITOLAK saat servo hidup ('x' dulu)");
+            Serial.println("  Yj<slot> <us>: Jog PULSE MENTAH. TUNE_PIN_MAP -- BEDA dari slot 'Yt' di atas!");
+            Serial.println("                 Grip DEPAN tidak terjangkau 'Yj'; kanal hidup sampai 'x'.");
+            Serial.println("  Yz<kaki> <mm>: Offset tinggi telapak per kaki -> EEPROM 2048, berlaku seketika");
+            Serial.println("  Slot 0..23 sama untuk Yt/Yo/Yi. Y & Y0 = sudut dinding (lihat NAVIGASI).");
+            Serial.println("  DUA tombol simpan: 'W' = offset sudut (EEPROM 0); 'YtW' = trim & invert (1024).");
             Serial.println("PARAMETER (gain PD, gait, pulse -- tanpa kompilasi ulang):");
             Serial.println("  q          : Daftar semua parameter + rentang sahnya");
             Serial.println("  q<nama>    : Lihat satu parameter (mis. qwall)");

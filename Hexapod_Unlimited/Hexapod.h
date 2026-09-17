@@ -236,6 +236,40 @@ public:
     void cetakTrim();                         // tabel '#TRIM', dibaca HUD
     void nolkanTrim();                        // RAM saja
 
+    // --- OFFSET SUDUT PER SERVO (derajat) -- perintah 'Yo' ---------------
+    //
+    // BUKAN trim, dan bedanya bukan soal satuan. Trim (mikrodetik) mengoreksi
+    // gigi horn yang meleset saat dipasang -- beberapa derajat. Offset ini
+    // mengoreksi DATUM SUDUT sendinya: lutut yang nyata meleset +24 der dari
+    // model IK, dan itu BUKAN kesalahan pemasangan melainkan geometri yang
+    // belum terukur (lihat catatan panjang link di config.h).
+    //
+    // gOffset[] sudah ada di jalur servo sejak awal -- angleToPulse() dan
+    // HexaArm::angleToPulse() sama-sama menambahkannya -- tapi tidak pernah
+    // punya penulis, jadi ia nol selamanya. Ini penulisnya.
+    //
+    // Ikut CalibBlob di EEPROM 0, jadi bertahan lewat 'W' -- BUKAN 'YtW'.
+    void setOffset(uint8_t slot, float der);  // RAM saja, simpan dengan 'W'
+    void cetakOffset();                       // tabel '#OFFSET'
+    void nolkanOffset();                      // RAM saja, simpan dengan 'W'
+
+    // --- INVERT PER SERVO -- perintah 'Yi' --------------------------------
+    //
+    // Membalik satu kanal menggeser servonya hampir 180 der SEKETIKA, tanpa
+    // ramp apa pun. Ditolak selagi servo hidup -- kelas bahaya yang sama
+    // dengan mengubah pulse.min/max lewat 'Q'.
+    //
+    // Tampilan dan penyimpanannya gratis: gInvert[] sudah ikut cetakTrim()
+    // dan sudah ikut simpanServoMap(), jadi yang menyimpannya 'YtW'.
+    bool setInvert(uint8_t slot, uint8_t on);
+
+    // --- OFFSET TINGGI TELAPAK PER KAKI (mm) -- perintah 'Yz' -------------
+    //
+    // Blok GerakStore di EEPROM 2048, MILIK TES_GERAK. Karena itu tulisannya
+    // baca-ubah-tulis: field lvlR/lvlP/refR/refP/jac[] yang hanya bisa didapat
+    // dengan menjalankan sketsa itu harus dipertahankan utuh.
+    bool setZOff(uint8_t leg, float mm);
+
 private:
     void slewBodyPose();        // rayapkan pose berlaku menuju pose diminta
 
