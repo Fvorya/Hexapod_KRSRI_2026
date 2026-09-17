@@ -4846,8 +4846,16 @@ input.lebar{width:170px}
         hilang dari Teensy, lalu harus di-flash balik.
         <b>Angka yang diketik masuk RAM saja</b>; tekan Simpan supaya bertahan
         sesudah reset.</div>
-        <button data-tip="Minta firmware mencetak 24 baris '#TRIM'. Lakukan ini DULU sebelum menyetel -- tabel yang belum pernah dibaca tidak tahu angka yang sedang berlaku. Firmware: Yt." onclick="cmd('man','Yt')">Baca ulang (Yt)</button>
-        <div id=trim class=kecil>belum dibaca &mdash; tekan Baca ulang</div>
+        <div class=mid>1 &mdash; siapkan pose, berurutan</div>
+        <button data-tip="Profil DATAR. Trim disetel pada profil yang dipakai sehari-hari, bukan TANGGA atau KAIL -- tinggi badan berbeda memberi sudut sendi berbeda. Firmware: T0." onclick="cmd('man','T0')">T0 profil datar</button>
+        <button data-tip="Berdiri diam di pose netral, servo kaki hidup. WAJIB sebelum menyetel: trim diukur BERBEBAN, karena sag serva saat menahan badan tidak muncul di 90 der tanpa beban. Firmware: b." onclick="cmd('man','b')">b berdiri</button>
+        <button data-tip="Hidupkan servo lengan depan. Hanya perlu kalau yang disetel slot 18-23. Firmware: R." onclick="cmd('man','R')">R lengan hidup</button>
+        <div class=mid>2 &mdash; baca angka yang sedang berlaku</div>
+        <button data-tip="Minta firmware mencetak 24 baris '#TRIM'. WAJIB sebelum menyetel: tabel yang belum pernah dibaca tidak tahu angka yang sedang berlaku, dan menyimpan dari situ menimpa kalibrasi yang ada dengan nol. Firmware: Yt." onclick="cmd('man','Yt')">Baca tabel (Yt)</button>
+        <div class=mid>3 &mdash; setel; angka masuk RAM seketika</div>
+        <div id=trim class=kecil>belum dibaca &mdash; tekan <b>Baca tabel</b> di atas
+        (butuh Teensy tersambung)</div>
+        <div class=mid>4 &mdash; simpan</div>
         <button class=danger data-tip="Tulis trim ke EEPROM 1024, alamat yang sama yang dibaca firmware tiap boot dan yang dipakai sketsa legacy. Firmware membaca balik hasilnya dan melapor kalau gagal. Firmware: YtW." onclick="if(confirm('SIMPAN trim ke EEPROM 1024.\n\nYang tersimpan sekarang akan DITIMPA.\nSudah tekan Baca ulang dan angkanya benar?'))cmd('manpaksa','YtW')">Simpan ke EEPROM (YtW)</button>
         <button class=danger data-tip="Nolkan seluruh trim di RAM. Tidak menyentuh EEPROM sampai Simpan ditekan. Firmware: Yt!." onclick="if(confirm('NOLKAN seluruh trim di RAM.\n\nEEPROM belum berubah sampai Simpan ditekan.'))cmd('man','Yt!')">Nolkan semua (Yt!)</button>
         <table>
@@ -5187,13 +5195,29 @@ async function tarikSekali(){
   // EEPROM, dan kalibrasi yang sudah ada hilang tanpa ada yang menyentuhnya.
   if($('trim').dataset.n!=String(d.trim.length)){
     if(!d.trim.length){
-      $('trim').innerHTML='belum dibaca &mdash; tekan Baca ulang';
+      $('trim').innerHTML='belum dibaca &mdash; tekan <b>Baca tabel</b> di atas '+
+        '(butuh Teensy tersambung)';
     }else{
-      $('trim').innerHTML=d.trim.map(t=>`<div>${t.slot} ${t.nama}
-        <button onclick="trimGeser(${t.slot},-5)">&minus;5</button>
-        <input id="tr_${t.slot}" size=5
-          onchange="cmd('man','Yt${t.slot} '+this.value)">
-        <button onclick="trimGeser(${t.slot},5)">+5</button></div>`).join('');
+      // KEPALA KELOMPOK dari NOMOR slot, bukan dari namanya. Nama datang dari
+      // firmware dan boleh disunting; nomornya yang menentukan servo mana.
+      // Mengelompokkan lewat nama akan diam-diam kacau begitu ada yang
+      // mengganti "K0_COXA" jadi sesuatu yang lain.
+      const KAKI=['Ka-Depan','Ka-Tengah','Ka-Belakang',
+                  'Ki-Belakang','Ki-Tengah','Ki-Depan'];
+      $('trim').innerHTML=d.trim.map(function(t){
+        var kepala='';
+        if(t.slot<18 && t.slot%3===0) kepala=`<div class=mid>${KAKI[t.slot/3]}</div>`;
+        if(t.slot===18) kepala='<div class=mid>Lengan &mdash; perlu R dulu</div>';
+        return kepala+`<div>${t.slot} ${t.nama}${t.invert?' <b>inv</b>':''}
+          <button onclick="trimGeser(${t.slot},-20)">&minus;20</button>
+          <button onclick="trimGeser(${t.slot},-5)">&minus;5</button>
+          <button onclick="trimGeser(${t.slot},-1)">&minus;1</button>
+          <input id="tr_${t.slot}" size=5
+            onchange="cmd('man','Yt${t.slot} '+this.value)">
+          <button onclick="trimGeser(${t.slot},1)">+1</button>
+          <button onclick="trimGeser(${t.slot},5)">+5</button>
+          <button onclick="trimGeser(${t.slot},20)">+20</button></div>`;
+      }).join('');
     }
     $('trim').dataset.n=String(d.trim.length);
   }
