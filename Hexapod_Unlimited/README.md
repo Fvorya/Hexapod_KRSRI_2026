@@ -1039,6 +1039,32 @@ Setel dulu jarak dindingnya (§7.9): berdirikan robot di samping dinding, atur d
 | `h` | Bantuan |
 | `M` | Peta EEPROM + kapasitas chip sebenarnya |
 
+**Deteksi terguling (otomatis, bukan perintah).** `|accelZ| < 0,5 g` **atau** `|roll| > 45°` yang bertahan lebih dari 400 ms membuat `loop()` membatalkan misi, mematikan navigasi, dan **melemaskan servo sendiri** — robot yang terguling di tengah tangga tidak boleh terus memaksa kakinya ke sasaran IK yang sudah tak berarti. Ketiga ambangnya di `config.h` (`TERGULING_*`) dan **belum diukur**; saklar `TERGULING_AKTIF 0` mematikannya selagi disetel. `accelZ` dipercaya lebih dulu daripada `roll` karena `roll` datang dari fusi bermagnetometer; ambang roll sengaja 45° dan bukan 30° supaya tidak mendekati kemiringan TANJAK 27,7°.
+
+**Baris `PROF` (profil waktu loop).** `PROFILE_LOOP 1` di `config.h` mencetak satu baris per detik: `avg`/`max`/`min` satu putaran `loop()`, `util` = rata-rata dibagi periode acuan `CONTROL_HZ`, dan **`lambat50`** = cacah putaran yang melewati 50 ms. Angka terakhir itu yang penting: `HexaGait::dtSeconds()` meng-clamp `dt` ke 0,05 detik, jadi tiap putaran di atasnya membuat gait melangkah lebih pendek daripada yang dicatat odometer — dan odometer memakai `dPhase` dari `dt` yang sama, sehingga keduanya salah bersama-sama dan saling membenarkan. Baris ini **senyap saat aliran `y` atau `L` menyala** (itu aliran tuning). `CONTROL_HZ` sendiri **bukan pembatas laju** — `loop()` berjalan bebas dan seluruh kendali berbasis `dt`.
+
+### Kalibrasi servo & LiDAR — keluarga `Y`
+Huruf kedua memilih subperintah. Semua huruf besar-kecil sudah terpakai, jadi keluarga ini menumpang `Y` — dipilih karena salah ketik di situ tidak membuat robot berjalan.
+
+| | |
+|---|---|
+| `Yt` | Tabel `#TRIM` (µs) + kolom invert tiap slot — dibaca HUD |
+| `Yt<slot> <us>` | Trim servo (koreksi gigi horn). **`YtW` simpan**, `Yt!` nolkan |
+| `Yo` | Tabel `#OFFSET` — offset **sudut** (derajat) per slot |
+| `Yo<slot> <der>` | Offset sudut, mis. datum lutut yang meleset. **`W` simpan**, `Yo!` nolkan |
+| `Yi<slot> <0\|1>` | Invert arah servo. **DITOLAK selagi servo hidup** (`x` dulu); `YtW` simpan |
+| `Yj<slot> <us>` | Jog **pulse mentah** satu kanal → `Hexapod::jog()`. Lihat peringatan di bawah |
+| `Yz<kaki> <mm>` | Offset tinggi telapak per kaki → GerakStore EEPROM 2048, berlaku seketika |
+| `Yd` / `Yd<ch> <cm>` / `Yd!` | Offset **jarak** per sensor LiDAR, RAM saja |
+
+**Trim vs offset — dua pekerjaan berbeda.** `Yt` menyimpan mikrodetik: koreksi gigi horn saat dipasang. `Yo` menyimpan derajat: koreksi **datum sudut** sendi (`gOffset[]`, yang sudah ada di jalur servo sejak awal tapi tak pernah punya penulis). Keduanya **di blok EEPROM yang berbeda** — offset di `CalibBlob` alamat 0, trim & invert di `ServoMap` alamat 1024 — jadi tombol simpannya juga berbeda: **`W` untuk `Yo`, `YtW` untuk `Yt`/`Yi`**. Menulis trim ke alamat 0 tidak berpengaruh apa pun, karena `loadServoMap()` menimpanya tiap boot.
+
+**`Yj` memakai peta pin yang BERBEDA.** Slotnya `TUNE_PIN_MAP`, bukan ruang slot `Yt`/`SLOT_NAMA`. Untuk 0..17 (keenam kaki) urutannya kebetulan sama; **18 ke atas tidak**, dan karena `TUNE_PIN_MAP` hanya memuat tiga servo per lengan, **grip DEPAN (`{0,15}`) tidak terjangkau `Yj` sama sekali**. `jog()` juga menulis PWM mentah **tanpa memeriksa `_enabled`**: pada robot yang lemas, kanal itu **hidup sendiri** dan tetap hidup sampai `x`. Itu memang yang dibutuhkan saat memasang horn — topang robotnya dulu.
+
+**`Yz` menulis baca-ubah-tulis.** Blok 2048 milik `TES_GERAK`; `lvlR`/`lvlP`/`refR`/`refP`/`jac[4]` di dalamnya hanya bisa didapat dengan menjalankan sketsa itu, jadi hanya `zoff[leg]` yang diganti.
+
+**`Yd` — offset jarak per sensor.** ST mewajibkan kalibrasi offset (dan crosstalk) per modul VL53L1X, dan mengulanginya begitu ada kaca penutup. Firmware ini tidak pernah mengalibrasi satu pun dari keenamnya; `WALL_BIAS_*` itu bias **sudut** (selisih bacaan sepasang sensor), bukan offset jarak — sementara `WALL_KAKI_CM 7,0` diturunkan dari satu pengukuran yang mengasumsikan keenam sensor sepakat. Caranya: hadapkan robot ke dinding, **ukur dengan meteran** dari muka sensor, lalu `Yd<ch> <cm>`. Pencatatan **ditolak** kalau sensornya `MATI`/`JAUH` — mencatat offset dari bacaan tak sah adalah cara paling rapi merusak keenam sensor sekaligus. Pencatatannya **selisih**, jadi boleh diulang untuk memperhalus. **RAM saja**, seperti `Ds` dan `Y0`: menyimpannya menuntut baris baru di `PARAM_DEFS` dan itu menaikkan `CALIB_VERSION`.
+
 ### Parameter kalibrasi
 | | |
 |---|---|
@@ -1308,9 +1334,11 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 * **`kalibrasiPivot()` masih memblokir**, tapi memang tidak ada yang perlu disela. Ini satu-satunya jalur pemblokir yang tersisa.
 * **Deteksi korban** belum ada sama sekali. Selama capit juga belum terpasang, ruas korban di `Misi.cpp` hanya berhenti sejenak lalu lanjut; sekuens lengan lengkapnya sudah ditulis di sana dalam komentar.
 * **Panjang ruas yang belum diukur.** Tabel `RUAS[]` sudah terisi untuk angka yang ada di guidebook (R-4, R-5, R-6, R-9, R-10, M1); sisanya `-1` dan misi menolak berangkat sampai diukur dengan `m7 <idx> <cm>`. **Arah kompas tiap ruas juga masih turunan dari gambar guidebook, belum dari pengukuran arena.**
-* **Jalur yang tidak terhubung ke perintah apa pun:** `Hexapod::jog()` beserta `TUNE_PIN_MAP`, `Calib::begin()`, `Hexapod::legAngles()` (dipakai harness), `Imu::tare()` / `rollDeg()` / `pitchDeg()` / `accelZ()` / `magMagnitude()`, `Hexapod::armDepan()` / `armBelakang()`, dan `Navigation::degCCW()` / `degCW()` / `mmMaju()`. (`profileStairs()` / `profileCrouch()` / `profileNarrow()` dan `pivotTerkalibrasi()` sekarang dipakai `Misi.*`.)
-* **Konstanta mati:** `STAB_MAX_DEG`, `STAB_DEADBAND_DEG`, `STAB_TAU`, `CONTROL_HZ`, `PROFILE_LOOP`, `SERVO_FREQ`, `HEAD_UTARA`/`TIMUR`/`SELATAN`/`BARAT`, plus slot `K_STAB_SIGN_ROLL` / `K_STAB_SIGN_PITCH` / `K_ARENA_MIRROR`. Menghapus slot `K_*` menuntut kenaikan `CALIB_VERSION`, jadi biarkan sampai stabilisasi disambung.
+* **Jalur yang tidak terhubung ke perintah apa pun:** `Calib::begin()`, `Hexapod::legAngles()` (dipakai harness), `Imu::tare()` / `pitchDeg()` / `magMagnitude()`, `Hexapod::armDepan()` / `armBelakang()`, dan `Navigation::degCCW()` / `degCW()` / `mmMaju()`. (`profileStairs()` / `profileCrouch()` / `profileNarrow()` dan `pivotTerkalibrasi()` dipakai `Misi.*`.)
+
+  **Sudah tersambung sejak 18 Sep 2026**, dan itu memangkas daftar di atas: `Hexapod::jog()` beserta `TUNE_PIN_MAP` (perintah `Yj`), `Imu::accelZ()` dan `rollDeg()` (deteksi terguling), `Hexapod::setOffset()` (`Yo` — penulis pertama yang pernah dimiliki `gOffset[]`), `setInvert()` (`Yi`), dan `setZOff()` (`Yz`).
+* **Konstanta mati:** `STAB_MAX_DEG`, `STAB_DEADBAND_DEG`, `STAB_TAU`, `SERVO_FREQ`, `HEAD_UTARA`/`TIMUR`/`SELATAN`/`BARAT`, plus slot `K_STAB_SIGN_ROLL` / `K_STAB_SIGN_PITCH` / `K_ARENA_MIRROR`. Menghapus slot `K_*` menuntut kenaikan `CALIB_VERSION`, jadi biarkan sampai stabilisasi disambung.
 * **`Imu::_ax` dan `_ay`** diisi tiap frame akselerometer lalu tidak pernah dibaca siapa pun.
 * Belum ada perintah **reset ke default**. `Calib::applyDefaults()` juga mereset `offset`/`trim`/`invert`, jadi memanggilnya saat berjalan akan membuang data ServoMap sampai boot berikutnya — perlu dipasangkan dengan `loadServoMap()` bila mau dibuka.
-* **`CONTROL_HZ` dan `PROFILE_LOOP`** di `config.h` tidak diimplementasikan. `loop()` berjalan bebas, bukan laju tetap; `dt` diambil dari `millis()` di dalam `HexaGait` sendiri.
+* **`CONTROL_HZ` bukan pembatas laju, dan memang tidak akan dibuat begitu.** `loop()` berjalan bebas dan seluruh kendali sudah berbasis `dt` sungguhan (`HexaGait::dtSeconds()`, `slewBodyPose()`), jadi pembatas laju tidak menambah apa pun — ia hanya membuang waktu yang bisa dipakai memproses serial dan LiDAR. Angka itu sekarang dipakai sebagai **acuan utilisasi** baris `PROF` (`PROFILE_LOOP 1`), bukan sebagai janji tick.
 * **`HexaGait` memakai `millis()` internal**, sedangkan `Motion` di TES_GERAK menerima `dt` dari pemanggil. Versi TES_GERAK bisa disimulasikan kering tanpa menggerakkan servo; firmware belum bisa (walaupun harness di bagian 13 sudah menutup sebagian kebutuhan itu).

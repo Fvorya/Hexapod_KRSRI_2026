@@ -15,6 +15,22 @@ ruas yang harus diulang `m3` — membayar lebih besar daripada kelihatannya.
 
 ---
 
+## STATUS — PROMPT 1 SUDAH DIKERJAKAN (18 Sep 2026)
+
+| # | Butir | Kelas | Status |
+|---|---|---|---|
+| A1 | Profil waktu loop | A | **SELESAI.** Baris `PROF` nyata. Yang berubah dari dugaan cuma satu: `CONTROL_HZ` ternyata tetap TIDAK dipakai sebagai pembatas laju — dan memang tidak boleh, karena seluruh kendali sudah berbasis `dt`. Ia dipakai sebagai acuan `util` saja. Komentarnya diperbaiki supaya jujur. |
+| A2 | OLED berbagi bus dengan driver servo | A | **BELUM DIUJI — dan belum dibuktikan salah.** Butir 3 PROMPT 1 sengaja dilewati: menguji hipotesis ini menuntut robot menyala lalu membaca baris `PROF`, dan menebak bukan pilihan. `Tampilan.cpp:154` **tidak disentuh**; laju gambarnya masih 125 ms. Yang sudah berubah: alat untuk menjawabnya kini ada. Cara menjawabnya: nyalakan robot, berdiri diam, dan lihat apakah `max` di baris `PROF` melonjak ke belasan ms secara berkala (periode ~125 ms). |
+| A3 | Deteksi terguling | A | **SELESAI.** Tiga ambang + saklar di `config.h`, ketiganya ditandai BELUM DIUKUR. Ditambah satu penjaga yang tidak ada di usul: robot LEMAS bukan terguling (ia sedang ditopang di meja), dan IMU tanpa data bukan bukti apa-apa — `accelZ()` mengembalikan 0 sebelum frame pertama, dan 0 itu justru memenuhi syarat terguling. |
+| B1 | Offset jarak per sensor LiDAR | B | **SELESAI**, sebagai `Yd`. RAM saja seperti yang diusulkan. Satu tambahan yang tidak ada di usul tapi masuk lingkup: pencatatan DITOLAK kalau sensornya `MATI`/`JAUH`. |
+| B2 | Kompensasi CG | B | **BELUM** — menunggu prompt 4 (butuh geometri kaki benar + profil waktu loop terukur). |
+| B3 | Tegangan bus servo | B | **BELUM** — menunggu pembagi tegangan. |
+
+Yang di TOLAK (kelas C: watchdog, CPG, gait wave, free gait) **tidak
+dikerjakan** dan tidak ditawarkan lagi.
+
+---
+
 ## KELAS A — temuan inspeksi, belum masuk catatan pertama
 
 ### A1. Tidak ada satu pun pengukuran waktu loop — padahal config.h menjanjikannya
@@ -239,21 +255,35 @@ dibaca dan dikoreksi manusia di pit.
 
 Gabungan dengan urutan di catatan pertama:
 
-| # | Butir | Asal | Biaya | Kenapa di sini |
-|---|---|---|---|---|
-| 1 | Profil waktu loop | A1 | ~10 baris | Prasyarat A2; benderanya sudah ada di config.h |
-| 2 | `Yo`/`Yi`/`Yj`/`Yz` | catatan 1 | sedang | Tak menyentuh EEPROM, membuka ukur-koreksi tanpa flash |
-| 3 | Laju gambar OLED | A2 | 1 baris | Hanya kalau butir 1 membuktikannya |
-| 4 | Deteksi terguling | A3 | ~12 baris | Melindungi perangkat keras, bukan skor |
-| 5 | Offset LiDAR `Yd` | B1 | ~15 baris | Tiap ruas berumpan-balik ikut membaik |
-| 6 | Ukur geometri kaki | catatan 1 | lapangan | Penutup yang sudah diminta CLAUDE.md |
-| 7 | Batch `CALIB_VERSION` | catatan 1 | sedang | Sesudah 6, supaya default langsung benar |
-| 8 | `Th`/`Tl`/… + putar di `w` | catatan 1 | kecil | Tidak memblokir apa pun |
-| 9 | Kompensasi CG | B2 | ~12 baris | Butuh 1 dan 6 lebih dulu supaya terukur |
-| 10 | Tegangan bus servo | B3 | HW + kecil | Butuh pembagi tegangan dulu |
+| # | Butir | Asal | Biaya | Kenapa di sini | Status 18 Sep |
+|---|---|---|---|---|---|
+| 1 | Profil waktu loop | A1 | ~10 baris | Prasyarat A2; benderanya sudah ada di config.h | **SELESAI** |
+| 2 | `Yo`/`Yi`/`Yj`/`Yz` | catatan 1 | sedang | Tak menyentuh EEPROM, membuka ukur-koreksi tanpa flash | **SELESAI** |
+| 3 | Laju gambar OLED | A2 | 1 baris | Hanya kalau butir 1 membuktikannya | **DILEWATI** — butuh robot |
+| 4 | Deteksi terguling | A3 | ~12 baris | Melindungi perangkat keras, bukan skor | **SELESAI** |
+| 5 | Offset LiDAR `Yd` | B1 | ~15 baris | Tiap ruas berumpan-balik ikut membaik | **SELESAI** |
+| 6 | Ukur geometri kaki | catatan 1 | lapangan | Penutup yang sudah diminta CLAUDE.md | **MENUNGGU PENGUKURAN** |
+| 7 | Batch `CALIB_VERSION` | catatan 1 | sedang | Sesudah 6, supaya default langsung benar | belum (butuh 6) |
+| 8 | `Th`/`Tl`/… + putar di `w` | catatan 1 | kecil | Tidak memblokir apa pun | belum (putar di `w` sudah ada) |
+| 9 | Kompensasi CG | B2 | ~12 baris | Butuh 1 dan 6 lebih dulu supaya terukur | belum (butuh 6) |
+| 10 | Tegangan bus servo | B3 | HW + kecil | Butuh pembagi tegangan dulu | belum (butuh HW) |
 
 Butir 1–5 semuanya bisa jalan **sebelum** wipe `CALIB_VERSION`, dan tidak satu
 pun dari keduanya menghalangi yang lain.
+
+**Yang benar-benar terjadi sesudah dikerjakan:** empat dari lima butir pertama
+selesai, dan satu (A2) ternyata memang **tidak bisa** dikerjakan tanpa robot —
+dugaan di atas bahwa ia "1 baris" benar, tapi keputusannya bukan keputusan
+kode. Justru itu urutan yang diusulkan membayar: A1 dikerjakan lebih dulu,
+dan hasilnya sekarang **bisa menjawab A2** — begitu ada yang menyalakan robot
+dan membaca satu baris `PROF`.
+
+Satu hal yang tidak terduga dan layak dicatat: **A3 menuntut dua penjaga yang
+tidak ada di usulnya**, dan keduanya bukan hiasan. Robot yang LEMAS sedang
+ditopang di meja, bukan terguling — tanpa penjaga itu setiap kali robot
+diangkat miring dalam keadaan lemas, misi dibatalkan. Dan `accelZ()` sebelum
+frame IMU pertama bernilai 0, yang justru **memenuhi** syarat terguling;
+deteksinya akan menembak di detik pertama setiap kali servo dihidupkan.
 
 ---
 

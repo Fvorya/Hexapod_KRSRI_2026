@@ -1,7 +1,6 @@
 # Catatan arsitektur modifikasi — v1.18
 
-Hasil inspeksi 18 Sep 2026. **Belum ada satu baris kode pun yang diubah.**
-Berkas ini untuk didiskusikan dulu, baru dikerjakan.
+Hasil inspeksi 18 Sep 2026. Berkas ini untuk didiskusikan dulu, baru dikerjakan.
 
 Temuan pokoknya satu kalimat: **hampir semua yang "belum ada" sebenarnya sudah
 ada mesinnya, yang hilang saklarnya.** Enam fungsi/field sudah ditulis,
@@ -11,9 +10,58 @@ sudah terlanjur dibayar.
 
 ---
 
+## STATUS — PROMPT 1 SUDAH DIKERJAKAN (18 Sep 2026)
+
+Seluruh teks di bawah ditulis **sebelum** ada perubahan kode. Sesudahnya
+PROMPT 1 dari `PROMPT_KERJA.md` dikerjakan; statusnya di sini, dan yang
+ternyata berbeda dari dugaan ditulis apa adanya, bukan dirapikan.
+
+| Butir PROMPT 1 | Status | Keterangan |
+|---|---|---|
+| 1. Profil waktu loop | **SELESAI** | Baris `PROF` nyata: `n/avg/max/min ms`, `util` terhadap `CONTROL_HZ`, dan `lambat50`. Komentar `CONTROL_HZ` diperbaiki supaya jujur: ia BUKAN pembatas laju. |
+| 2. Konsol `Y` (`Yo`/`Yi`/`Yj`/`Yz`) | **SELESAI** | Tanpa menyentuh tata letak EEPROM. Rinciannya di bawah. |
+| 3. Laju gambar OLED | **DILEWATI** | Butuh robot menyala untuk membaca baris `PROF`; hipotesis A2 tidak boleh dijawab dengan tebakan. Tampilan.cpp **tidak disentuh**. |
+| 4. Deteksi terguling | **SELESAI** | Tiga ambang di `config.h` + saklar, ditandai BELUM DIUKUR. |
+| 5. Offset LiDAR `Yd` | **SELESAI** | RAM saja, dikurangkan di satu tempat sesudah median+EMA. |
+
+### Butir 2 — apa yang nyatanya berbeda dari dugaan
+
+- **`Yo` dan `Yi` punya tombol simpan yang BERBEDA, dan itu bukan pilihan
+  gaya.** `gOffset[]` duduk di `CalibBlob` (EEPROM 0, disimpan `W`),
+  sedangkan `gInvert[]` duduk di `ServoMap` (EEPROM 1024, disimpan `YtW`).
+  Menulis invert ke alamat 0 memang **tidak berpengaruh apa pun**, karena
+  `loadServoMap()` menimpanya tiap boot. Jadi teks bantuan menyebutkan
+  keduanya terpisah, bukan menyatukannya supaya enak dibaca.
+- **`Yj` tidak bisa menjangkau grip depan, dan itu bukan bug yang bisa
+  diperbaiki dari sisi perintah.** `TUNE_PIN_MAP` hanya memuat 3 servo per
+  lengan; `{0,15}` (grip depan) tidak ada di sana. Dibiarkan apa adanya dan
+  ditulis di komentar + teks bantuan, karena menambahkannya berarti mengubah
+  tabel pin yang dipakai `jog()` — di luar lingkup batch ini.
+- **`Yz` menerima nilai dalam keadaan servo HIDUP** (tidak ditolak seperti
+  `Yi`). Sebabnya praktis: `zOff` justru disetel untuk membetulkan kaki yang
+  menggantung, dan itu cuma terlihat saat robot berdiri. Harganya: perubahannya
+  terasa seketika tanpa ramp.
+- **`cetakOffset()` memakai awalan `#OFFSET` yang baru, bukan menumpang
+  `cetakTrim()`.** Pilihan yang disebut pertama di usul ternyata yang berisiko:
+  menambah kolom di tabel `#TRIM` akan menggeser jumlah kolom yang dicocokkan
+  HUD Raspi. Jadi yang diambil opsi kedua, dan `cetakTrim()` tidak disentuh
+  sama sekali.
+
+### Butir 5 — catatan yang perlu dibaca sebelum angka itu dipercaya
+
+Pencatatan **ditolak** kalau sensornya `MATI` atau `JAUH`. Itu disengaja dan
+termasuk lingkup, bukan penambahan: offset yang dicatat dari bacaan tak sah
+akan menggeser **semua** jarak sensor itu tanpa satu pun gejala di layar.
+
+Ia **RAM saja**, jadi ia hilang tiap robot menyala. Yang menutupnya adalah
+batch `CALIB_VERSION` (usul B, prompt 2) — 6 baris `PARAM_DEFS` tambahan,
+kesempatan gratis yang sama.
+
+---
+
 ## 0. Yang sudah ada tapi MATI (tidak ada pemanggil)
 
-Diverifikasi dengan grep di seluruh pohon:
+Diverifikasi dengan grep di seluruh pohon **sebelum** PROMPT 1:
 
 | Yang mati | Ada di | Dipanggil dari |
 |---|---|---|
@@ -24,6 +72,14 @@ Diverifikasi dengan grep di seluruh pohon:
 | `Hexapod::setStabilization()` | `Hexapod.h:25` | dikomentari |
 | `stab.tau`, `stab.sign_*` | `PARAM_DEFS` | `P_BELUM_DIPAKAI` |
 | `head.utara/timur/selatan/barat`, `arena.mirror` | `PARAM_DEFS` | `P_BELUM_DIPAKAI` |
+
+**Tiga di antaranya sudah hidup sejak 18 Sep 2026**, dan itu menghapus tiga
+baris dari tabel di atas: `jog()` kini dipanggil `Yj`; `gOffset[]` akhirnya punya
+penulis, perintah `Yo`; dan `Imu::accelZ()` — yang tidak masuk tabel ini tapi
+sama-sama hanya dicetak — sekarang bertindak lewat deteksi terguling.
+`Imu::tare()` masih mati dan akan tetap begitu sampai `Yl` (usul C) diputuskan.
+`GerakStore::lvlR/lvlP/refR/refP/jac[4]` masih belum dibaca siapa pun, dan
+`Yz` justru **diwajibkan** mempertahankannya (baca-ubah-tulis).
 
 `gOffset[]` yang paling mahal hilangnya — lihat bagian 3.
 
@@ -251,17 +307,27 @@ yang **sudah terbukti dibutuhkan** oleh catatan pengukuranmu sendiri di
 
 ## 5. Urutan kerja yang saya usulkan
 
+Status per 18 Sep 2026 ditulis di ujung tiap butir.
+
 1. **`Yo` / `Yi` / `Yj` / `Yz`** — tidak mengubah EEPROM, tidak membuang apa
    pun, langsung membuka jalur ukur–koreksi tanpa flash. Kerjakan lebih dulu
    karena butir 2 akan LEBIH MUDAH sesudahnya.
+   → **SELESAI.** `Yd` menyusul di batch yang sama (RAM saja, jadi sekaligus).
 2. **Ukur geometri kaki** dengan busur derajat pada `b100`, pakai `Yo` untuk
    datum lutut. Ini penutup yang sudah diminta `CLAUDE.md`.
+   → **MENUNGGU PENGUKURAN.** Knop-nya sudah ada; angkanya belum.
 3. **Batch `CALIB_VERSION`** (usul B) — sekali, sesudah angka geometri
    diketahui, supaya defaultnya langsung benar dan yang perlu diketik ulang
    sesudah wipe tinggal sedikit.
+   → **BELUM**, dan tetap begitu sampai butir 2 selesai — ia membuang
+   kalibrasi tersimpan. Enam baris `PARAM_DEFS` untuk offset LiDAR ikut di sini.
 4. **`Th`/`Tl`/`Tc`/`Tr`/`Tb`** + argumen putar di `w`. Dua-duanya kecil,
    taruh terakhir karena tidak memblokir apa pun.
+   → **BELUM.** Argumen putar di `w` sudah lebih dulu ada di pohon (bukan dari
+   batch ini); `Th`/`Tl`/… belum.
 5. **`Yl` rata badan** — hanya kalau kamu memutuskan iya di bagian 3C.
+   → **BELUM**, dan keputusannya belum diambil. Satu-satunya usul di berkas ini
+   yang bisa menjatuhkan robot kalau tandanya terbalik.
 
 Uji: butir 1 dan 4 tidak punya program uji di repo ini (`test-pc/` tertinggal
 di `program-krsri-misi`). Butir 3 menyentuh `Calib` — `cek_koreksi.cpp` tidak
