@@ -58,7 +58,142 @@ bool LidarArray::selectMux(uint8_t ch) {
     return (LIDAR_I2C_BUS.endTransmission() == 0);
 }
 
+// PEMULIHAN BUS I2C, sembilan pulsa clock.
+//
+// Slave yang tersela di TENGAH transaksi -- master di-reset, Teensy di-flash,
+// catu kedip -- boleh menahan SDA RENDAH sambil menunggu clock yang tidak
+// pernah datang. Sesudah itu tidak satu alamat pun menjawab, termasuk mux,
+// dan gejalanya persis "kemarin jalan, hari ini tidak" tanpa ada yang
+// disentuh.
+//
+// YANG MEMBUATNYA SULIT DIKENALI: reset Teensy tidak menyembuhkannya. Yang
+// menahan SDA itu SLAVE, dan slave tidak ikut mati saat Teensy di-flash. Jadi
+// flash ulang berkali-kali memberi hasil yang sama dan menunjuk ke arah yang
+// salah -- seolah program atau solderan yang rusak.
+//
+// Yang melepaskannya cuma dua: cabut catu slave, atau beri sembilan pulsa
+// clock supaya ia menyelesaikan byte yang tergantung lalu melepas SDA.
+// Sembilan karena satu byte itu 8 bit + 1 ACK.
+// BACA GARIS HANYA DI SINI, sebelum Wire.begin(). Sesudah Wire.begin() pin
+// 18/19 dipindah ke peripheral LPI2C, dan digitalRead() membaca register GPIO
+// yang tidak lagi mengikuti keadaan pad -- hasilnya bisa RENDAH terus tanpa
+// ada yang menarik apa pun. Bacaan di bawah dipercaya; bacaan sesudah
+// Wire.begin() tidak.
+static bool bebaskanBus(uint8_t sda, uint8_t scl) {
+    pinMode(sda, INPUT_PULLUP);
+    pinMode(scl, INPUT_PULLUP);
+    delayMicroseconds(10);
+    const bool sdaAwal = digitalRead(sda);
+    const bool sclAwal = digitalRead(scl);
+
+    Serial.print("LidarArray: garis (mode GPIO, sebelum Wire.begin) -- SDA ");
+    Serial.print(sdaAwal ? "TINGGI" : "RENDAH");
+    Serial.print(", SCL ");
+    Serial.println(sclAwal ? "TINGGI" : "RENDAH");
+
+    // SCL RENDAH memisahkan dua dunia, dan pemisahan itu yang paling berharga
+    // di sini. Slave I2C boleh menahan SDA selamanya, tapi ia TIDAK PERNAH
+    // menahan SCL selain sebagai clock-stretch sesaat -- dan tidak ada clock
+    // untuk di-stretch sebelum master menyala. Jadi SCL rendah di titik ini
+    // bukan perangkat yang menggantung: itu hubung singkat, pull-up yang
+    // hilang, atau pin yang rusak. Sembilan pulsa clock tidak akan menolong.
+    if (!sclAwal) {
+        Serial.println("            SCL rendah TANPA master aktif -- ini BUKAN slave");
+        Serial.println("            menggantung. Cabut catu tidak akan menyembuhkannya.");
+        Serial.println("            Ukur ohm SDA-GND dan SCL-GND dengan catu MATI.");
+    }
+
+    if (sdaAwal) return true;      // tidak tersangkut, tidak usah diapa-apakan
+
+    for (uint8_t i = 0; i < 9 && !digitalRead(sda); i++) {
+        // Open-drain ditiru dengan bertukar mode: OUTPUT LOW menarik, dan
+        // INPUT_PULLUP melepas. JANGAN pakai OUTPUT HIGH -- kalau slave masih
+        // menahan garisnya, itu hubung singkat.
+        pinMode(scl, OUTPUT);
+        digitalWrite(scl, LOW);
+        delayMicroseconds(5);
+        pinMode(scl, INPUT_PULLUP);
+        delayMicroseconds(5);
+    }
+
+    // STOP: SDA naik selagi SCL tinggi. Tanpa ini slave berhenti di tengah
+    // bingkai dan byte berikutnya dibaca sebagai lanjutan, bukan alamat baru.
+    pinMode(sda, OUTPUT);
+    digitalWrite(sda, LOW);
+    delayMicroseconds(5);
+    pinMode(scl, INPUT_PULLUP);
+    delayMicroseconds(5);
+    pinMode(sda, INPUT_PULLUP);
+    delayMicroseconds(5);
+
+    return digitalRead(sda);
+}
+
+// UJI PIN dengan pull-up lalu pull-down, tanpa menyentuh peripheral I2C.
+//
+// Gunanya memisahkan "pin ini tertarik ke GND" dari "pin ini tidak menjawab".
+// Pull-up internal 22k melawan apa pun yang menarik garis; pull-down internal
+// melakukan kebalikannya. Pin yang bebas menuruti keduanya:
+//
+//     pull-up TINGGI, pull-down RENDAH   pin SEHAT, mengambang bebas
+//     pull-up RENDAH, pull-down RENDAH   TERTARIK KE GND, di bawah ~9,5k
+//     pull-up TINGGI, pull-down TINGGI   TERTARIK KE 3V3
+//
+// SCL dipakai sebagai pembanding, bukan pin bebas yang ditebak: ia di papan
+// yang sama, jalur yang sama panjangnya, dan sudah terbukti terbaca TINGGI.
+// Kalau SCL lulus dan SDA tidak, selisihnya bukan soal metode.
+//
+// TIDAK ada pin yang di-drive di sini. Pin yang mungkin terhubung GND tidak
+// boleh disuruh mengeluarkan arus -- itu menambah kerusakan pada pin yang
+// justru sedang diperiksa.
+void LidarArray::periksaPinBus() {
+    Serial.println("\n--- UJI PIN BUS (GPIO murni, peripheral I2C tidak dipakai) ---");
+    LIDAR_I2C_BUS.end();      // lepas pin dari LPI2C supaya GPIO benar-benar berlaku
+
+    const uint8_t pin[2]  = { LIDAR_I2C_SDA, LIDAR_I2C_SCL };
+    const char*   nama[2] = { "SDA", "SCL" };
+
+    for (uint8_t i = 0; i < 2; i++) {
+        pinMode(pin[i], INPUT_PULLUP);
+        delayMicroseconds(200);         // longgar: kapasitansi jalur + 22k
+        const bool naik = digitalRead(pin[i]);
+
+        pinMode(pin[i], INPUT_PULLDOWN);
+        delayMicroseconds(200);
+        const bool turun = digitalRead(pin[i]);
+
+        pinMode(pin[i], INPUT_PULLUP);  // tinggalkan dalam keadaan aman
+
+        Serial.print("  "); Serial.print(nama[i]);
+        Serial.print(" (pin "); Serial.print(pin[i]); Serial.print(")  pull-up ");
+        Serial.print(naik ? "TINGGI" : "RENDAH ");
+        Serial.print("  pull-down ");
+        Serial.print(turun ? "TINGGI" : "RENDAH ");
+        Serial.print("   -> ");
+        if (naik && !turun)       Serial.println("SEHAT, mengambang bebas");
+        else if (!naik && !turun) Serial.println("TERTARIK KE GND (di bawah ~9,5k)");
+        else if (naik && turun)   Serial.println("TERTARIK KE 3V3");
+        else                      Serial.println("aneh -- ulangi uji ini");
+    }
+
+    Serial.println("  Kalau SCL SEHAT dan SDA TERTARIK KE GND sementara kabel SDA");
+    Serial.println("  sudah dicabut, yang tersisa cuma pin 18 Teensy itu sendiri.");
+    Serial.println("  Bukti terakhirnya: jalankan Teensy SENDIRIAN, lepas dari board,");
+    Serial.println("  hanya dengan USB, lalu baca baris garis saat boot.");
+
+    LIDAR_I2C_BUS.begin();
+    LIDAR_I2C_BUS.setClock(LIDAR_I2C_CLOCK);
+}
+
 bool LidarArray::begin() {
+    // SEBELUM Wire.begin(). Sesudahnya pin sudah dipegang peripheral I2C dan
+    // tidak bisa digoyang sebagai GPIO.
+    if (!bebaskanBus(LIDAR_I2C_SDA, LIDAR_I2C_SCL)) {
+        Serial.println("LidarArray: SDA MASIH TERTAHAN RENDAH sesudah 9 pulsa clock.");
+        Serial.println("            Bukan program: ada yang menarik garisnya terus.");
+        Serial.println("            Cabut catu mux+LiDAR sebentar, lalu nyalakan lagi.");
+    }
+
     LIDAR_I2C_BUS.begin();
     LIDAR_I2C_BUS.setClock(LIDAR_I2C_CLOCK);
 
@@ -645,7 +780,12 @@ void LidarArray::cetakBaris() {
 // menyalahkan program -- SEKALIGUS meng-init ulang yang ada tapi belum aktif.
 // Dijalankan lewat perintah 'I'.
 void LidarArray::pindaiI2C() {
-    Serial.println("\n--- PINDAI I2C (bus LiDAR, SDA 18 / SCL 19) ---");
+    // Nomor pin dicetak dari konstanta, bukan ditulis tangan: bus ini sudah
+    // sekali pindah, dan judul yang berbohong soal pin mengirim orang
+    // mengukur jalur yang salah.
+    Serial.print("\n--- PINDAI I2C (bus LiDAR, SDA ");
+    Serial.print(LIDAR_I2C_SDA); Serial.print(" / SCL ");
+    Serial.print(LIDAR_I2C_SCL); Serial.println(") ---");
 
     LIDAR_I2C_BUS.beginTransmission(I2C_MUX_ADDR);
     bool mux = (LIDAR_I2C_BUS.endTransmission() == 0);
@@ -658,7 +798,52 @@ void LidarArray::pindaiI2C() {
     _muxOk = mux;
 
     if (!mux) {
-        Serial.println("  -> cek SDA 18 / SCL 19, catu daya mux, resistor pull-up.");
+        // KEADAAN GARIS DULU, baru tuduhan. Tapi pin 18/19 sedang dipegang
+        // peripheral LPI2C, dan digitalRead() di situ membaca register GPIO
+        // yang TIDAK mengikuti pad -- ia balas RENDAH terus walau garisnya
+        // sehat. Versi pertama pemindai ini memakai bacaan itu apa adanya dan
+        // melaporkan "SDA RENDAH, SCL RENDAH" pada bus yang belum tentu rusak.
+        //
+        // Jadi busnya dilepas dulu, dibaca sebagai GPIO biasa, baru dipasang
+        // lagi. 'I' memang perintah diagnostik manual -- memulai ulang bus di
+        // sini boleh, di tengah misi tidak.
+        LIDAR_I2C_BUS.end();
+        const bool sehat = bebaskanBus(LIDAR_I2C_SDA, LIDAR_I2C_SCL);
+        LIDAR_I2C_BUS.begin();
+        LIDAR_I2C_BUS.setClock(LIDAR_I2C_CLOCK);
+
+        if (!sehat) {
+            Serial.println("  -> SDA MASIH RENDAH sesudah 9 pulsa clock. Bukan program.");
+            Serial.println("     Ukur ohm SDA-GND dan SCL-GND dengan catu MATI.");
+            return;
+        }
+
+        // Garis sudah sehat sesudah dibebaskan -- coba mux sekali lagi
+        // sebelum menyerah.
+        LIDAR_I2C_BUS.beginTransmission(I2C_MUX_ADDR);
+        if (LIDAR_I2C_BUS.endTransmission() == 0) {
+            Serial.println("  -> mux MENJAWAB sesudah bus dibebaskan. Bus tadi tersangkut.");
+            _muxOk = true;
+            mux = true;
+        }
+        if (mux) return;
+
+        // Garis sehat tapi 0x70 bisu. Sapu seluruh alamat: satu pun yang
+        // menjawab berarti bus hidup dan muxnya sendiri yang bermasalah.
+        Serial.print("  sapuan 0x08..0x77:");
+        uint8_t ketemu = 0;
+        for (uint8_t a = 0x08; a < 0x78; a++) {
+            LIDAR_I2C_BUS.beginTransmission(a);
+            if (LIDAR_I2C_BUS.endTransmission() == 0) {
+                Serial.print(" 0x"); Serial.print(a, HEX);
+                ketemu++;
+            }
+        }
+        Serial.println(ketemu ? "" : " (kosong)");
+        if (!ketemu)
+            Serial.println("  -> bus hidup tapi SUNYI: curigai catu mux, bukan alamatnya.");
+
+        Serial.println("  -> cek kabel SDA/SCL, catu daya mux, resistor pull-up.");
         Serial.println("  -> JANGAN satukan bus ini dengan PCA9685: alamat ALL-CALL-nya");
         Serial.println("     juga 0x70 dan akan bentrok dengan mux.");
         return;

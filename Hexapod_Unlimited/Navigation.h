@@ -16,15 +16,20 @@ enum ModeNav : uint8_t {
     NAV_DINDING_KANAN,
     NAV_ARENA_KIRI,          // ikut dinding + terkunci heading arena
     NAV_ARENA_KANAN,
-    NAV_PIVOT                // berputar di tempat menuju satu heading ('o'/'O')
+    NAV_PIVOT,               // berputar di tempat menuju satu heading ('o'/'O')
+    NAV_RATA,                // geser menyamping sampai dinding sisi mencapai jarak
+    NAV_SETEL_BLK            // maju/mundur sampai LiDAR belakang mencapai jarak
 };
 
-// Fase internal. FASE_JALAN/FASE_BELOK milik mode arena, FASE_PIVOT/FASE_SETTLE
-// milik NAV_PIVOT. Modenya saling eksklusif, jadi _fase, _tPivot dan _diamSejak
+// Fase internal. FASE_JALAN milik mode arena, FASE_PIVOT/FASE_SETTLE milik
+// NAV_PIVOT. Modenya saling eksklusif, jadi _fase, _tPivot dan _diamSejak
 // dipakai bersama oleh keduanya.
+//
+// FASE_BELOK dihapus 6 Sep 2026 bersama belok-otomatis mode arena: lintasan
+// datang dari tabel misi, jadi navigasi tidak pernah lagi memilih tikungan
+// sendiri, dan fase untuk melakukannya tidak punya jalan masuk.
 enum FaseNav : uint8_t {
     FASE_JALAN = 0,   // arena : menyusuri dinding
-    FASE_BELOK,       // arena : berbelok ke mata angin berikutnya
     FASE_PIVOT,       // pivot : masih berputar menuju _pivotTarget
     FASE_SETTLE       // pivot : perintah putar sudah nol, menunggu kaki diam
 };
@@ -121,6 +126,24 @@ public:
     void setTengah(bool ya);
     bool tengah() const { return _tengah; }
 
+    // KOREKSI SAMBIL BERHENTI. Diminta R2C 17 Sep 2026 untuk R-9.
+    //
+    // Menyala: begitu sudut atau jarak dinding keluar ambang, robot berhenti
+    // MAJU, memutar badan sampai sejajar, baru berjalan lagi. Mati: kemudi
+    // mengoreksi terus sambil melangkah, seperti seluruh sisa firmware ini.
+    //
+    // Bawaannya MATI, dan hanya 'U' yang menyalakannya. Di tanjakan, kaki ayun
+    // yang mendarat sesudah badan berputar mendarat di tempat yang salah; di
+    // lantai datar itu tidak jadi soal, dan berhenti tiap beberapa langkah
+    // cuma membuang waktu lomba.
+    //
+    // DILEPAS navBerhenti(), sama seperti abaikanDepan dan kunciHeading: ia
+    // milik SATU perjalanan 'U'. 'U' memasangnya sesudah navMulai(), jadi
+    // perjalanannya sendiri selamat.
+    void koreksiDiam(bool ya);
+    bool koreksiDiamAktif() const { return _koreksiDiam; }
+    bool sedangKoreksi()    const { return _sedangKoreksi; }
+
     // SUDUT BADAN TERHADAP DINDING, dari SEPASANG sensor di sisi yang sama.
     //
     //     sudut = atan2((d_belakang - d_depan) - bias, WALL_BASE_CM)
@@ -139,7 +162,12 @@ public:
     void  sudutTabel();               // cetak sudut & bias kedua sisi
 
     // --- 1. Kompas Arena ---
-    void kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
+    // return false = TIDAK jadi dicatat (sebaran heading terlalu lebar, atau
+    // IMU belum memberi data). Pemanggil yang menghitung sendiri arah
+    // berikutnya WAJIB memeriksanya: maju ke arah berikutnya sesudah
+    // pencatatan yang gagal menaruh seluruh sisa tabel di slot yang salah,
+    // dan tabel yang tergeser satu slot terlihat seperti kompas yang acak.
+    bool kompasCatat(uint8_t arah); // 0=U, 1=T, 2=S, 3=B
     void kompasSimpan();
     bool kompasMuat(bool cerewet = true);
     void kompasTabel();
@@ -147,6 +175,12 @@ public:
 
     // Arah arena terdekat dari sebuah heading. return -1 bila belum ada satu
     // pun arah dicatat. selisihDeg = simpangan ke arah itu (-180..180).
+    // Yaw IMU mentah, derajat. Dibuka supaya Misi bisa MENGUKUR pergeseran
+    // badan saat ruas berhenti -- robot menyerong sedikit ke kanan tiap kali
+    // ruas AMBIL selesai, dan menebak sumbernya lebih mahal daripada
+    // mencetaknya. Bukan untuk kemudi: yang menyetir tetap Navigation.
+    float yawKini() { return _imu.yawDeg(); }
+
     int8_t arahTerdekat(float yawDeg, float& selisihDeg) const;
 
     // Apakah robot SEDANG menghadap arah arena ini (dalam HEADING_TOLERANCE_DEG)?
@@ -154,6 +188,22 @@ public:
     // pivot yang GAGAL sama-sama berakhir di NAV_DIAM, jadi satu-satunya yang
     // membedakan keduanya dari luar adalah heading akhirnya.
     bool diArah(uint8_t arah) const;
+
+    // Heading tercatat satu mata angin, der. NAN bila belum dicatat. Dipakai
+    // misi untuk membangun heading yang BUKAN mata angin (mata angin + serong).
+    float headingArah(uint8_t arah) const;
+
+    // KUNCI HEADING MUTLAK untuk mode arena. NAN = kembali memilih mata angin
+    // terdekat sendiri, yaitu perilaku lama.
+    //
+    // Ada karena mode arena mengunci ke slot mata angin, dan slot itu dipilih
+    // dari yaw saat navMulai(). Pada ruas yang menyerong 45 der, yaw berjarak
+    // sama dari DUA mata angin: pilihannya jadi lemparan koin, dan yang salah
+    // mengunci badan 90 der dari yang dimaksud. Ruas yang tahu heading-nya
+    // sendiri menyebutkannya di sini, jadi tidak ada yang perlu ditebak.
+    void  kunciHeading(float der);
+    float headingKunci() const { return _headKunci; }
+    float headingTerkunci() const;
 
     // Heading di ANTARA dua mata angin arena, dari kompas yang TERCATAT --
     // bukan dari asumsi bahwa keempatnya berjarak 90 der sempurna di IMU.
@@ -168,6 +218,10 @@ public:
     // dengan faktor cos(theta), jadi yang penting besarnya, bukan lulus/tidak
     // terhadap satu ambang sempit milik pivot.
     float simpangArah(uint8_t arah) const;
+
+    // Sama, tapi terhadap heading MUTLAK apa pun -- termasuk yang menyerong
+    // dari mata angin. NAN bila target NAN atau IMU belum punya data.
+    float simpangHeading(float target) const;
 
     // Arah arena yang SEDANG dituju mode arena (0..3), -1 bila tidak ada.
     // Berubahnya nilai ini berarti navigasi memilih mata angin lain -- 90 der
@@ -185,6 +239,54 @@ public:
     void pivotKompas(uint8_t arah);
     void pivotRelatif(float der);
     bool pivotSedangJalan() const { return _mode == NAV_PIVOT; }
+
+    // --- RATAKAN KE DINDING SAMPING ---
+    //
+    // Sumbu geser sudah lama ada di HexaGait, tapi tidak pernah ada yang
+    // MENUTUP LUPNYA. Akibatnya terukur di arena 6 Sep 2026: 'w 0 -0.6 0.5'
+    // dan 'w 0 -0.6 3' sama-sama memindahkan badan ~32-36 cm, dan dua
+    // perintah IDENTIK berbeda tiga kali lipat -- perpindahannya
+    // terkuantisasi satu langkah gait penuh, jadi permintaan "geser 10 cm"
+    // mustahil dipenuhi dari luar.
+    //
+    // Yang memperbaikinya bukan semburan yang lebih pendek melainkan SYARAT
+    // HENTI YANG DIBACA TIAP TICK. Sama seperti rem jarak, hanya penggarisnya
+    // LiDAR samping, bukan odometri.
+    //
+    // Tinggal di sini dan bukan di .ino supaya perintah 'V' dan ruas HNT_SISI
+    // memakai SATU implementasi: dua salinan berarti dua tempat untuk salah,
+    // dan yang kedua adalah yang lupa diperbaiki. Sekaligus mempertahankan
+    // aturan pokok misi -- hanya Navigation yang menulis vektor gerak.
+    //
+    // return false = DITOLAK dan robot tidak bergerak sama sekali; sebabnya
+    // sudah tercetak. Sasaran yang SUDAH tercapai juga return true tanpa
+    // bergerak, jadi pemanggil cukup memeriksa ratakanSedangJalan().
+    //
+    // jagaBelakang false = jarak belakang TIDAK dijaga selama perataan. Dipakai
+    // ruas yang tidak punya acuan di belakang; lihat Ruas::jagaBelakang.
+    bool ratakanMulai(bool kiri, int cm, bool jagaBelakang = true);
+
+    // SETEL JARAK BELAKANG, berumpan-balik, DUA ARAH.
+    //
+    // Sasarannya bacaan LiDAR BELAKANG. Bacaan DI ATAS sasaran berarti robot
+    // terlalu jauh dari dinding belakang, jadi ia MUNDUR; bacaan di bawah
+    // sasaran berarti terlalu dekat, jadi ia MAJU. Arahnya dipilih sendiri
+    // dari bacaan, bukan dari tanda argumen -- operator cukup menyebut jarak
+    // yang diinginkan.
+    //
+    // Perintahnya ada karena firmware ini tidak punya gerak maju/mundur
+    // berumpan-balik sama sekali. 'w' bisa keduanya, tapi buta terhadap
+    // sasaran dan perpindahannya terkuantisasi satu langkah gait -- tidak
+    // bisa dipakai memperbaiki selisih beberapa sentimeter.
+    //
+    // Penjaganya berbeda per arah, dan itu disengaja: mundur diawasi LiDAR
+    // BELAKANG, maju diawasi LiDAR DEPAN. Satu sensor tidak bisa menjaga dua
+    // arah.
+    bool setelBelakangMulai(int cm);
+    bool setelBelakangSedangJalan() const { return _mode == NAV_SETEL_BLK; }
+    bool setelBelakangTercapai() const    { return _setelBlkOk; }
+    bool ratakanSedangJalan() const { return _mode == NAV_RATA; }
+    bool ratakanTercapai() const    { return _rataOk; }
 
     // --- 3. Kalibrasi Kecepatan Putar ---
     void kalibrasiPivot(uint8_t siklus);
@@ -245,11 +347,13 @@ private:
     // waktu kalau sepasang sensor sisi bermasalah.
     bool  _wallSudut = true;
     bool  _tengah = false;
+    bool  _koreksiDiam   = false;   // fitur menyala (hanya 'U')
+    bool  _sedangKoreksi = false;   // sedang berdiri memutar badan
+    uint32_t _tKoreksi   = 0;       // jam NAV_KOREKSI_BATAS_MS
     float _biasKiri = WALL_BIAS_KIRI_CM, _biasKanan = WALL_BIAS_KANAN_CM;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }
-    int8_t arahGeser(int8_t idx, int8_t delta) const { return (int8_t)((idx + delta + 4) % 4); }
     float  kemudiHeading(float targetHeading) const;
 
     // Satu langkah kendali menuju targetYaw: mengisi err (derajat, -180..180)
@@ -259,9 +363,27 @@ private:
     // dengan gain yang berbeda (PIVOT_KP vs HEADING_KP).
     float  pivotLangkah(float targetYaw, float& err) const;
     void   pivotUpdate();       // dipanggil navUpdate() saat _mode == NAV_PIVOT
+    void   rataUpdate();        // dipanggil navUpdate() saat _mode == NAV_RATA
+    int    jarakGeser(bool keKanan) const;   // -1 = tak ada sensor yang bisa dinilai
+    uint8_t  _rataCh   = 255;   // channel LiDAR yang jadi penggaris
+    int      _rataCm   = 0;     // jarak sasaran ke dinding itu
+    bool     _rataNaik = false; // true = sasaran LEBIH JAUH dari bacaan awal
+    bool     _rataOk   = false; // hasil perataan TERAKHIR: sasaran tercapai?
+    float    _rataGeser = 0.0f; // vektor geser yang sedang dipakai (+ = kanan)
+    void     setelBelakangUpdate();
+
+    uint32_t _tRata    = 0;
+    bool     _rataBlkLapor = false;  // sudah mencetak sekali soal tarik mundur?
+    bool     _rataJagaBlk  = true;   // jaga jarak belakang selama perataan ini?
+
+    int      _setelBlkCm = 0;     // sasaran bacaan LiDAR belakang
+    bool     _setelBlkOk = false; // hasil TERAKHIR: sasaran tercapai?
+    bool     _setelBlkMaju = false;  // arah yang dipilih saat mulai
+    uint32_t _tSetelBlk  = 0;
     float    _majuKini = 0.0f, _turnKini = 0.0f;
 
     float _headArah[4] = { -1, -1, -1, -1 };
+    float _headKunci = NAN;     // kunci heading mutlak; NAN = pakai mata angin
     const char* _arahNama[4] = { "UTARA", "TIMUR", "SELATAN", "BARAT" };
     
     float _degCCW = 0, _degCW = 0, _mmMaju = 0;

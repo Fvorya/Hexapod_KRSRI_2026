@@ -57,6 +57,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # di-bind, dan tes juga mem-bind server-nya sendiri.
 ThreadingHTTPServer.request_queue_size = 64
 from urllib.parse import urlparse, parse_qs
+from pathlib import Path
+from operator_control import operator_command, operator_state, operator_snapshot, parse_operator
 
 import cv2
 import numpy as np
@@ -87,7 +89,12 @@ except ImportError:
 # Penanda versi. Ditampilkan di pojok kanan atas halaman supaya kamu bisa
 # memastikan yang sedang jalan memang berkas yang barusan di-upload -- bukan
 # menebak dari ada-tidaknya sebuah tombol.
-VERSI = "2026-09-06 · v1.7 + ambil korban"
+# Tanggalnya WAJIB ikut disetel tiap berkas ini diubah -- seluruh gunanya
+# adalah memastikan yang sedang jalan di Pi memang berkas yang barusan
+# di-upload. Sampai 18 Sep 2026 ia masih berbunyi "2026-09-06 v1.7" padahal
+# isinya sudah memuat rantai AMBIL, serah-terima m2/m9, dan kartu trim servo
+# (17 Sep) -- yaitu penanda yang membohongi orang yang memeriksanya.
+VERSI = "2026-09-18 · v1.18 + serah-terima m2/m9 + trim servo"
 
 KORBAN = "KORBAN"
 RINTANG = "RINTANG"
@@ -1802,6 +1809,7 @@ class Teensy:
         return True
 
     def _putus(self):
+        operator_state(self).update(profile=None, servo=None, params={}, saved=False)
         try:
             if self.ser:
                 self.ser.close()
@@ -1910,6 +1918,7 @@ class Teensy:
         r"^\s*([0-3])\s+(UTARA|TIMUR|SELATAN|BARAT)\s*:\s*(.+)$", re.I)
 
     def _parse(self, baris):
+        parse_operator(self, baris)
         m = self.RE_PEMICU.match(baris.strip())
         if m:
             self.pemicu = (m.group(1).upper(), int(m.group(2)), time.time())
@@ -4089,8 +4098,13 @@ input.lebar{width:170px}
   border:1px solid var(--acc);border-radius:6px;font-size:11px;line-height:1.5;
   white-space:normal;box-shadow:0 6px 18px #000a}
 </style>
-<header><span>R2C HEXAPOD &mdash; MISSION HUD <span class=mid id=host></span></span>
-        <span class=mid id=versi></span></header>
+<link rel="stylesheet" href="/operator.css">
+<header><div><strong>R2C / HEXAPOD</strong><span class=header-sub>Panel operator <span id=host></span></span></div>
+        <div class=header-actions><span class=mid id=versi></span>
+        <button id=op-unlock hidden onclick="cmd('lepas_stop')">Lepas STOP</button>
+        <button onclick="cmd('berdiri');opReadSoon()">Berdiri</button>
+        <button class=stop-global onclick="opEmergency()">STOP <kbd>Esc</kbd></button></div></header>
+<div id=op-notice role=status aria-live=polite>Menghubungkan ke panel robot…</div>
 <div id=mode class=kendali>&nbsp;</div>
 <div id=galat></div>
 <div id=strip>
@@ -4142,15 +4156,60 @@ input.lebar{width:170px}
 
   <div>
     <div id=tabs>
-      <button class=aktif onclick="tab(0,this)">Robot</button>
+      <button class=aktif onclick="tab(0,this)">Kontrol</button>
       <button onclick="tab(1,this)">Misi</button>
       <button onclick="tab(2,this)">Korban</button>
-      <button onclick="tab(3,this)">Manual</button>
+      <button onclick="tab(3,this)">Terminal</button>
       <button onclick="tab(4,this)">Kalibrasi</button>
     </div>
 
     <!-- 0. ROBOT -->
     <div class="panel aktif">
+      <section class="card operator-main">
+        <div class=section-heading><div><span class=eyebrow>Kendali langsung</span><h1>Gerakkan robot</h1></div>
+          <button id=op-enter class=primary onclick="opEnter()">Aktifkan manual</button></div>
+        <p class=muted id=op-manual-state>Robot berhenti saat tombol arah dilepas. Arah mengikuti depan robot.</p>
+        <div class=drive-layout>
+          <div><div class=dpad aria-label="Kontrol arah robot">
+            <button data-drive="1,-1,0" aria-label="Maju kiri">↖</button>
+            <button data-drive="1,0,0" aria-label="Maju">↑</button>
+            <button data-drive="1,1,0" aria-label="Maju kanan">↗</button>
+            <button data-drive="0,-1,0" aria-label="Geser kiri">←</button>
+            <button class=drive-stop onclick="opRelease()" aria-label="Berhenti bergerak">Diam</button>
+            <button data-drive="0,1,0" aria-label="Geser kanan">→</button>
+            <button data-drive="-1,-1,0" aria-label="Mundur kiri">↙</button>
+            <button data-drive="-1,0,0" aria-label="Mundur">↓</button>
+            <button data-drive="-1,1,0" aria-label="Mundur kanan">↘</button>
+          </div><div class=turn-controls>
+            <button data-drive="0,0,1">↶ Putar kiri</button><button data-drive="0,0,-1">Putar kanan ↷</button>
+          </div></div>
+          <div class=drive-settings>
+            <label for=op-speed>Kecepatan <output id=op-speed-value>30%</output></label>
+            <input id=op-speed type=range min=5 max=100 value=30 step=5>
+            <div class=speed-presets><button onclick="opSpeed(15)">Pelan</button><button onclick="opSpeed(40)">Sedang</button><button onclick="opSpeed(70)">Cepat</button></div>
+            <label for=op-step>Tinggi langkah <span class=muted>mm</span></label>
+            <div class=number-stepper><button onclick="opQuickHeight(-5)" aria-label="Turunkan langkah 5 mm">−</button>
+              <output id=op-step>Belum dibaca</output><button onclick="opQuickHeight(5)" aria-label="Naikkan langkah 5 mm">+</button></div>
+            <label class=check-label><input type=checkbox id=op-keyboard> Aktifkan keyboard WASD / panah, Q dan E untuk putar</label>
+            <small>Esc: STOP semua. Kontrol keyboard berhenti saat berpindah tab atau mengisi angka.</small>
+          </div>
+        </div>
+      </section>
+      <section class="card profile-editor">
+        <div class=section-heading><div><span class=eyebrow>Profil medan</span><h2>Setel langkah &amp; postur</h2></div>
+          <button onclick="opSend('op_read')">Baca robot</button></div>
+        <div class=profile-toolbar><label for=op-profile>Profil aktif</label><select id=op-profile onchange="opSelectProfile()">
+          <option value=0>Datar</option><option value=1>Tangga</option><option value=2>Merunduk / turunan</option>
+          <option value=3>Sempit</option><option value=4>Kail</option><option value=5>Tanjak</option></select>
+          <span id=op-profile-status class=muted>Belum dibaca dari robot</span></div>
+        <div id=op-profile-fields></div>
+        <div class=profile-actions><button id=op-apply class=primary onclick="opApplyProfile()">Terapkan perubahan</button>
+          <button id=op-save onclick="opSend('op_save')">Simpan profil ke EEPROM</button>
+          <button onclick="opLoadProfile()">Muat EEPROM</button>
+          <button onclick="opResetProfile()">Bawaan profil ini</button></div>
+        <p class=muted>Setiap medan memiliki setelan sendiri. Simpan mencakup keenam profil; profil tersimpan dipakai kembali setelah robot dinyalakan dan saat misi memilih medan itu.</p>
+        <details><summary>Tentang tinggi, speed, dan bentuk kaki</summary><p>Tinggi langkah mengatur angkatan kaki. Tinggi badan adalah target model, bukan hasil pengukuran lantai. Waktu siklus lebih besar berarti langkah lebih lambat. Bentuk khusus kaki Kail/Tanjak tetap mengikuti firmware. Rentang angka bukan jaminan semua kombinasinya terjangkau; perhatikan peringatan IK.</p></details>
+      </section>
       <div class=card><h2>Kendali robot</h2>
         <button data-tip="Firmware: b. Menghitung pose berdiri DULU baru menyalakan PWM. WAJIB sebelum perintah gerak apa pun -- firmware boot dengan servo lemas." onclick="cmd('berdiri')">Berdiri &amp; nyalakan servo (b)</button>
         <button data-tip="Firmware: m1. Pivot ke UTARA, catat titik nol jarak dari dinding START, lalu susur dinding KANAN terkunci kompas sampai berhenti di samping K-1." onclick="cmd('mulai')">Mulai misi (m1)</button>
@@ -4529,6 +4588,16 @@ input.lebar{width:170px}
 
     <!-- 4. KALIBRASI -->
     <div class=panel>
+      <section class="card calibration-intro"><span class=eyebrow>Kalibrasi</span><h1>Setelan robot, terbaca jelas</h1>
+        <p>Profil gerak ada di tab Kontrol. Di sini, setel sensor, trim servo, dan vision. Nilai EEPROM disimpan di Teensy; kalibrasi vision disimpan di Raspberry Pi.</p>
+        <label for=op-search>Cari setelan</label><input id=op-search type=search placeholder="Misalnya: kompas, trim, dinding" oninput="opSearch(this.value)">
+      </section>
+      <section class="card firmware-calibration"><div class=section-heading><h2>Parameter Teensy</h2><button onclick="opSend('op_read')">Baca kalibrasi</button></div>
+        <p class=muted>Ubah angka lalu tekan Terapkan pada barisnya. Simpan setelah nilai balasan sesuai.</p>
+        <div id=op-params>Belum ada data. Sambungkan Teensy lalu tekan Baca kalibrasi.</div>
+        <button onclick="opSend('op_calib_save')">Simpan kalibrasi ke EEPROM</button>
+        <p class=muted>Parameter bertanda “Servo lemas” hanya dapat diubah ketika servo dimatikan. Parameter gait dasar berlaku saat profil dipilih ulang, kecuali profil tersebut sudah memiliki setelan sendiri.</p>
+      </section>
       <div class=card><h2>Kalibrasi vision</h2>
         <p class=kecil>Semua knob-nya ada di tab <b>Kalibrasi</b> dan berlaku
         <b>seketika</b> tanpa restart. Yang belum ada cuma urutannya &mdash; ini dia.</p>
@@ -4761,7 +4830,7 @@ async function simpanKalib(){const r=await fetch('/cmd?k=simpan_kalib',{method:'
 // firmware, jadi ia satu-satunya yang tidak bisa menyimpang dari Teensy.
 function trimGeser(slot,d){
   const el=$('tr_'+slot); if(!el) return;
-  const v=(parseInt(el.value||'0',10)||0)+d;
+  const v=Math.max(-200,Math.min(200,(parseInt(el.value||'0',10)||0)+d));
   el.value=v; cmd('man','Yt'+slot+' '+v);
 }
 function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
@@ -4788,7 +4857,8 @@ async function tarikSekali(){
   $('galat').style.display=d.galat?'block':'none'; if(d.galat)$('galat').textContent=d.galat;
   $('versi').textContent='v '+d.versi;
   $('mode').className='kendali';
-  $('mode').textContent='KENDALI - SEMUA PERINTAH LANGSUNG KE TEENSY, TANPA FILTER';
+  $('mode').textContent=d.manual?'Manual aktif · otomasi dihentikan':'Mode misi · aktifkan Manual untuk kendali arah';
+  if(window.operatorUpdate) window.operatorUpdate(d);
   // State yang belum diprogram diberi warna kuning DAN label. Tanpa label,
   // robot yang diam di sini tidak bisa dibedakan dari robot yang sedang
   // menunggu sensor -- dan operator menunggu sesuatu yang tidak akan datang.
@@ -5007,6 +5077,7 @@ async function tarikSekali(){
 }
 tarik(); setInterval(tarik,300);
 </script>
+<script src="/operator.js"></script>
 """
 
 
@@ -5071,6 +5142,17 @@ class Bersama:
 
     def perintah(self, k, v):
         with self.kunci:
+            if k == "op_jog":
+                try:
+                    v = json.loads(v)
+                    if not isinstance(v, dict):
+                        return
+                    v["received"] = time.monotonic()
+                except (ValueError, TypeError):
+                    return
+                self.antre_perintah = deque((a, b) for a, b in self.antre_perintah if a != "op_jog")
+            if k in ("stop", "lemas", "abort", "op_release", "op_exit"):
+                self.antre_perintah = deque((a, b) for a, b in self.antre_perintah if a != "op_jog")
             self.antre_perintah.append((k, v))
 
     def ambil_perintah(self):
@@ -5118,6 +5200,9 @@ def buat_handler(bersama: Bersama):
             jalur = urlparse(self.path).path
             if jalur in ("/", "/index.html"):
                 self._kirim(200, "text/html; charset=utf-8", HALAMAN.encode())
+            elif jalur in ("/operator.css", "/operator.js"):
+                tipe = "text/css" if jalur.endswith("css") else "application/javascript"
+                self._kirim(200, tipe + "; charset=utf-8", Path(__file__).with_name(jalur[1:]).read_bytes())
             elif jalur == "/state":
                 self._kirim(200, "application/json",
                             json.dumps(bersama.get_state()).encode())
@@ -5251,6 +5336,9 @@ def rakit_state(misi, link, kalib, juri, stats, armed, pesan_kalib, kamera=None,
 
     return {
         "armed": armed,
+        "operator": operator_snapshot(link),
+        "manual": getattr(misi, "manual", False),
+        "manual_owner": getattr(misi, "operator_owner", ""),
         "misi": kelas_misi,
         "state": misi.state,
         "state_desc": FSM[misi.state][0],
@@ -5576,6 +5664,8 @@ def main():
                     t_poll = time.time()
                     link.kirim("m", armed, rutin=True)
                     link.kirim("l", armed, rutin=True)
+                    if operator_state(link)["profile"] is not None:
+                        link.kirim("T?", armed, rutin=True)
                 # Tabel kompas diminta SEKALI tiap sambungan, bukan tiap poll.
                 # Angkanya tidak berubah sendiri -- ia cuma berubah kalau ada
                 # yang mengetik c0..c3 atau E, dan keduanya lewat tombol yang
@@ -5584,26 +5674,8 @@ def main():
                 if link.hidup and not link._kompas_diminta:
                     link._kompas_diminta = True
                     link.kirim("k", armed, rutin=True)
-                    # JEDA CONDONG DINOLKAN TIAP SAMBUNGAN, 17 Sep 2026.
-                    #
-                    # `condong.jeda` dan `condong.yaw` hidup di EEPROM Teensy,
-                    # jadi menyetel cerminnya di Pi saja tidak mengubah apa
-                    # pun sampai ada yang menekan "Kirim + simpan". Sesudah
-                    # trial arena jeda itu harus hilang TANPA menunggu tombol,
-                    # dan tanpa perlu flash ulang firmware.
-                    #
-                    # RAM SAJA -- tidak ada 'W' di sini. Menulis EEPROM tiap
-                    # kali kabel USB dicolok akan memakai jatah tulisnya untuk
-                    # angka yang sudah benar, dan menghapus setelan arena yang
-                    # mungkin sengaja ditinggalkan operator. Dikirim ulang tiap
-                    # sambungan, jadi reset Teensy pun tidak mengembalikannya.
-                    for _nm, _v in (("condong.jeda", kalib.condong_jeda_ms),
-                                    ("condong.yaw", kalib.condong_yaw)):
-                        link.kirim(f"Q{_nm} {_v:g}", armed, paksa=True)
-                    link.log.append(
-                        f"[CONDONG] condong.jeda {kalib.condong_jeda_ms:g} ms, "
-                        f"condong.yaw {kalib.condong_yaw:g} dikirim (RAM). "
-                        f"Fase kosong sebelum capit menutup dihapus.")
+                    # Baca dahulu: reconnect tidak boleh menimpa kalibrasi EEPROM.
+                    # Setelan condong Pi masih bisa dikirim lewat tombol khususnya.
 
                 # --- vision HANYA di state tertentu ---
                 dets, lolos = [], []
@@ -5868,11 +5940,15 @@ def main():
                 # dibalik, tiap pemicu tertunda satu frame -- kecil, tapi di
                 # sini satu frame itu satu perintah gerak yang terlanjur
                 # terkirim ke state yang sudah tidak berlaku.
-                tangani_pemicu(misi, link, aksi, kalib, armed, kamera)
+                if not getattr(misi, "manual", False):
+                    tangani_pemicu(misi, link, aksi, kalib, armed, kamera)
+                else:
+                    link.pemicu_baru = False
 
                 # --- FSM & antrean perintah ---
-                langkah_fsm(misi, link, aksi, kalib, armed, pid, w, diam,
-                            kamera)
+                if not getattr(misi, "manual", False):
+                    langkah_fsm(misi, link, aksi, kalib, armed, pid, w, diam,
+                                kamera)
                 aksi.putar(armed, boleh=not (misi.halt or misi.jeda))
 
                 # --- perintah dari halaman web ---
@@ -5884,14 +5960,18 @@ def main():
                 BOLEH_SAAT_HALT = {
                     "stop", "lepas_stop", "lemas", "abort", "pause", "mode",
                     "reset", "kalib", "simpan_kalib", "kirim_condong",
-                    "restart", "slot", "gagal",
+                    "restart", "slot", "gagal", "op_read", "op_release", "op_exit",
                 }
                 for k, v in bersama.ambil_perintah():
+                    if k in ("stop", "lemas", "abort", "mulai"):
+                        misi.manual = False
                     if misi.halt and k not in BOLEH_SAAT_HALT:
                         link.log.append(f"[HALT] '{k}' ditolak -- tekan "
                                         f"'Lepas STOP' dulu")
                         continue
-                    if k == "mode":
+                    if k.startswith("op_"):
+                        operator_command(k, v, link, misi, aksi)
+                    elif k == "mode":
                         # Sisa dari mode BACA yang sudah dihapus. Tombolnya
                         # tidak ada lagi, tapi halaman lama yang masih terbuka
                         # di tab browser bisa saja mengirimnya.
@@ -6355,7 +6435,10 @@ def main():
                                     if sah and baru not in sah:
                                         raise ValueError(f"pilihannya {sah}")
                                 else:
-                                    baru = type(lama)(float(nilai))
+                                    angka = float(nilai)
+                                    if not math.isfinite(angka):
+                                        raise ValueError("angka harus terhingga")
+                                    baru = type(lama)(angka)
                                 setattr(kalib, nama, baru)
                                 link.log.append(f"[KALIB] {nama}: {lama} -> {baru}")
                             except ValueError:

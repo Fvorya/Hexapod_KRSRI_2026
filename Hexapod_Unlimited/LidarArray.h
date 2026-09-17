@@ -64,6 +64,12 @@ public:
     // padahal pindaiannya sendiri melaporkan modulnya "ADA".
     void pindaiI2C();
 
+    // UJI PIN, bukan uji bus. Dipanggil lewat 'I1' saat bus mati dan yang
+    // dipertanyakan tinggal pin Teensy-nya sendiri. Tidak memakai peripheral
+    // I2C sama sekali -- murni GPIO, jadi ia menjawab pertanyaan yang tidak
+    // bisa dijawab pindaiI2C().
+    void periksaPinBus();
+
     // JEJAK: kumpulkan statistik mentah satu/semua channel selama beberapa
     // detik, lalu ringkas. Satu cuplikan 'l' tidak bisa membedakan hantu yang
     // MENETAP (crosstalk / benda terpasang di depan sensor) dari hantu yang

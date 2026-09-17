@@ -1,7 +1,16 @@
 # CLAUDE.md — Handoff
 
-Repo: `program-krsri-misi`, branch `misi-tabel`. Hexapod KRSRI / SAR UNLIMITED
-2026, Teensy 4.1.
+Repo: `Hexapod_KRSRI_2026`, branch `hexapod-v1.18`. Hexapod KRSRI / SAR
+UNLIMITED 2026, Teensy 4.1.
+
+**Tata letak, dirapikan 18 Sep 2026.** Firmware v1.18 datang ke sini sebagai
+`Hexapod_Unlimited_v1.18/Hexapod_Unlimited/` di samping pohon lama
+(`Hexapod_Unlimited/` dengan `Mission.cpp`, garis Ver1_8 yang berhenti 6 Sep).
+Dua firmware dalam satu repo berarti ada dua jawaban untuk "yang mana yang
+di-flash", jadi yang baru dipindah ke `Hexapod_Unlimited/` dan yang lama
+dibuang — ia tetap ada di riwayat dan di branch `origin/Ver1_8`. Sesudah
+pemindahan, seluruh path di dokumen ini dan di ketiga skrip `cek_*` berlaku
+apa adanya dari akar repo; sebelumnya tidak.
 
 Catatan ini merangkum **keputusan arsitektur dan status fitur** dari sesi
 12–14 September 2026. Ia tidak mengulang apa yang sudah dijelaskan kode atau
@@ -12,30 +21,62 @@ hampir selalu memuat tabel ukurannya.
 
 ## Cara memverifikasi sebelum commit
 
-Setiap perubahan firmware diuji di PC lebih dulu. Stub Arduino ada di
-`../test-pc/stub/` (`Arduino.h` hanya punya `Serial` dan `Serial2`, tidak ada
-`Serial1`). `Calib::applyDefaults()` **wajib** dipanggil di tiap program uji —
-tanpanya `gParam[]` nol semua dan angka apa pun yang keluar tidak berarti.
+Setiap perubahan firmware diuji sebelum di-flash. Empat pemeriksaan, semuanya
+jalan di mesin ini tanpa robot, **diverifikasi 18 Sep 2026**:
 
 ```sh
-export PATH="/c/msys64/ucrt64/bin:$PATH"
-cp Hexapod_Unlimited/Hexapod_Unlimited.ino "$CLAUDE_JOB_DIR/tmp/_ino.cpp"
-g++ -std=gnu++17 -O1 -I../test-pc/stub -IHexapod_Unlimited -fsyntax-only \
-    -Wall -Wextra -Wno-unused-parameter Hexapod_Unlimited/*.cpp "$CLAUDE_JOB_DIR/tmp/_ino.cpp"
+# 1. COMPILE SUNGGUHAN untuk papan sasaran. Ini menggantikan
+#    'g++ -fsyntax-only' di atas stub: yang ini memakai inti Teensy yang asli,
+#    jadi ia ikut menangkap yang stub tidak bisa -- Wire2, Serial.addMemoryForRead,
+#    dan batas RAM1/RAM2.
+arduino-cli compile -b teensy:avr:teensy41 --warnings all Hexapod_Unlimited
 
-# tiap cek_*.cpp dilink dengan seluruh Hexapod_Unlimited/*.cpp + stubdefs.cpp
+# 2. TABEL LINTASAN: mata angin hasil hitungan, jangkar Ver1_8, invarian tabel.
 python cek_tabel_misi.py
+
+# 3. JATAH WAKTU SEKUENS LENGAN terhadap ARM_SLEW_DEG_S & LENGAN_JEDA_MS.
+python cek_lengan_laju.py
+
+# 4. KEPUTUSAN KOREKSI (NavKoreksi.h). Tidak butuh stub -- ia hanya bergantung
+#    math.h, dan itu memang sebabnya ia berkas sendiri.
+export PATH="/c/msys64/ucrt64/bin:$PATH"
+g++ -std=gnu++17 -Wall -Wextra -IHexapod_Unlimited -o /tmp/cek_koreksi \
+    cek_koreksi.cpp && /tmp/cek_koreksi
+
+# 5. HUD Raspi, 1087 pemeriksaan. detect.py di-stub oleh tesnya sendiri, jadi
+#    ONNX dan kamera tidak dibutuhkan.
+python moses/test_mission_hud.py
 ```
 
-Program uji: `cek_kail`, `cek_korban`, `cek_lengan`, `cek_geser`,
-`cek_setel_profil`, `cek_penggaris_sisi`, dan `cek_tabel_misi.py`.
+**Yang TIDAK ada di repo ini, jangan dicari:** `../test-pc/stub/` beserta
+`cek_kail`, `cek_korban`, `cek_lengan`, `cek_geser`, `cek_setel_profil`, dan
+`cek_penggaris_sisi`. Keenamnya tertinggal di `program-krsri-misi` — `test-pc/`
+ada di `.gitignore`, jadi ia tidak pernah ikut saat firmware v1.18 dipindah ke
+sini. Angka yang mereka jaga (amplop pose korban, batas KAIL, laju geser)
+karena itu **tidak lagi diperiksa apa pun di repo ini**; yang tersisa hanya
+catatan hasilnya di `config.h`. Kalau salah satu angka itu disetel, pindahkan
+dulu program ujinya ke sini bersama stub-nya.
+
+`Calib::applyDefaults()` **wajib** dipanggil di tiap program uji yang me-link
+firmware — tanpanya `gParam[]` nol semua dan angka apa pun yang keluar tidak
+berarti. (Tidak berlaku untuk keempat cek di atas: tiga yang pertama tidak
+me-link firmware sama sekali, dan `cek_koreksi` hanya menyentuh header murni.)
 
 Dua jebakan yang berulang di sesi ini:
 
-- Beberapa berkas `Hexapod_Unlimited/` memakai **CRLF** (`Navigation.cpp`,
-  `Misi.cpp`), sementara `config.h` memakai LF. Penyuntingan berbasis jangkar
-  multi-baris harus menyesuaikan akhir barisnya, kalau tidak jangkarnya tidak
-  ketemu.
+- **Akhir baris: LF di repo, CRLF di disk.** Diukur byte per byte 18 Sep 2026:
+  blob HEAD punya 0 byte `0x0D`, sedangkan salinan di disk ber-CRLF karena
+  `core.autocrlf=true` mengonversinya saat checkout. Konversi yang sama
+  mengembalikannya ke LF saat `git add`, jadi ini bukan masalah — tapi
+  penyuntingan berbasis jangkar multi-baris tetap harus memakai akhir baris
+  yang ada **di disk**, bukan yang ada di repo.
+
+  Catatan lama di sini berbunyi "`Navigation.cpp` dan `Misi.cpp` CRLF,
+  `config.h` LF". Itu keliru, dan cara mengukurnya yang keliru: `grep -c`
+  menghitung **baris yang memuat** CR, bukan byte CR, jadi berkas LF dan
+  salinan CRLF-nya sama-sama melapor angka yang sama. Yang membuktikannya
+  `tr -cd '\r' | wc -c`. `.gitattributes` sekarang memaku LF di repo supaya
+  mesin yang `autocrlf`-nya mati tidak bisa mengirim CRLF ke dalam commit.
 - Heredoc shell memakan satu garis miring terbalik walaupun dikutip. Untuk
   menyisipkan `\n` literal ke dalam kode, pakai penampung (`B = chr(92)`) lalu
   ganti.

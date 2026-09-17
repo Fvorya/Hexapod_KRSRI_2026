@@ -27,8 +27,57 @@ public:
     void begin();
     void update();                       // hitung legTargets
     void setMoveVector(float vx, float vy, float vyaw); // -1..1 strafe, maju, putar
-    void setProfile(const GaitProfile& p) { _tgtProf = p; }  // di-ramp di update()
+    // MENGHAPUS offset kaki. Profil biasa berlaku untuk KEENAM kaki sama
+    // rata, jadi memasang profil apa pun berarti "kembali ke bentuk seragam".
+    // Satu aturan, dan tidak ada profil yang bisa lupa membersihkannya --
+    // yang butuh bentuk tak seragam memanggil setOffsetKaki() SESUDAH ini.
+    void setProfile(const GaitProfile& p) {
+        _tgtProf = p;
+        for (int i = 0; i < 6; i++) _tgtOff[i] = { 0.0f, 0.0f, 0.0f };
+    }
+
+    // OFFSET PER KAKI, mm, di frame BADAN (+y depan, +z atas), ditambahkan ke
+    // posisi netral kaki. Inilah satu-satunya cara menyatakan bentuk yang
+    // TIDAK seragam: standHeight dan standRadius masing-masing satu angka
+    // untuk enam kaki, jadi "kaki belakang naik, kaki depan maju" tidak bisa
+    // ditulis dengan keduanya berapa pun nilainya.
+    //
+    // Di-ramp dengan tau yang sama dengan profil, dan ikut dihitung
+    // profilTenang() -- jadi tunggu LiDAR di Misi otomatis ikut menunggunya.
+    void setOffsetKaki(const Vec3 off[6]) {
+        for (int i = 0; i < 6; i++) _tgtOff[i] = off[i];
+    }
     GaitProfile profile() const { return _prof; }
+    GaitProfile targetProfile() const { return _tgtProf; }
+
+    // Posisi NETRAL telapak (frame badan), sesudah profil DAN offset per kaki
+    // ikut di-ramp. Dipakai Hexapod untuk mengambil sudut lutut pose berdiri
+    // saat lutut dikunci -- dengan begitu bentuk BERDIRInya tetap persis dan
+    // hanya ayunannya yang berubah.
+    Vec3 footHome(int i) const { return _footHome[i]; }
+
+    // PROFIL SUDAH SAMPAI DI TARGETNYA? Ramp lerpf tidak pernah benar-benar
+    // mendarat, jadi yang ditanya bukan "sama persis" melainkan "selisihnya
+    // sudah di bawah 1 mm" -- di bawah itu badan tidak lagi bergerak sejauh
+    // yang bisa dilihat sensor mana pun.
+    //
+    // cycleTime SENGAJA tidak ikut diperiksa: satuannya milidetik, bukan
+    // milimeter, jadi satu ambang tidak bisa mengurus keduanya -- dan ia
+    // TIMING, tidak memindahkan badan sedikit pun.
+    //
+    // Yang membutuhkannya: Misi, sebelum membaca LiDAR di ruas yang baru saja
+    // berganti profil. Selama badan turun/naik, berkas sensor ikut berayun.
+    bool profilTenang() const {
+        for (int i = 0; i < 6; i++) {
+            if (fabsf(_off[i].x - _tgtOff[i].x) >= 1.0f) return false;
+            if (fabsf(_off[i].y - _tgtOff[i].y) >= 1.0f) return false;
+            if (fabsf(_off[i].z - _tgtOff[i].z) >= 1.0f) return false;
+        }
+        return fabsf(_prof.standHeight - _tgtProf.standHeight) < 1.0f &&
+               fabsf(_prof.standRadius - _tgtProf.standRadius) < 1.0f &&
+               fabsf(_prof.stepHeight  - _tgtProf.stepHeight)  < 1.0f &&
+               fabsf(_prof.stepLength  - _tgtProf.stepLength)  < 1.0f;
+    }
 
     // ODOMETRI. Jarak bertanda yang sudah ditempuh badan sejak jarakNol();
     // mundur mengurangi. Dihitung dari fase gait dan vektor gerak yang sudah
@@ -39,7 +88,20 @@ public:
     // Laju maju sesaat, mm/detik, bertanda. Memakai skala slip yang sama
     // dengan odometer, jadi ia ikut terkalibrasi oleh pengukuran meteran.
     float lajuMmS() const { return _lajuMmS; }
-    void  jarakNol()      { _jarakMm = 0.0f; }
+    // GESER: jarak lateral bertanda, kanan(+)/kiri(-). Sumbu ini sudah ada di
+    // setMoveVector() sejak awal tapi tidak pernah diakumulasi, jadi tidak ada
+    // satu pun cara mengetahui robot sudah bergeser berapa jauh.
+    float geserMm() const { return _geserMm; }
+
+    // LINTASAN: panjang jejak yang sudah ditempuh telapak, SELALU BERTAMBAH.
+    // Inilah yang layak dipakai rem jarak, dan bukan _jarakMm: yang terakhir
+    // itu bertanda, jadi saat MUNDUR ia mengecil dan perbandingan
+    // "jarak >= sasaran" tidak akan pernah benar -- robot mundur tanpa henti.
+    // Geser murni juga tidak menambahnya sama sekali. Keduanya sudah terbukti
+    // di lantai, 6 September 2026.
+    float lintasMm() const { return _lintasMm; }
+
+    void  jarakNol()      { _jarakMm = _geserMm = _lintasMm = 0.0f; }
 
     // Faktor slip. Dikalikan pada tiap PENAMBAHAN, bukan saat dibaca, supaya
     // menyetelnya di tengah jalan tidak menulis ulang jarak yang sudah
@@ -52,12 +114,15 @@ public:
 
 private:
     GaitProfile _prof, _tgtProf;     // profil aktif (di-ramp) & target
+    Vec3 _off[6], _tgtOff[6];        // offset per kaki (di-ramp) & target
     Vec3 _footHome[6];               // posisi netral ujung kaki (frame badan)
     float _tgtX, _tgtY, _tgtYaw;     // vektor gerak target
     float _curX, _curY, _curYaw;     // vektor gerak aktual (di-slew)
     bool _running;
     float _phase;
-    float _jarakMm  = 0.0f;   // odometri, mm, bertanda
+    float _jarakMm  = 0.0f;   // odometri maju, mm, bertanda
+    float _geserMm  = 0.0f;   // odometri geser, mm, bertanda (kanan +)
+    float _lintasMm = 0.0f;   // panjang lintasan, mm, selalu bertambah
     float _lajuMmS  = 0.0f;   // laju maju sesaat, mm/detik
     float _skalaOdo = ODO_SKALA_DEF;   // koreksi slip; diukur 1,0, ditimpa 'Ds'
     unsigned long _lastUpdate;

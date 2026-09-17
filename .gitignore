@@ -25,3 +25,10 @@ test-pc/
 *.bak
 *.bak[0-9]
 *.bak_*
+
+# Cache Python -- moses/ dijalankan langsung, .pyc tidak pernah dibutuhkan repo.
+__pycache__/
+*.pyc
+
+# Keadaan perkakas Command Code (settings + taste). Milik mesin ini, bukan repo.
+.commandcode/

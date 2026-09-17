@@ -189,7 +189,7 @@ basis = f"http://127.0.0.1:{srv.server_address[1]}"
 
 with urlopen(basis + "/") as r:
     halaman = r.read().decode()
-cek("GET / -> 200 HTML", "MISSION HUD" in halaman, True)
+cek("GET / -> 200 HTML", "Panel operator" in halaman, True)
 with urlopen(basis + "/state") as r:
     balik = json.load(r)
 cek("GET /state -> JSON sama", balik["state"], st["state"])
@@ -1468,7 +1468,7 @@ _tabs = h[h.index("<div id=tabs>"):h.index("<script>")]
 cek("20 kartu terdistribusi di dalam tab",
     len(re.findall(r'<div class=card[ >]', _tabs)), 20)
 cek("div seimbang", h.count("<div"), h.count("</div>"))
-for nama in ("Robot", "Misi", "Korban", "Manual", "Kalibrasi"):
+for nama in ("Kontrol", "Misi", "Korban", "Terminal", "Kalibrasi"):
     cek(f"tab '{nama}' ada", f">{nama}</button>" in h, True)
 # Tab Robot tidak boleh lagi menumpuk 9 kartu
 awal = h.index("<!-- 0. ROBOT -->")
@@ -3829,9 +3829,9 @@ cek("'t<x> 0 0' masih dipakai (geser badan)",
     'f"t{sasar:.0f} 0 0"' in _src86, True)
 cek("'O<der>' masih dipakai (pivot badan)", 'f"O{' in _src86, True)
 
-# Jeda condong dikirim SENDIRI tiap sambungan, tanpa menunggu tombol.
-cek("condong.jeda dikirim otomatis saat sambung",
-    '"condong.jeda", kalib.condong_jeda_ms' in _src86, True)
+# Reconnect menghormati nilai yang disetel dan disimpan lewat editor Teensy.
+cek("reconnect tidak menimpa kalibrasi condong",
+    'link.kirim(f"Q{_nm} {_v:g}"' in _src86, False)
 cek("  dan RAM saja -- tidak ada 'W' otomatis kedua",
     _src86.count('aksi.jadwal(("W", 0.6))'), 1)
 

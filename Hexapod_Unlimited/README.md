@@ -6,8 +6,118 @@ Firmware Teensy 4.1 untuk robot hexapod berkaki enam: gait tripod, kinematika in
 
 ---
 
+## 0. HARUS DIKERJAKAN — per 6 September 2026
+
+Daftar ini yang menentukan apakah robot bisa berangkat, bukan bagian 15 di bawah
+(itu utang firmware jangka panjang). Urutannya urutan kerja: yang di atas
+memblokir yang di bawah.
+
+**Lomba 18–19 September 2026.**
+
+### A. Memblokir `m1` (misi penuh menolak berangkat)
+
+1. ~~Tujuh panjang ruas masih `-1`.~~ **SELESAI** — diperiksa 18 Sep 2026
+   dengan `python cek_tabel_misi.py`: tidak ada satu pun ruas yang belum
+   diukur, jadi `tabelSiap()` tidak lagi memblokir `m1` karena sebab ini.
+   Jalankan cek itu lagi tiap kali tabel disentuh; ia mencetak kolom cm
+   seluruh ruas tanpa perlu robot.
+
+   Yang **belum** selesai dan tidak kelihatan dari situ: angka-angka itu
+   diukur pada profil gait yang berlaku saat itu, dan **mengganti profil
+   membatalkan panjang ruasnya** (pelajaran ruas 3, lihat kepala `Misi.cpp`).
+   Ruas 22 (R-9) yang kini `PRF_TANJAK` dengan panjang langkah 45 mm — bukan
+   60 mm milik profil waktu 103 cm dihitung — adalah tersangka pertamanya.
+2. **`c0` WAJIB dicatat menghadap arah lorong pertama dari HOME.** Ini aturan
+   prosedur, bukan utang firmware — dan sejak 7 September ia dikunci: indeks 0
+   kompas arena adalah jangkar seluruh tabel lintasan, karena `Misi` menyemai
+   arah ruas pertama dengan `MISI_ARAH_BERANGKAT = 0`. Dicatat menghadap tembok
+   lain, SELURUH kolom arah mutlak bergeser sejak ruas pertama dan robot
+   berjalan ke arah yang salah tanpa satu pun gejala di log.
+
+   Yang **bukan** masalah, walau sempat ditulis begitu di sini: arah hadap awal
+   yang diminta juri. Juri menentukan robot menghadap tembok yang mana di HOME,
+   bukan ke mana lorong pertama pergi — lorongnya tidak berpindah. Hadap awal
+   sudah ditangani `ruasMasuk()`, yang memanggil `pivotKompas(_arah[0])` sebelum
+   ruas 0 berjalan (aturan pokok 5 di `Misi.h`). Karena itu tidak ada perintah
+   serial untuk menggeser benihnya: knob yang nilainya tidak pernah selain 0
+   hanya menambah cara kedua menyatakan hal yang sama, dan cara kedua itulah
+   yang membuat orang mengoreksi dua kali.
+
+   Penjaganya sekarang tercetak, bukan cuma tertulis: `c0` mengingatkan
+   konvensinya saat dicatat, dan `m1`/`m4`/`m6` menyebut arah berangkatnya di
+   baris pertama sebelum robot melangkah.
+
+### B. Belum pernah diuji di robot
+
+3. **Perintah `V` dan ruas `HNT_SISI` belum pernah menggerakkan robot ini.**
+   Kompilasinya bersih (`--warnings all`, 0 peringatan), itu saja.
+   Uji pertama **di lantai terbuka, bukan lorong sempit**: berdirikan robot
+   dengan dinding kanan di ~25 cm lalu `V16`.
+4. **Seluruh lintasan baru (ruas 4 ke bawah) belum pernah ditempuh.** Satu-
+   satunya ruas yang pernah lolos utuh adalah ruas 8 tabel LAMA, dan ruas itu
+   sudah tidak ada. Jalankan sepotong-sepotong dengan `m4 <awal> <akhir>`,
+   jangan `m1`.
+
+### C. Bahaya yang sudah diketahui dan belum ditutup
+
+5. **Hantu sensor depan belum terjawab.** Di satu titik yang sama, menghadap
+   SELATAN `j5` memberi 340 sampel 100% signal fail (benar untuk ruang kosong);
+   menghadap BARAT, 340 sampel sah semua di 83–91 mm — benda padat yang mantap
+   di tempat yang operator pastikan kosong. Empat ruas berhenti pada sensor ini
+   (`HNT_DEPAN`: 12, 14, 24) dan bisa berhenti seketika di tempat yang salah
+   tanpa gejala lain. **Ruas 14 yang paling dicurigai** — ia menghadap TIMUR,
+   arah yang dua kali menggagalkan ruas lama dengan "halangan di depan".
+   Kalau ruas itu berhenti tanpa ada tembok: ganti ke `HNT_ODO` + `abaikanDepan`.
+6. **R-9 (tangga, ruas 19) belum pernah berhasil.** Dicoba 6 September, gagal
+   di 62 dari ~103 cm, robot harus diangkat tangan. Tiga cara sudah dicoba dan
+   ketiganya cacat (catatannya lengkap di kepala `Misi.cpp`). Yang **belum**
+   dicoba: kompensasi pose badan `r0 <-pitch> 0`. Tangga bernilai 150 poin
+   tanpa korban / 300 dengan korban — rintangan termahal di arena. Tidak ada
+   perintah mundur yang aman di tengahnya: **minta keputusan user sebelum
+   menjalankannya.**
+7. **Parameter kemudi sekarang jadi BAWAAN — tidak perlu dipasang ulang.**
+   `wall.setpoint 16` dan `wall.min 9` masuk ke tabel `Calib.cpp` 7 September,
+   dan `CALIB_VERSION` naik 9 → 10 supaya blob lama di EEPROM (setpoint 19 /
+   min 15, lolos CRC) tidak dimuat kembali. Konsekuensinya **seluruh parameter
+   lain di blok itu kembali ke bawaan** — periksa dengan `L` sesudah flash
+   pertama.
+
+   `wall.min 9` melanggar peringatan lama "jangan di bawah 12", dan itu
+   disengaja: pada 12 ke atas pita "terlalu dekat" JENUH di 1,0 sepanjang
+   lorong 45 cm, membuang kendali PD dan menggantinya dorongan penuh yang
+   bergantian sisi — itulah robot yang berjalan kiri-kanan. Hitungannya
+   lengkap di `Calib.cpp` pada baris `wall.min`. Yang dibayar: penjaga
+   dinding-dekat praktis mati (kaki menyentuh di 11 cm, penjaga baru menyala
+   di 9). Obat sebenarnya tapak yang lebih sempit, dan itu menuntut ukur ulang
+   tiap ruas yang pindah profil.
+
+   Sesudah flash robot tetap boot **lemas**: `b` dulu, dan periksa heading
+   karena flash memutar badan ~15°.
+8. **Capit terpasang dan sekuensnya AKTIF** (`LENGAN_KORBAN_AKTIF 1`).
+   `AKS_AMBIL`/`AKS_TARUH` menjalankan enam fase yang sebenarnya, bukan lagi
+   berhenti kosong, dan pose sendinya (`KORBAN_*`) dibidik di robot 15–17 Sep.
+   Yang masih **tebakan** dan ditandai begitu di `config.h`: panjang rahang
+   capit (`HAND_LENGTH` menaruh POROS grip di sasaran, bukan titik jepitnya)
+   dan `KORBAN_TINGGI_MM 40`. K-4 **tidak lagi dilewati** — tabel 30 baris
+   mengambilnya di ruas 19 dan menaruhnya di SZ-4 (ruas 25); aritmetika dua
+   capit untuk lima korban ada di blok KAPASITAS CAPIT, dan `tabelSiap()`
+   mensimulasikannya tiap `m1`.
+
+### D. Yang belum diverifikasi ulang sesudah perombakan
+
+9. **Ruas 24 (SZ-5/FINISH) `HNT_DEPAN 40` belum pernah diperiksa**, dan SZ-5 ada
+   di bidang miring — berkas sensor depan di sana menembak lantai.
+10. **Ruas 20 (R-10) masih `PRF_MERUNDUK` dan belum pernah dijalani.** Profil
+    yang sama sudah gagal di M1 (robot berhenti di tengah turunan) sampai
+    diganti `PRF_DATAR`. R-10 bidang miring juga: curigai hal yang sama.
+    Kalau mau mencoba MERUNDUK lagi, naikkan panjang langkahnya, jangan tinggi
+    badannya.
+
+---
+
 ## Daftar isi
 
+0. [**HARUS DIKERJAKAN**](#0-harus-dikerjakan--per-6-september-2026)
 1. [Arsitektur](#1-arsitektur)
 2. [Perangkat keras & bus](#2-perangkat-keras--bus)
 3. [Boot aman: robot menyala dalam keadaan lemas](#3-boot-aman-robot-menyala-dalam-keadaan-lemas)
@@ -64,8 +174,9 @@ perintah serial / Navigation
 | `HexaServos.*` | Dua PCA9685, gerbang keselamatan PWM, stagger/ramp saat menyalakan |
 | `HexaArm.*` + `ArmInverse.*` | Dua lengan 2-DOF + penjepit, IK planar 2 link |
 | `Imu.*` | Parser protokol WIT (Yahboom 10-axis) |
-| `LidarArray.*` | 6× VL53L0X lewat mux TCA9548A, round-robin non-blokir, filter |
+| `LidarArray.*` | 6× VL53L1X lewat mux TCA9548A, round-robin non-blokir, filter |
 | `Navigation.*` | Kompas arena, pivot, ikut-dinding — semuanya state machine non-blokir |
+| `Misi.*` | Lapisan misi kontes. Lintasannya **tabel data** (`RUAS[]`), bukan satu state per potongan. Lihat [`MISI.md`](MISI.md) |
 | `Calib.*` | Blob parameter & kalibrasi servo di EEPROM 0 |
 | `EEMap.h` | Tata letak EEPROM + penjaga `static_assert` |
 | `config.h` | Konstanta perangkat keras & geometri |
@@ -731,7 +842,7 @@ Gejala lapangan: sedang ikut dinding, di depan tidak ada apa-apa, robot tiba-tib
 Rantai sebabnya pendek dan seluruhnya bisa dilacak:
 
 1. Sensor robot ini melaporkan **"tak ada objek dalam jangkauan" sebagai bacaan ~5 cm berstatus `RangeValid`** — bukan sebagai `SignalFail`. Ini diketahui dari uji fisik: jangkauan akurat ~70 cm, dan di luar itu angkanya jatuh ke 5 cm, bukan membesar.
-2. `depan = 5` lolos semua penyaring dan masuk ke cabang `depan <= FRONT_STOP_CM (20)`.
+2. `depan = 5` lolos semua penyaring dan masuk ke cabang `depan <= FRONT_STOP_CM` (20 saat itu, kini 12).
 3. Cabang itu menjalankan `turn = −sisi × NAV_BELOK_CMD`. Untuk mode `F` (dinding kanan, `sisi = −1`) hasilnya **+0,60 = berputar ke kiri**. Persis yang terlihat.
 
 `wall.hantu` (v8) tidak menolong: ia hanya dipasang di jalur sensor **samping**. Sensor depan tidak pernah terlindungi.
@@ -903,7 +1014,9 @@ Topang robot, ketik `b`. Lalu `d` untuk memeriksa seluruh rantai IK per kaki. Ko
 `B` untuk demo sapuan 6 sumbu. Telapak tidak boleh menyeret di lantai. Periksa arah tiap sumbu dengan `r`/`t` sebelum menyalahkan gait.
 
 **Langkah 4 — kompas arena.**
-Hadapkan robot ke Utara, hidupkan aliran `y`, tunggu angkanya tenang, baru `c0`. Ulangi `c1`–`c3`. Simpan dengan `e`.
+Hadapkan robot ke **arah lorong pertama dari HOME** — bukan utara magnet — hidupkan aliran `y`, tunggu angkanya tenang, baru `c0`. Ulangi `c1`–`c3`, tiap kali seperempat putaran searah jarum jam. Simpan dengan `e`.
+
+Nama `UTARA`/`TIMUR`/`SELATAN`/`BARAT` di seluruh firmware hanyalah panggilan untuk indeks 0–3 kompas arena; tidak satu pun menunjuk mata angin magnet. Indeks 0 adalah jangkar tabel lintasan — lihat bagian 0 butir 2.
 
 **Langkah 5 — kalibrasi pivot.**
 `C` (memblokir, biarkan selesai) lalu **`S`** untuk menyimpan. Tanpa `S` hasilnya hilang saat reset. Periksa dengan `K`.
@@ -985,6 +1098,7 @@ Setel dulu jarak dindingnya (§7.9): berdirikan robot di samping dinding, atur d
 | `C[siklus]` | Kalibrasi pivot — **masih memblokir** sampai selesai |
 | `S` | Simpan hasil `C` ke EEPROM 2048 |
 | `K` | Tabel kalibrasi gerak |
+| `V<cm>` | **Ratakan ke dinding samping**: geser menyamping sampai sensor sisi membaca `<cm>`. `V16` = dinding KANAN, `V-16` = dinding KIRI. Syarat hentinya dibaca **tiap tick**, jadi robot berhenti di tengah langkah — inilah satu-satunya cara meminta perpindahan menyamping yang pasti, karena `w` menyamping terkuantisasi satu langkah gait penuh. Ditolak kalau sensor sisinya buta, atau kalau sasarannya di bawah `wall.min`. Ruas misi `HNT_SISI` memakai mesin yang sama |
 
 ### Lengan
 | | |
@@ -1192,9 +1306,9 @@ Gabungan keduanya membuat femur digerakkan ke **+35,1° (NAIK)** di keenam kaki 
 * **Verifikasi arah ch0 dan ch2 dengan `l`.** Keenam LiDAR sudah hidup (September 2026), tapi pemetaan arah kedua channel ini berasal dari ramalan pola dan belum pernah diuji langsung — dulu tidak bisa, karena keduanya yang rusak. Mode `f` / `F` mengemudi dari ch0, jadi ini yang pertama diperiksa.
 * **Stabilisasi badan dari IMU** (`setStabilization`) masih dikomentari. Body kinematics-nya sudah siap dan ter-ramp — tinggal menyambungkan roll/pitch IMU ke `setBodyRotation()` (jangan menulis `_roll`/`_pitch` langsung; ramp sudah menangani perataan, jadi low-pass `STAB_TAU` tidak perlu). Dua hal **harus diuji fisik dulu**: (a) sumbu IMU belum tentu sejajar dengan frame robot — cocokkan dengan `r`/`B`; (b) `stab.sign_roll` / `stab.sign_pitch` di `Calib` belum dipakai sama sekali.
 * **`kalibrasiPivot()` masih memblokir**, tapi memang tidak ada yang perlu disela. Ini satu-satunya jalur pemblokir yang tersisa.
-* **Menggabungkan kompas arena dengan ikut-dinding** — "ikut dinding sampai lorong habis, lalu pivot ke Utara" — belum ada, tapi sekarang jauh lebih dekat: keduanya sudah jadi mode di state machine yang sama.
-* **Deteksi korban** belum ada sama sekali.
-* **Jalur yang tidak terhubung ke perintah apa pun:** `profileStairs()` / `profileCrouch()` / `profileNarrow()`, `Hexapod::jog()` beserta `TUNE_PIN_MAP`, `Calib::begin()`, `Hexapod::legAngles()` (dipakai harness), `Imu::tare()` / `rollDeg()` / `pitchDeg()` / `accelZ()` / `magMagnitude()`, `Hexapod::armDepan()` / `armBelakang()`, dan `Navigation::degCCW()` / `degCW()` / `mmMaju()` / `pivotTerkalibrasi()`.
+* **Deteksi korban** belum ada sama sekali. Selama capit juga belum terpasang, ruas korban di `Misi.cpp` hanya berhenti sejenak lalu lanjut; sekuens lengan lengkapnya sudah ditulis di sana dalam komentar.
+* **Panjang ruas yang belum diukur.** Tabel `RUAS[]` sudah terisi untuk angka yang ada di guidebook (R-4, R-5, R-6, R-9, R-10, M1); sisanya `-1` dan misi menolak berangkat sampai diukur dengan `m7 <idx> <cm>`. **Arah kompas tiap ruas juga masih turunan dari gambar guidebook, belum dari pengukuran arena.**
+* **Jalur yang tidak terhubung ke perintah apa pun:** `Hexapod::jog()` beserta `TUNE_PIN_MAP`, `Calib::begin()`, `Hexapod::legAngles()` (dipakai harness), `Imu::tare()` / `rollDeg()` / `pitchDeg()` / `accelZ()` / `magMagnitude()`, `Hexapod::armDepan()` / `armBelakang()`, dan `Navigation::degCCW()` / `degCW()` / `mmMaju()`. (`profileStairs()` / `profileCrouch()` / `profileNarrow()` dan `pivotTerkalibrasi()` sekarang dipakai `Misi.*`.)
 * **Konstanta mati:** `STAB_MAX_DEG`, `STAB_DEADBAND_DEG`, `STAB_TAU`, `CONTROL_HZ`, `PROFILE_LOOP`, `SERVO_FREQ`, `HEAD_UTARA`/`TIMUR`/`SELATAN`/`BARAT`, plus slot `K_STAB_SIGN_ROLL` / `K_STAB_SIGN_PITCH` / `K_ARENA_MIRROR`. Menghapus slot `K_*` menuntut kenaikan `CALIB_VERSION`, jadi biarkan sampai stabilisasi disambung.
 * **`Imu::_ax` dan `_ay`** diisi tiap frame akselerometer lalu tidak pernah dibaca siapa pun.
 * Belum ada perintah **reset ke default**. `Calib::applyDefaults()` juga mereset `offset`/`trim`/`invert`, jadi memanggilnya saat berjalan akan membuang data ServoMap sampai boot berikutnya — perlu dipasangkan dengan `loadServoMap()` bila mau dibuka.
