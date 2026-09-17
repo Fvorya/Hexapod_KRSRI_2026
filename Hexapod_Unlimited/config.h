@@ -1020,6 +1020,37 @@ const uint8_t LIDAR_MIN_CM[6] = {
 #define IMU_SERIAL       Serial2
 #define IMU_BAUD         230400   // Yahboom 10-axis (protokol WIT, frame 0x55)
 
+// --- DETEKSI TERGULING ----------------------------------------------------
+//
+// KETIGA ANGKA DI BAWAH BELUM DIUKUR. Ini titik awal untuk disetel DI ROBOT,
+// bukan hasil pengukuran -- dan salah setel berarti robot menyerah di tanjakan
+// yang seharusnya ia naiki.
+//
+// accelZ mentah sudah lama dibaca dan dicetak aliran 'y'; komentar di sana
+// menuliskannya sendiri: itulah SATU-SATUNYA angka yang tahu papan IMU
+// menghadap ke mana (+1 g tegak, -1 g terbalik). Sampai sekarang tidak ada
+// yang bertindak atasnya -- padahal robot ini menaiki tangga dengan margin
+// guling 29,4 mm (cek_kail MERAH, CLAUDE.md). Kalau ia terguling di tengah
+// misi, gait TETAP berjalan dan servo TETAP memaksa kaki ke sasaran IK yang
+// sudah tidak berarti apa-apa; yang rusak bisa lebih dari skornya.
+//
+// URUTAN PERCAYA: accelZ DULU, roll belakangan. roll datang dari fusi yang
+// mengandalkan magnetometer; di arena berangka besi itu jauh lebih mudah
+// dibohongi daripada satu sumbu percepatan. Saat robot benar-benar terguling,
+// |az| jatuh ke sekitar nol karena gravitasi pindah ke sumbu lain -- itulah
+// tanda yang dipakai.
+//
+// ROLL SENGAJA JAUH DARI KEMIRINGAN ARENA. Profil TANJAK bekerja pada 27,7 der
+// (lihat blok KAIL di atas) dan itu NORMAL. Ambang yang mendekatinya membuat
+// robot menyerah di tanjakan -- karena itu 45, bukan 30.
+//
+// Saklar MATI disediakan karena ini MENAMBAH satu cara baru misi bisa berhenti
+// sendiri: saat menyetel ambangnya di robot, orang harus bisa mematikannya.
+#define TERGULING_AKTIF      1        // 0 = MATI. Baku HIDUP.
+#define TERGULING_AZ_G       0.5f     // BELUM DIUKUR: |accelZ| di bawah ini
+#define TERGULING_ROLL_DEG  45.0f     // BELUM DIUKUR: |roll| di atas ini
+#define TERGULING_TUNDA_MS   400      // BELUM DIUKUR: harus bertahan selama ini
+
 // Batas parkir menunggu Raspi, milidetik.
 //
 // VISI: sesudah '#KORBAN AMBIL' terkirim, firmware diam menunggu 'm2'. Habis

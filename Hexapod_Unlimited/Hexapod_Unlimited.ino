@@ -1655,6 +1655,9 @@ static void handleCmd(char* s) {
             Serial.println("KESELAMATAN & DIAGNOSTIK:");
             Serial.println("  x      : LEMAS -- PWM mati, servo bebas");
             Serial.println("  d      : Dump kalibrasi + hasil IK per kaki");
+            Serial.println("  TERGULING: |accelZ|<0.5 g ATAU |roll|>45 der selama 400 ms -> misi");
+            Serial.println("             batal + servo LEMAS sendiri. Ambang TERGULING_* di config.h,");
+            Serial.println("             ketiganya BELUM DIUKUR. Matikan dengan TERGULING_AKTIF 0.");
             break;
 
         default:
@@ -1819,6 +1822,76 @@ void setup() {
 }
 
 // ====================================================================
+// DETEKSI TERGULING
+//
+// accelZ MENTAH sudah dibaca dan dicetak sejak awal (aliran 'y'), dan komentar
+// di sana menuliskannya sendiri: itulah satu-satunya angka yang tahu papan IMU
+// menghadap ke mana (+1 g tegak, -1 g TERBALIK). Tidak ada yang bertindak
+// atasnya -- padahal robot ini menaiki tangga dengan margin guling 29,4 mm
+// (cek_kail MERAH, CLAUDE.md).
+//
+// Kenapa perlu: kalau robot terguling di tengah misi, gait TETAP berjalan dan
+// servo TETAP memaksa kaki ke sasaran IK yang tidak berarti apa-apa lagi.
+//
+// accelZ DIPERCAYA LEBIH DULU daripada roll, dan itu bukan selera: roll datang
+// dari fusi yang mengandalkan magnetometer, sementara accelZ cuma satu sumbu
+// percepatan. Di arena berangka besi accelZ jauh lebih sulit dibohongi -- dan
+// saat robot benar-benar terguling, |az| jatuh ke sekitar nol karena gravitasi
+// pindah ke sumbu lain.
+//
+// roll SENGAJA tidak dipasang dekat kemiringan arena: profil TANJAK bekerja
+// pada 27,7 der dan itu NORMAL. Itu sebabnya ambangnya 45, bukan 30.
+//
+// Ini MENAMBAH satu cara baru misi bisa berhenti sendiri, jadi ia punya saklar
+// (TERGULING_AKTIF) -- saat menyetel ambangnya di robot, orang harus bisa
+// mematikannya.
+// ====================================================================
+#if TERGULING_AKTIF
+static bool     tergulingWaspada = false;   // syarat sudah benar, sedang menghitung
+static uint32_t tergulingT0      = 0;
+static bool     tergulingLapor   = false;
+
+static void tergulingUpdate() {
+    // Robot LEMAS bukan sedang terguling -- ia sedang ditopang di meja. Tanpa
+    // penjaga ini, tiap kali robot diangkat miring dalam keadaan lemas
+    // ambangnya menyala.
+    if (!robot.isArmed()) {
+        tergulingWaspada = false; tergulingLapor = false;
+        return;
+    }
+    // Angka IMU yang belum ada bukan bukti apa-apa: accelZ() mengembalikan 0
+    // sebelum frame pertama masuk, dan 0 itu MEMENUHI syarat terguling.
+    if (!imu.hasData()) { tergulingWaspada = false; return; }
+
+    const bool tegak  = fabsf(imu.accelZ()) >= TERGULING_AZ_G;
+    const bool miring = fabsf(imu.rollDeg()) > TERGULING_ROLL_DEG;
+    if (tegak && !miring) {
+        tergulingWaspada = false; tergulingLapor = false;
+        return;
+    }
+
+    const uint32_t now = millis();
+    if (!tergulingWaspada) { tergulingWaspada = true; tergulingT0 = now; return; }
+    if (tergulingLapor) return;                       // sudah ditangani sekali
+    if (now - tergulingT0 < TERGULING_TUNDA_MS) return;
+
+    tergulingLapor = true;
+    gerakSampai = 0;
+    gerakMaju = gerakGeser = 0.0f;
+    misi.batal("robot TERGULING.");
+    nav.navBerhenti("robot TERGULING.");
+    robot.disarm();       // PWM mati: robot berhenti memaksa kakinya
+    Serial.println("\n!! TERGULING TERDETEKSI !!");
+    Serial.print("   accelZ "); Serial.print(imu.accelZ(), 2);
+    Serial.print(" g, roll ");  Serial.print(imu.rollDeg(), 1);
+    Serial.println(" der, bertahan lebih dari tunda.");
+    Serial.println("   Servo DILEMASKAN. Ambangnya TERGULING_* di config.h -- BELUM DIUKUR;");
+    Serial.println("   setel di robot, atau matikan dengan TERGULING_AKTIF 0.");
+    tampilan.pesan("TERGULING - servo lemas");
+}
+#endif  // TERGULING_AKTIF
+
+// ====================================================================
 // PROFIL WAKTU LOOP ("PROF avg/max/util")
 //
 // Janji PROFILE_LOOP di config.h akhirnya ditepati: satu putaran loop()
@@ -1897,6 +1970,12 @@ void loop() {
     goyangUpdate();
     yawStreamUpdate();
     lidarStreamUpdate();
+
+    // 2b. KESELAMATAN: robot terguling? Ditaruh SEBELUM misi & navigasi supaya
+    //     keduanya tidak keburu memerintahkan langkah lagi di putaran yang sama.
+#if TERGULING_AKTIF
+    tergulingUpdate();
+#endif
 
     // 3. MISI lalu NAVIGASI OTONOM (keduanya non-blokir).
     //    URUTAN PENTING: misi lebih dulu. Keduanya membaca sampel LiDAR
