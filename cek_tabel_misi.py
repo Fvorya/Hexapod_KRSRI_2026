@@ -153,7 +153,10 @@ def main():
             awas.append("ruas %d HNT_PUNCAK tapi profilnya %s -- PUNCAK menunggu "
                         "badan MIRING dulu, dan di ruas datar itu tidak pernah "
                         "terjadi" % (i, profil))
-        if henti in ("HNT_DEPAN", "HNT_PUNCAK") and 0 <= cm <= front_stop:
+        # PUNCAK dengan cm 0 SAH: artinya "gyro sendirian", dinding depan
+        # dimatikan. HNT_DEPAN tidak punya arti itu -- di sana 0 salah tulis.
+        if ((henti == "HNT_DEPAN" or (henti == "HNT_PUNCAK" and cm > 0))
+                and 0 <= cm <= front_stop):
             salah.append("ruas %d ambang depan %d <= FRONT_STOP_CM %d" % (i, cm, front_stop))
         # Cermin tabelSiap(). Sekuens AMBIL memainkan sudut sendi TETAP dan
         # tidak pernah bertanya di mana korbannya, jadi sesuatu harus

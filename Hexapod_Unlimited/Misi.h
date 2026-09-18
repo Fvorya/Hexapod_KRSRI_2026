@@ -127,14 +127,25 @@ enum Henti : uint8_t {
 // tangga, karena di sana badan memang datar; dan berkas LiDAR depan yang
 // menyentuh muka anak tangga pertama akan mengakhirinya juga.
 //
-// `nilai` satuannya sama dengan HNT_DEPAN: cm ke dinding di depan. Di R-9 yang
-// dibaca dinding seberang, yang baru terlihat sesudah robot sampai di atas.
+// `nilai` satuannya sama dengan HNT_DEPAN: cm ke dinding di depan. NOL berarti
+// dinding depan DIMATIKAN -- gyro sendirian.
+//
+// R-9 memakai 0 sejak 18 Sep 2026. Dicoba dengan 40 lebih dulu, dan di
+// tanjakan berkas depan sering mengenai MUKA ANAK TANGGA alih-alih dinding
+// seberang: ruasnya berakhir di tengah pendakian. Gerbang mendaki tidak
+// menolong -- begitu robot benar-benar mendaki, gerbang terbuka dan anak
+// tangga berikutnya langsung memicu.
 // Ambang gyro TIDAK di tabel melainkan di config.h (PUNCAK_*): ia milik robot
 // dan pemasangan IMU-nya, bukan milik satu ruas.
 //
 // IMU BISU -> gerbang mendaki dilewati dan hanya LiDAR depan yang berlaku.
 // Menunggu gyro yang tidak pernah datang berarti robot berjalan sampai batas
 // waktu ruas, di tangga.
+//
+// TAPI DENGAN `nilai` 0, JALAN KELUAR ITU IKUT TERTUTUP: IMU bisu dan dinding
+// dimatikan berarti TIDAK ADA yang mengakhiri ruas, dan yang tersisa cuma
+// batas waktu ruas -- di tanjakan. tabelSiap() memperingatkannya saat 'm1',
+// bukan membiarkannya ditemukan di arena.
 
 // HNT_MUNDUR vs HNT_BELAKANG -- keduanya membaca sensor yang SAMA dan
 // artinya berlawanan. Salah pilih berarti robot berjalan ke arah yang salah,
