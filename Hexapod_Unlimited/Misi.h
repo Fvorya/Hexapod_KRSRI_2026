@@ -556,6 +556,10 @@ private:
     // sesudah dipakai sekali. Tidak ada perhitungan tambahan: yang
     // dikerjakannya cuma MELEWATI penulisan ulang titik nol.
     bool     _lanjutRuas   = false;
+
+    // Keadaan saklar cermin saat _arah[]/_serong[] terakhir dihitung. Dipakai
+    // segarkanArah() untuk tahu kapan cache itu basi.
+    bool     _arahCermin   = false;
     // MISI_KONFIRM dipakai DUA hal dengan ujung berbeda: ruas AKS_KONFIRM
     // (-> ruasBerikut) dan parkir vision (-> MISI_LENGAN). Ini yang
     // membedakannya. Tanpa pembeda ini 'm2' akan MELOMPATI pengambilannya dan
@@ -586,6 +590,10 @@ private:
     void salinBaris(uint8_t ke, const Ruas& dari);   // + nama ke kolam RAM
 
     void hitungArah();
+
+    // Hitung ulang _arah[]/_serong[] BILA saklar cermin berubah sejak
+    // perhitungan terakhir. Murah saat tidak berubah: satu perbandingan bool.
+    void segarkanArah();
     float headingRuas(uint8_t i) const;
 
 public:

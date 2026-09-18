@@ -1289,8 +1289,15 @@ float Misi::selisihYaw() const {
 // tercermin. Harganya satu pembacaan float per pemakaian, dan itu tidak ada
 // artinya dibanding sekali salah arah.
 //
-// hitungArah() dipanggil ulang tiap 'm1' dan 'm4', jadi membalik saklar lalu
-// menjalankan misi sudah cukup -- tidak ada yang perlu dimuat ulang tangan.
+// _arah[] dan _serong[] TIDAK ikut dibaca hidup-hidup: keduanya cache, diisi
+// hitungArah(), dan sampai 19 Sep 2026 tidak ada yang menghitungnya ulang saat
+// saklar dibalik. Akibatnya persis yang dilaporkan R2C: kolom kemudi ikut
+// tercermin -- ia dibaca hidup -- tapi ruas 1 tetap berbelok KIRI, karena
+// sasaran pivotnya datang dari cache yang lahir sebelum saklar dibalik.
+//
+// Komentar lama di sini menulis bahwa hitungArah() dipanggil ulang tiap 'm1'
+// dan 'm4'. Itu TIDAK pernah benar, dan justru komentar itu yang membuat
+// cacatnya tidak terlihat. Sekarang segarkanArah() yang menegakkannya.
 bool Misi::arenaCermin() { return gParam[K_ARENA_MIRROR] >= 0.5f; }
 
 Belok Misi::belokRuas(uint8_t i) const {
@@ -1312,7 +1319,12 @@ float Misi::putarRuas(uint8_t i) const {
     return arenaCermin() ? -RUAS[i].putar : RUAS[i].putar;
 }
 
+void Misi::segarkanArah() {
+    if (arenaCermin() != _arahCermin) hitungArah();
+}
+
 void Misi::hitungArah() {
+    _arahCermin = arenaCermin();
     uint8_t a = MISI_ARAH_BERANGKAT;
     float   s = 0.0f;
     for (uint8_t i = 0; i < RUAS_N; i++) {
@@ -1748,6 +1760,10 @@ void Misi::mulaiDari(uint8_t idx, uint8_t sampai) {
         Serial.print(" ada SEBELUM ruas awal "); Serial.println(idx);
         return;
     }
+    // Saklar cermin boleh dibalik kapan saja SELAMA misi tidak berjalan, dan
+    // arah tiap ruas turunan dari saklar itu. Disegarkan di sini, sebelum
+    // tabelSiap() -- pemeriksa itu sendiri membaca arah.
+    segarkanArah();
     if (!tabelSiap(idx, sampai)) return;
     _iAkhir = sampai;
 
@@ -2966,6 +2982,9 @@ void Misi::cetakRuas(uint8_t idx) {
 }
 
 void Misi::tabel() {
+    // Kolom belok/kemudi dibaca hidup, kolom arah datang dari cache. Tanpa
+    // baris ini keduanya bisa bercerita berbeda di layar yang sama.
+    segarkanArah();
     Serial.println("\n--- TABEL LINTASAN ---");
     // MODE CERMIN DIUMUMKAN DI KEPALA TABEL. Tanpa baris ini, satu-satunya
     // tanda bahwa robot menjalankan cerminnya adalah kolom belok/kemudi yang
