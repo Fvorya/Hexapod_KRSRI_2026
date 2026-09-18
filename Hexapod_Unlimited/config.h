@@ -548,8 +548,22 @@
 //   3. NAIK  = kira-kira separuh selisih tengah-tanjakan terhadap garis dasar.
 //      DATAR = sisa simpangan di atas, dilebihkan sedikit.
 //   4. Baca juga 'l' di atas untuk mengisi kolom `nilai` ruasnya.
-#define PUNCAK_NAIK_DEG     8.0f   // BELUM DIUKUR: |pitch-awal| di atas ini = MENDAKI
-#define PUNCAK_DATAR_DEG    3.0f   // BELUM DIUKUR: turun ke bawah ini = DI ATAS
+// DIUKUR DI ROBOT 18 Sep 2026, aliran 'y' di tangga sungguhan:
+//
+//     kaki anak tangga (awal ruas)  pitch  -9,4   <- acuan
+//     seluruh kaki di tangga        pitch  18,5   simpang 27,9
+//     selesai menaiki (di R-10)     pitch  -4,1   simpang  5,3
+//
+// Simpang 5,3 di puncak, bukan 0: R-10 memang "puing+lumpur miring", jadi
+// tempat mendarat itu sendiri tidak datar. Itulah kenapa ambangnya diukur, dan
+// kenapa memakai pitch MUTLAK akan gagal di sini.
+//
+// NAIK 15  -- di tengah ketinggalan 12,9 der dari 27,9, dan puncak 5,3 masih
+//             jauh di bawahnya. Kira-kira separuh jalan antara keduanya.
+// DATAR 10 -- puncak 5,3 lewat dengan sisa 4,7 der; pendakian 27,9 tidak
+//             pernah mendekatinya. Jarak 5 der ke NAIK itu histeresisnya.
+#define PUNCAK_NAIK_DEG    15.0f   // |pitch-awal| di atas ini = MENDAKI
+#define PUNCAK_DATAR_DEG   10.0f   // turun ke bawah ini = SUDAH DI ATAS
 #define PUNCAK_DATAR_MS      400   // BELUM DIUKUR: harus bertahan selama ini
 
 #define KAIL_TINGGI_BADAN   100.0f  // BUKAN 115 milik TANGGA -- lihat tabel
