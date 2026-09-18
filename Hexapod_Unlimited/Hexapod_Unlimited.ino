@@ -500,6 +500,21 @@ static void handleCmd(char* s) {
                 Serial.println("NAIK TANGGA dibatalkan -- sensor depan TIDAK jadi diabaikan.");
                 break;
             }
+            // HEADING DIKUNCI KE SELATAN. R-9 menanjak ke SELATAN, dan sudut
+            // itulah yang dipakai koreksi berhenti-dulu -- bukan lagi sepasang
+            // sensor sisi, yang di tanjakan melapor NaN karena badan menunduk.
+            //
+            // SELATAN kebal cermin: pencerminan menukar TIMUR dan BARAT,
+            // sementara UTARA dan SELATAN tetap. Jadi baris ini tidak perlu
+            // bercabang seperti sisi dindingnya di atas.
+            const float hSel = nav.headingArah(2);   // 2 = SELATAN
+            if (isnan(hSel)) {
+                Serial.println("  Awas: SELATAN belum dicatat kompas ('c2' lalu 'e').");
+                Serial.println("  Koreksi berhenti-dulu jatuh kembali ke sudut DINDING,");
+                Serial.println("  dan itu menuntut 'Y0' di tempat ini juga.");
+            } else {
+                nav.kunciHeading(hSel);
+            }
             nav.remJarakPasang(p[0]);
             nav.abaikanDepan(true);
             // PALING AKHIR bersama abaikanDepan: navMulai() yang menolak tidak

@@ -1582,16 +1582,38 @@ void Navigation::navUpdate() {
     // bukan misi. Mode tidak berganti berarti rem jarak ikut selamat, dan rem
     // itu memakai lintasCm() yang tidak bertambah selagi robot diam.
     if (_koreksiDiam) {
-        const float phi   = sudutDinding(ikutKiri);
+        // SUDUTNYA DARI KOMPAS BILA HEADING DIKUNCI, dari dinding bila tidak.
+        // Diminta R2C 18 Sep 2026 sesudah koreksi diam saja di tangga.
+        //
+        // Di tanjakan, sepasang sensor sisi berhenti bisa dipercaya. Badan
+        // menunduk ~28 der, jadi berkas depan dan belakang mengenai dinding di
+        // ketinggian yang jauh berbeda; selisihnya melewati SISI_BEDA_MAKS_CM
+        // karena KEMIRINGAN, bukan karena robot menyerong, dan sudutDinding()
+        // menjawab NaN. Ditambah biasnya sendiri RAM saja: tiap reset kembali
+        // ke WALL_BIAS_*_CM 2,0 sementara ukuran di robot bilang sekitar -0,2,
+        // yaitu geseran tetap 11 der. Dua-duanya membuat koreksi tidak pernah
+        // menyala, dan keduanya hilang kalau acuannya kompas.
+        //
+        // Kompas tidak punya keduanya: ia tidak peduli badan menunduk, tidak
+        // punya bias yang lupa diukur, dan SELATAN kebal cermin -- pencerminan
+        // menukar TIMUR/BARAT sementara UTARA dan SELATAN tetap.
+        const float kunci = headingTerkunci();
+        const bool  pakaiKompas = !isnan(kunci);
+        const float phi   = pakaiKompas ? simpangHeading(kunci)
+                                        : sudutDinding(ikutKiri);
         // jarakSisi() memakai -1,0 sebagai "kedua sensor bisu", BUKAN NaN.
         // NavKoreksi.h mengerti NaN saja, dan -1 yang lolos apa adanya terbaca
         // sebagai dinding 20 cm terlalu dekat: bidikannya ter-clamp ke arah
         // yang salah dan koreksinya tidak pernah selesai. Diterjemahkan di
         // sini, di satu tempat, bukan di dalam header yang tidak tahu soal
         // sentinel milik Navigation.
-        const float jrkMentah = jarakSisi(ikutKiri);
+        // JARAK TIDAK DIPAKAI SAAT KOMPAS. Bidik serong ada untuk menutup galat
+        // jarak ke dinding, dan di tanjakan jarak itulah yang paling tidak bisa
+        // dipercaya. Sasarannya jadi murni "hadap SELATAN", bidik 0.
+        const float jrkMentah = pakaiKompas ? NAN : jarakSisi(ikutKiri);
         const float jrk   = (jrkMentah < 0.0f) ? NAN : jrkMentah;
-        const float bidik = navSudutBidik(jrk, WALL_SETPOINT_CM,
+        const float bidik = pakaiKompas ? 0.0f
+                          : navSudutBidik(jrk, WALL_SETPOINT_CM,
                                           NAV_KOREKSI_JARAK_K,
                                           NAV_KOREKSI_BIDIK_MAKS);
         if (!_sedangKoreksi) {
@@ -1599,7 +1621,8 @@ void Navigation::navUpdate() {
                                 NAV_KOREKSI_SUDUT_DEG, NAV_KOREKSI_JARAK_CM)) {
                 _sedangKoreksi = true;
                 _tKoreksi = millis();
-                Serial.print("  KOREKSI: berhenti, sudut ");
+                Serial.print(pakaiKompas ? "  KOREKSI (kompas): berhenti, simpang "
+                                         : "  KOREKSI (dinding): berhenti, sudut ");
                 Serial.print(phi, 1); Serial.print(" der, bidik ");
                 Serial.print(bidik, 1); Serial.print(" der, jarak ");
                 Serial.print(jrk, 0); Serial.println(" cm.");
@@ -1616,7 +1639,9 @@ void Navigation::navUpdate() {
             Serial.print("  KOREKSI MENYERAH sesudah ");
             Serial.print(NAV_KOREKSI_BATAS_MS);
             Serial.print(" ms, sisa sudut "); Serial.print(phi, 1);
-            Serial.println(" der -- jalan lagi. Periksa 'Y0' dan sudutTabel().");
+            Serial.println(pakaiKompas
+                ? " der -- jalan lagi. Periksa kompas ('k') dan IMU."
+                : " der -- jalan lagi. Periksa 'Y0' dan sudutTabel().");
         }
         if (_sedangKoreksi) maju = 0.0f;
     }
