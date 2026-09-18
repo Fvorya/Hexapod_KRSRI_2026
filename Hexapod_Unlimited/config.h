@@ -111,6 +111,21 @@
 // menggerakkan satu capit.
 #define KORBAN_GRIP_BUKA  30.0f
 
+// LEBAR TUTUP CAPIT sekuens korban, persen. BUKAN GRIP_PERSEN_MIN.
+//
+// 7, naik dari 5 (R2C 18 Sep 2026). Sekuens dulu menutup ke GRIP_PERSEN_MIN,
+// yaitu PAGAR SERVO -- batas mekanis MG90S, bukan lebar jepit yang dipilih.
+// Memakai pagar sebagai sasaran berarti rahang menekan sampai mentok tiap kali
+// mencapit, dan servo yang ditahan di ujung jangkauannya menarik arus penuh
+// sepanjang sisa misi: boneka digendong dari K-1 sampai safe zone.
+//
+// Dipisah, bukan dengan menaikkan GRIP_PERSEN_MIN jadi 7. Pagar itu masih
+// dibutuhkan di angka aslinya: 'g5' yang diketik operator harus tetap bisa
+// dikerjakan, dan menaikkan pagar diam-diam membuat perintah itu berbohong.
+// Sama persis alasannya dengan KORBAN_GRIP_BUKA yang terpisah dari
+// GRIP_PERSEN_MAKS di atas.
+#define KORBAN_GRIP_TUTUP  7.0f
+
 // BADAN CONDONG KE DEPAN saat capit turun, mm. Hanya di ruas yang ditandai
 // `condong` di tabel (K-3 dan K-4).
 //
@@ -230,7 +245,7 @@
 
 // TARUH cuma satu pose: dari gendong langsung ke titik lepas.
 #define KORBAN_LEPAS_BAHU    -50.0f
-#define KORBAN_LEPAS_SIKU     40.0f
+#define KORBAN_LEPAS_SIKU     30.0f
 #define KORBAN_LEPAS_PRG     -20.0f
 
 // Pose menggendong, diukur DARI LANTAI dan ke CAPIT. 280 mm itu JAUH DI DEPAN

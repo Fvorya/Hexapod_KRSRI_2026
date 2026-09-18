@@ -551,17 +551,17 @@ const Ruas RUAS[] = {
 /*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
 /*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
 /*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
-/*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     28,              AKS_TIDAK_ADA, 0 },
+/*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
 /*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -30.0f },
 /*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0,         +30.0f },
 /*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
-/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       10,              AKS_TIDAK_ADA, 0 },
+/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
 /*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
 /*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*11*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     15,              AKS_TIDAK_ADA, 0 },
+/*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     18,              AKS_TIDAK_ADA, 0 },
 /*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
-/*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
+/*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
 /*15*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
 /*16*/   { "TIMUR sampai tembok",           BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*17*/   { "R-6 pecah: SELATAN ke SZ-3",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     22,              AKS_TIDAK_ADA, 0 },
@@ -871,7 +871,7 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
                       KORBAN_JEPIT_PRG, "jepit");
             break;
         case 2:
-            robot.setGrip(lengan, GRIP_PERSEN_MIN);
+            robot.setGrip(lengan, KORBAN_GRIP_TUTUP);
             break;
         case 3:   // ANGKAT keluar dari kantong, DAN badan pulang. Diminta
             //    R2C 17 Sep 2026.
