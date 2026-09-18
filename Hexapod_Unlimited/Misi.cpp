@@ -2070,6 +2070,15 @@ void Misi::ruasBerangkat() {
 bool Misi::ruasJalan() {
     const Ruas& x = RUAS[_i];
 
+    // BENDERA LANJUT DIPAKAI SEKALI, dan dihabiskan DI SINI -- bukan di cabang
+    // yang kebetulan mengambilnya. Fungsi ini punya enam jalan keluar, dan
+    // empat di antaranya (LANGSUNG, GESER, SISI, MUNDUR) dulu keluar tanpa
+    // membersihkan benderanya. Akibatnya bukan ruas ini yang salah, melainkan
+    // ruas BERIKUTNYA: ia ikut melewati penulisan titik nol, lalu mengukur
+    // jarak tempuhnya dari titik nol milik ruas sebelumnya.
+    const bool lanjut = _lanjutRuas;
+    _lanjutRuas = false;
+
     _nav.setTengah(kemudiRuas(_i) == KMD_TENGAH);
     _nav.abaikanDepan(x.abaikanDepan);
 
@@ -2084,13 +2093,12 @@ bool Misi::ruasJalan() {
         // SISA, bukan jarak penuh. Mengulang 20 cm geser berarti menempuh 40 cm
         // ke arah yang sama, dan di R-11 arah itu jurang.
         int gsr = (int)_cm[_i];
-        if (_lanjutRuas) {
+        if (lanjut) {
             const int tempuh = (int)_nav.geserTempuhCm();
             gsr -= tempuh;
             Serial.print("  geser dilanjutkan: sudah "); Serial.print(tempuh);
             Serial.print(" cm, sisa "); Serial.print(gsr); Serial.println(" cm.");
             if (gsr < 1) {     // praktis sudah sampai
-                _lanjutRuas = false;
                 _serongT0 = 0;
                 return true;
             }
@@ -2184,11 +2192,10 @@ bool Misi::ruasJalan() {
     // sasarannya BACAAN MUTLAK sensor, jadi mereka melanjutkan sendiri tanpa
     // perlu diberi tahu. Yang benar-benar butuh ini cuma yang menghitung
     // TEMPUH: HNT_ODO lewat _ruasAwal, dan HNT_GESER lewat sisa jaraknya.
-    if (_lanjutRuas) {
+    if (lanjut) {
         Serial.print("  ruas DILANJUTKAN dari ");
         Serial.print(_robot.jarakCm() - _ruasAwal, 0);
         Serial.println(" cm yang sudah ditempuh.");
-        _lanjutRuas = false;
         _serongT0 = 0;
         return true;
     }
