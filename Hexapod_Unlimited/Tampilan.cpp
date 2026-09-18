@@ -13,7 +13,7 @@ static const char* const ARAH_NAMA[4] = { "UTARA", "TIMUR", "SELATAN", "BARAT" }
 
 // Nama pin FISIK, urut indeks tombol. Yang muncul di HUD harus sama dengan
 // yang tercetak di PCB -- operator di arena memegang papan, bukan kode.
-static const char* const TOMBOL_PIN[TOMBOL_N] = { "D2", "D3", "D4", "D5" };
+static const char* const TOMBOL_PIN[TOMBOL_N] = { "D6", "D5", "D4", "D3" };
 
 // Fungsi tiap tombol, [indeks][0 = tekan, 1 = tahan]. HANYA untuk laporan;
 // yang menjalankan tetap switch di tekan() dan tahan(). Dua tempat yang harus
@@ -21,14 +21,27 @@ static const char* const TOMBOL_PIN[TOMBOL_N] = { "D2", "D3", "D4", "D5" };
 // ikut memilih perintah akan menjadi jalur kedua ke dalam robot, dan seluruh
 // file ini berdiri di atas janji bahwa jalur itu cuma satu.
 //
-// Layar DIAM, MUNDUR dan SKOR menimpa fungsi ini -- di sana tombol berarti
-// "buka menu", "batalkan", "tutup". Cabang itu melapor sendiri.
+// Layar DIAM, TANYA, MUNDUR, IMU, PIVOT dan SKOR menimpa fungsi ini -- di sana
+// tombol berarti "nyalakan layar", "ya/batal", "batalkan", "catat/keluar",
+// "kembali", "tutup". Cabang itu melapor sendiri.
+//
+// Teks ini juga yang dibaca operator di LAYAR_TANYA, jadi ia harus menjelaskan
+// akibatnya, bukan namanya. Muat 2 baris x 21 kolom = 42 karakter.
 static const char* const TOMBOL_FUNGSI[TOMBOL_N][2] = {
     { "siapkan: I lalu R lalu b", "JALAN (hitung mundur 1 detik)" },
     { "STOP di ruas kini",        "lanjut dari ruas tersimpan"    },
     { "catat 1 arah kompas",      "kalibrasi pivot"               },
     { "mirror -- BELUM ADA",      "reset ruas & poin ke 0"        },
 };
+
+// Peta pin dibalik sekali (D2..D5 menjadi D6..D3) dan bisa dibalik lagi. Dua
+// tombol di pin yang sama tidak memberi gejala apa pun selain "satu tombol
+// menjalankan dua fungsi", jadi penjaganya di waktu kompilasi.
+static_assert(PIN_TOMBOL_A != PIN_TOMBOL_B && PIN_TOMBOL_A != PIN_TOMBOL_C &&
+              PIN_TOMBOL_A != PIN_TOMBOL_D && PIN_TOMBOL_B != PIN_TOMBOL_C &&
+              PIN_TOMBOL_B != PIN_TOMBOL_D && PIN_TOMBOL_C != PIN_TOMBOL_D,
+              "dua tombol memakai pin yang sama");
+static_assert(TOMBOL_KOMPAS < TOMBOL_N, "TOMBOL_KOMPAS di luar tabel");
 
 void Tampilan::begin(Misi* misi, Skor* skor, void (*kirim)(char*), Navigation* nav) {
     _misi  = misi;
@@ -69,6 +82,21 @@ void Tampilan::begin(Misi* misi, Skor* skor, void (*kirim)(char*), Navigation* n
         Serial.println(" ruas. Samakan SKOR_RUAS[] di Skor.cpp.");
     }
 
+    // LAYAR_TANYA memberi teks fungsi dua baris dari empat: 2 x 21 = 42 kolom.
+    // Kelebihannya tidak membungkus ke baris ketiga -- ia menimpa baris
+    // "lagi=YA lain=batal", yaitu satu-satunya petunjuk cara menjawab. Di sini,
+    // bukan di dalam cabang "OLED ada", dengan alasan yang sama dengan
+    // pemeriksaan di atas: tabelnya paling sering disunting di meja tanpa layar.
+    for (uint8_t i = 0; i < TOMBOL_N; i++) {
+        for (uint8_t j = 0; j < 2; j++) {
+            if (strlen(TOMBOL_FUNGSI[i][j]) > 42) {
+                Serial.print("!! TOMBOL_FUNGSI["); Serial.print(i);
+                Serial.print("]["); Serial.print(j);
+                Serial.println("] lebih dari 42 kolom, layar TANYA terpotong.");
+            }
+        }
+    }
+
     _tCoba = millis();
     _ada = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ALAMAT,
                       false,   // reset: pin RST tidak dipakai (-1 di konstruktor)
@@ -81,7 +109,10 @@ void Tampilan::begin(Misi* misi, Skor* skor, void (*kirim)(char*), Navigation* n
     }
     oled.clearDisplay();
     oled.setTextColor(SSD1306_WHITE);
-    gambar();
+    oled.display();
+    // Panel menyala sesudah begin(). update() yang pertama melihat LAYAR_DIAM
+    // dan langsung mematikannya -- keadaan default adalah layar mati.
+    _nyala = true;
 }
 
 void Tampilan::lapor(uint8_t i, bool tahanan, const char* fungsi) {
@@ -132,8 +163,25 @@ void Tampilan::update() {
         if (_ada) {
             oled.clearDisplay();
             oled.setTextColor(SSD1306_WHITE);
-            Serial.println("OLED terdeteksi -- layar menyala.");
+            _nyala = true;
+            Serial.println("OLED terdeteksi.");
         }
+    }
+
+    // HABIS WAKTU = TIDAK JADI. Layar yang menunggu jawaban manusia mati
+    // sendiri sesudah LAYAR_TIMEOUT_MS tanpa sentuhan, dan kembali ke keadaan
+    // default: panel mati. Tombol yang sudah ditanyakan tapi tidak dijawab
+    // TIDAK dijalankan -- diam bukan persetujuan.
+    //
+    // LAYAR_IMU dan LAYAR_PIVOT sengaja tidak ada di daftar ini: keduanya
+    // dimasuki sesudah konfirmasi dan dikerjakan dengan dua tangan di robot.
+    if ((_layar == LAYAR_MENU || _layar == LAYAR_TANYA || _layar == LAYAR_SKOR)
+        && millis() - _tSentuh >= LAYAR_TIMEOUT_MS) {
+        if (_layar == LAYAR_TANYA) {
+            Serial.print("#TOMBOL "); Serial.print(TOMBOL_PIN[_tanyaIdx]);
+            Serial.println(" HABIS WAKTU -- tidak jadi");
+        }
+        _layar = LAYAR_DIAM;
     }
 
     // Hitung mundur: satu-satunya layar yang bertindak sendiri.
@@ -146,6 +194,28 @@ void Tampilan::update() {
             snprintf(buf, sizeof(buf), "m4 %u", (unsigned)i);
             kirimCmd(buf);
         }
+    }
+
+    // PANEL MATI ADALAH KEADAAN DEFAULT, bukan tulisan "R2C UKSW".
+    //
+    // Panel yang menyala menuntut oled.display() tiap 125 ms, dan tiap
+    // display() mendorong 512 byte framebuffer lewat I2C -- bus yang sama
+    // dengan driver servo (config.h: SERVO_1_I2C_BUS Wire2). Selama tidak ada
+    // yang membacanya, giliran bus itu dibayar untuk apa-apa. DISPLAYOFF
+    // mematikan panel di sisi SSD1306; isi RAM-nya tetap, jadi menyalakan
+    // kembali cuma satu perintah, tanpa begin() ulang.
+    if (_layar == LAYAR_DIAM) {
+        if (_ada && _nyala) {
+            oled.clearDisplay();
+            oled.display();
+            oled.ssd1306_command(SSD1306_DISPLAYOFF);
+            _nyala = false;
+        }
+        return;
+    }
+    if (_ada && !_nyala) {
+        oled.ssd1306_command(SSD1306_DISPLAYON);
+        _nyala = true;
     }
 
     // 8 Hz cukup: layar ini dibaca manusia, dan menggambar OLED lewat I2C
@@ -201,22 +271,81 @@ void Tampilan::bacaTombol() {
     }
 }
 
+// TOMBOL TIDAK LAGI MENJALANKAN APA PUN SECARA LANGSUNG.
+//
+// Dari menu, tekan dan tahan hanya MENANYAKAN: layar memperlihatkan apa yang
+// akan terjadi, dan perintahnya baru jalan kalau tombol yang sama DITEKAN
+// sekali lagi. Menahan tidak menjawab -- jawaban cuma satu gerakan, supaya
+// tidak ada tombol yang menjalankan perintah lewat dua gerakan berbeda. Sebelumnya satu sentuhan tak sengaja di garis start langsung
+// mengirim 'm1'. Yang dijaga bukan cuma salah tekan: dengan panel mati sebagai
+// keadaan default, operator tidak selalu tahu layar mana yang sedang aktif
+// sebelum ia menekan.
+//
+// Pengecualian, semuanya disengaja:
+//   TOMBOL_STOP  tekan = REM. Jalan seketika dari layar mana pun, juga saat
+//                panel mati. Tidak pernah ditanyakan.
+//   LAYAR_DIAM   tekan apa pun cuma menyalakan layar.
+//   LAYAR_MUNDUR tekan apa pun membatalkan -- rem tidak minta konfirmasi.
+//   LAYAR_IMU    tombol kompas mencatat langsung; empat arah lewat delapan
+//                konfirmasi tidak bisa dikerjakan sambil memutar robot.
+//   LAYAR_PIVOT  tombol apa pun kembali ke menu.
+//   LAYAR_SKOR   tombol apa pun menutup.
 void Tampilan::tekan(uint8_t i) {
-    // DARI LAYAR DIAM, tekan apa pun HANYA membuka menu. Perintahnya TIDAK
-    // ikut jalan: robot yang berdiri di garis start tidak boleh bergerak
-    // karena seseorang menyentuh tombol untuk melihat layarnya.
-    if (_layar == LAYAR_DIAM) {
-        lapor(i, false, "buka menu (dari layar diam)");
-        _layar = LAYAR_MENU;
-        return;
-    }
+    _tSentuh = millis();
 
+    // HITUNG MUNDUR DIPERIKSA PALING DULU, mendahului rem di bawahnya. Di sini
+    // robot BELUM berjalan, jadi rem yang benar adalah membatalkan hitung
+    // mundurnya. Mengirim 'm0' saja tidak cukup: aksiTekan() tidak menyentuh
+    // _layar, layarnya tetap LAYAR_MUNDUR, dan hitungannya tetap habis lalu
+    // menjalankan 'm1' -- rem yang justru memberangkatkan robot.
     if (_layar == LAYAR_MUNDUR) {
-        // Tombol apa pun membatalkan hitung mundur. Ini rem, dan rem harus
-        // bisa dijangkau tanpa mengingat tombol mana.
         lapor(i, false, "BATALKAN hitung mundur");
         _layar = LAYAR_MENU;
         pesan("mundur DIBATALKAN");
+        return;
+    }
+
+    // JAWABAN "YA" MENDAHULUI REM, dan hanya untuk tombol yang sedang
+    // ditanyakan. Tanpa urutan ini, TOMBOL_STOP tidak bisa lagi menjawab
+    // pertanyaannya sendiri -- pertanyaan "lanjut dari ruas tersimpan" lahir
+    // dari MENAHAN tombol yang sama, dan cabang rem di bawah akan menelan
+    // tekanan jawabannya. Fungsi lanjut jadi tidak punya tombol sama sekali.
+    //
+    // Yang dibayar: selama layar TANYA untuk TOMBOL_STOP terbuka, menekannya
+    // berarti "ya, lanjut", bukan rem. Jendelanya paling lama 5 detik, dan
+    // hanya ada kalau operator sendiri yang baru saja menahan tombol itu untuk
+    // bertanya. Rem yang tidak pernah kalah tetap ada di tombol lain:
+    // TOMBOL_RESET tahan berhenti dari layar mana pun, tanpa pengecualian.
+    if (_layar == LAYAR_TANYA && i == _tanyaIdx) {
+        lapor(i, _tanyaTahan, "YA -- jalankan");
+        // Kembali ke MENU DULU, baru jalankan: aksi yang punya layarnya
+        // sendiri (MUNDUR, IMU, PIVOT) menimpanya, dan yang tidak punya
+        // mendarat di menu -- yang lalu mati sendiri sesudah 5 detik.
+        _layar = LAYAR_MENU;
+        if (_tanyaTahan) aksiTahan(i); else aksiTekan(i);
+        return;
+    }
+
+    // REM, DARI LAYAR MANA PUN, TERMASUK SAAT PANEL MATI.
+    //
+    // Sengaja mendahului cabang LAYAR_DIAM. Panel mati sesudah 5 detik, jadi
+    // selama misi berjalan panel HAMPIR SELALU mati -- dan kalau rem harus
+    // membangunkan layar dulu, menghentikan robot yang sedang menabrak dinding
+    // butuh dua tekanan. Yang dijaga cabang LAYAR_DIAM adalah robot yang
+    // BERGERAK karena disentuh; 'm0' bergerak ke arah sebaliknya.
+    if (i == TOMBOL_STOP) {
+        lapor(i, false, TOMBOL_FUNGSI[i][0]);
+        _layar = LAYAR_MENU;     // supaya pesannya terlihat, panel ikut menyala
+        aksiTekan(i);
+        return;
+    }
+
+    // DARI LAYAR MATI, tekan apa pun HANYA menyalakan layar. Perintahnya TIDAK
+    // ikut jalan: robot yang berdiri di garis start tidak boleh bergerak
+    // karena seseorang menyentuh tombol untuk melihat layarnya.
+    if (_layar == LAYAR_DIAM) {
+        lapor(i, false, "nyalakan layar (dari panel mati)");
+        _layar = LAYAR_MENU;
         return;
     }
 
@@ -226,17 +355,64 @@ void Tampilan::tekan(uint8_t i) {
         return;
     }
 
-    lapor(i, false, TOMBOL_FUNGSI[i][0]);
+    // SETUP KOMPAS: masuknya sudah dikonfirmasi, dan di dalamnya TIDAK ada
+    // habis waktu. Tombol kompas mencatat arah berikutnya langsung; tombol lain
+    // keluar tanpa menjalankan fungsinya sendiri.
+    if (_layar == LAYAR_IMU) {
+        if (i == TOMBOL_KOMPAS) {
+            lapor(i, false, TOMBOL_FUNGSI[i][0]);
+            aksiTekan(i);
+        } else {
+            lapor(i, false, "keluar dari setup kompas");
+            _layar = LAYAR_DIAM;
+        }
+        return;
+    }
 
+    // KALIBRASI PIVOT berjalan sampai operator mengetik 'S'. Tombol di sini
+    // hanya kembali ke menu. Dulu cabang ini tidak ada: tekanan apa pun jatuh
+    // ke switch di bawah dan menjalankan fungsi tombol saat robot berputar.
+    if (_layar == LAYAR_PIVOT) {
+        lapor(i, false, "kembali ke menu");
+        _layar = LAYAR_MENU;
+        return;
+    }
+
+    // Sampai di sini, layar TANYA berarti tombol LAIN yang ditekan: batal.
+    // Jawaban "ya" sudah ditangani jauh di atas.
+    if (_layar == LAYAR_TANYA) {
+        lapor(i, false, "BATAL -- panel dimatikan");
+        _layar = LAYAR_DIAM;
+        return;
+    }
+
+    minta(i, false);   // LAYAR_MENU: tanya dulu
+}
+
+void Tampilan::minta(uint8_t i, bool tahanan) {
+    _tanyaIdx   = i;
+    _tanyaTahan = tahanan;
+    _layar      = LAYAR_TANYA;
+
+    // Tanda tanya, bukan spasi: di HUD baris ini harus bisa dibedakan dari
+    // baris tombol yang benar-benar menjalankan sesuatu.
+    Serial.print("#TOMBOL ");
+    Serial.print(TOMBOL_PIN[i]);
+    Serial.print(tahanan ? " TAHAN? " : " TEKAN? ");
+    Serial.print(TOMBOL_FUNGSI[i][tahanan ? 1 : 0]);
+    Serial.println(" -- TEKAN tombol sama = YA, lain = batal, 5 detik = batal");
+}
+
+void Tampilan::aksiTekan(uint8_t i) {
     switch (i) {
-        case 0:   // D2 -- siapkan robot
+        case 0:   // D6 -- siapkan robot
             kirimCmd("I");
             kirimCmd("R");
             kirimCmd("b");
             pesan("init, capit nol, berdiri");
             break;
 
-        case 1:   // D3 -- STOP di ruas saat ini
+        case 1:   // D5 -- STOP di ruas saat ini
             _ruasSimpan = _misi ? _misi->ruasKini() : 0;
             kirimCmd("m0");
             {
@@ -282,7 +458,7 @@ void Tampilan::tekan(uint8_t i) {
             }
             break;
 
-        case 3:   // D5 -- lapangan cermin: BELUM ADA
+        case 3:   // D3 -- lapangan cermin: BELUM ADA
             // Tidak mengirim apa pun. 'arena.mirror' memang ada di tabel
             // kalibrasi, tapi bertanda P_BELUM_DIPAKAI -- tidak satu baris pun
             // membacanya. Menukarnya akan mengubah angka di layar tanpa
@@ -294,21 +470,46 @@ void Tampilan::tekan(uint8_t i) {
 }
 
 void Tampilan::tahan(uint8_t i) {
+    _tSentuh = millis();
+
+    // REM KEDUA: berhenti dan nolkan penunjuk ruas serta poin. Alasannya sama
+    // dengan TOMBOL_STOP, dan sama-sama mendahului cabang panel mati. Ia sudah
+    // dijaga ambang tahan 2 detik, jadi salah picu bukan yang dikhawatirkan.
+    if (i == TOMBOL_RESET) {
+        lapor(i, true, TOMBOL_FUNGSI[i][1]);
+        _layar = LAYAR_MENU;
+        aksiTahan(i);
+        return;
+    }
+
     if (_layar == LAYAR_DIAM) {
-        lapor(i, true, "buka menu (dari layar diam)");
+        lapor(i, true, "nyalakan layar (dari panel mati)");
         _layar = LAYAR_MENU;
         return;
     }
 
-    lapor(i, true, TOMBOL_FUNGSI[i][1]);
+    // JAWABAN HANYA LEWAT TEKAN. Menahan di layar TANYA tidak menjawab apa pun
+    // -- juga tidak membatalkan. Tahan adalah gerakan yang sudah punya arti
+    // lain di menu, dan membiarkannya ikut menjawab berarti tombol yang sama
+    // menjalankan perintah lewat dua gerakan berbeda. Yang ditahan di sini
+    // akan habis waktunya seperti layar TANYA yang dibiarkan saja.
+    if (_layar == LAYAR_TANYA || _layar == LAYAR_MUNDUR || _layar == LAYAR_IMU ||
+        _layar == LAYAR_PIVOT  || _layar == LAYAR_SKOR) {
+        lapor(i, true, "tahan tidak berarti di layar ini");
+        return;
+    }
 
+    minta(i, true);    // LAYAR_MENU: tanya dulu
+}
+
+void Tampilan::aksiTahan(uint8_t i) {
     switch (i) {
-        case 0:   // D2 tahan -- JALAN, sesudah hitung mundur pendek
+        case 0:   // D6 tahan -- JALAN, sesudah hitung mundur pendek
             _layar   = LAYAR_MUNDUR;
             _tMundur = millis();
             break;
 
-        case 1:   // D3 tahan -- lanjutkan dari ruas tempat berhenti
+        case 1:   // D5 tahan -- lanjutkan dari ruas tempat berhenti
             {
                 const uint8_t idx = _ruasSimpan;
                 char buf[16];
@@ -326,10 +527,10 @@ void Tampilan::tahan(uint8_t i) {
             pesan("kalibrasi pivot...");
             break;
 
-        case 3:   // D5 tahan -- kembalikan penunjuk ruas ke 0
+        case 3:   // D3 tahan -- kembalikan penunjuk ruas ke 0
             //
             // SLOT INI TADINYA KOSONG. Diisi reset ruas karena 'continue'
-            // pindah ke D3 tahan dan meninggalkan reset tanpa tombol. Katakan
+            // pindah ke D5 tahan dan meninggalkan reset tanpa tombol. Katakan
             // kalau ia lebih baik di tempat lain.
             _ruasSimpan = 0;
             kirimCmd("m0");
@@ -358,14 +559,37 @@ void Tampilan::gambar() {
 
     switch (_layar) {
         case LAYAR_DIAM:
-            // Dua baris ukuran 2 mengisi tinggi 32 tepat (16 + 16). Kolomnya
-            // dihitung, bukan ditebak: ukuran 2 lebarnya 12 px per huruf.
-            oled.setTextSize(2);
-            oled.setCursor((OLED_LEBAR - 3 * 12) / 2, 0);
-            oled.println("R2C");
-            oled.setCursor((OLED_LEBAR - 4 * 12) / 2, 16);
-            oled.println("UKSW");
+            // KOSONG, bukan "R2C UKSW". Keadaan default sekarang panel MATI,
+            // dan update() sudah mengirim DISPLAYOFF sebelum sampai ke sini --
+            // cabang ini hanya dilewati sekali, pada gambar terakhir sebelum
+            // panel padam. Menggambar nama tim tiap 125 ms berarti membayar
+            // giliran I2C untuk tulisan yang tidak melaporkan keadaan apa pun.
             break;
+
+        case LAYAR_TANYA: {
+            // Sisa waktu dibulatkan KE ATAS: "1s" harus masih terlihat selama
+            // detik terakhir, dan hitungan yang melompat dari 1 ke 0 lalu
+            // padam membuat operator mengira ia masih punya waktu.
+            const uint32_t lewat = millis() - _tSentuh;
+            const uint32_t sisa  = (lewat >= LAYAR_TIMEOUT_MS)
+                                       ? 0 : (LAYAR_TIMEOUT_MS - lewat);
+            oled.setTextSize(1);
+            oled.setCursor(0, 0);
+            oled.print(TOMBOL_PIN[_tanyaIdx]);
+            oled.print(_tanyaTahan ? " TAHAN" : " TEKAN");
+            oled.print("     ");
+            oled.print((int)((sisa + 999) / 1000));
+            oled.println("s");
+
+            // Teks fungsi membungkus sendiri ke baris berikutnya: jatah 21
+            // kolom per baris, dan dua baris (y 8 dan y 16) menampung 42.
+            oled.setCursor(0, 8);
+            oled.println(TOMBOL_FUNGSI[_tanyaIdx][_tanyaTahan ? 1 : 0]);
+
+            oled.setCursor(0, 24);
+            oled.println("tekan lagi=YA  batal");
+            break;
+        }
 
         case LAYAR_MUNDUR: {
             const uint32_t sisa = (millis() - _tMundur >= JALAN_MUNDUR_MS)
@@ -395,8 +619,13 @@ void Tampilan::gambar() {
             oled.println(ARAH_NAMA[_arahBerikut]);
             oled.setCursor(0, 16);
             oled.print("sudah: "); oled.print(_arahBerikut); oled.println("/4");
+            // Nama pin diambil dari TOMBOL_PIN[], bukan diketik: peta pin
+            // sudah pernah berubah sekali (D2..D5 menjadi D6..D3), dan
+            // legenda yang menyebut pin yang salah lebih buruk daripada tidak
+            // ada legenda. Tepat 21 kolom.
             oled.setCursor(0, 24);
-            oled.println("D4 = catat arah ini");
+            oled.print(TOMBOL_PIN[TOMBOL_KOMPAS]);
+            oled.println("=catat, lain=keluar");
             break;
 
         case LAYAR_PIVOT:
@@ -408,7 +637,7 @@ void Tampilan::gambar() {
             oled.setCursor(0, 16);
             oled.println("selesai: ketik 'S'");
             oled.setCursor(0, 24);
-            oled.println("D3 = kembali");
+            oled.println("tombol = kembali");
             break;
 
         case LAYAR_SKOR:
@@ -446,11 +675,15 @@ void Tampilan::gambar() {
             oled.print("/5 ");
             oled.println((_skor && _skor->membawa()) ? "BAWA" : "");
 
-            // 18 kolom dari jatah 21. D5 tidak disebut: fungsi tekannya masih
-            // mirror yang belum ada, dan legenda yang menjanjikan tombol mati
-            // lebih menyesatkan daripada legenda yang diam.
+            // 18 kolom dari jatah 21. Tombol keempat tidak disebut: fungsi
+            // tekannya masih mirror yang belum ada, dan legenda yang
+            // menjanjikan tombol mati lebih menyesatkan daripada legenda yang
+            // diam. Nama pin dari TOMBOL_PIN[], supaya peta pin cukup diubah
+            // di satu tempat.
             oled.setCursor(0, 24);
-            oled.println("D2jln D3stop D4imu");
+            oled.print(TOMBOL_PIN[0]); oled.print("jln ");
+            oled.print(TOMBOL_PIN[1]); oled.print("stop ");
+            oled.print(TOMBOL_PIN[2]); oled.println("imu");
             break;
         }
     }

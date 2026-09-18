@@ -7,7 +7,7 @@
 class Misi;
 
 // ====================================================================
-// OLED + EMPAT TOMBOL (D2..D5)
+// OLED + EMPAT TOMBOL (D6..D3)
 //
 // Gunanya satu: menjalankan robot di arena TANPA laptop. Aturan lomba
 // (guidebook bagian 7) menuntut robot dijalankan dengan satu tombol ditekan
@@ -21,6 +21,32 @@ class Misi;
 //
 // Kabel: OLED menumpang Wire (SDA 18 / SCL 19) bersama mux LiDAR, alamat
 // 0x3C. Tombol ke GND, dengan INPUT_PULLUP -- ditekan = LOW.
+//
+// ALUR TOMBOL, sejak v2.0:
+//
+//   panel MATI  --tekan apa pun-->  MENU  --tekan/tahan-->  TANYA
+//                                     ^                       |
+//                                     +--TEKAN tombol sama----+
+//                                                             |
+//   panel MATI  <--tombol lain, atau 5 detik tanpa jawaban-----+
+//
+// Jawabannya selalu TEKAN, walau yang ditanyakan aksi tahan. Menahan di layar
+// TANYA tidak menjawab dan tidak membatalkan; ia habis waktu seperti biasa.
+//
+// DUA REM TIDAK IKUT ALUR INI: TOMBOL_STOP tekan dan TOMBOL_RESET tahan jalan
+// seketika dari layar mana pun, juga saat panel mati.
+//
+// Dua hal yang berubah dan keduanya saling menopang. Panel MATI adalah
+// keadaan default, jadi layar tidak lagi menghabiskan giliran I2C dan waktu
+// loop untuk tulisan yang tidak dibaca siapa pun. Dan karena panel mati,
+// operator tidak bisa lagi memastikan keadaan robot dari layar sebelum
+// menekan -- maka tidak satu pun tombol boleh langsung menjalankan
+// perintahnya. Tombol menanyakan dulu, layar menjawab apa yang akan terjadi,
+// dan diam selama 5 detik berarti TIDAK JADI.
+//
+// Satu akibat yang harus disadari: menu ikut mati sesudah 5 detik, juga saat
+// misi sedang berjalan. Selama robot jalan, HUD di Pi yang jadi layar status,
+// bukan OLED.
 // ====================================================================
 
 // 128x32, BUKAN 128x64. Panel yang terpasang setengah tinggi, dan Adafruit
@@ -47,16 +73,55 @@ class Misi;
 #define OLED_ALAMAT  0x3C
 
 #define TOMBOL_N        4
-#define PIN_TOMBOL_A    2     // D2
-#define PIN_TOMBOL_B    3     // D3
+
+// URUT TERBALIK terhadap v1.18: D6, D5, D4, D3 -- bukan D2..D5. Tata letak PCB
+// menaruh tombol pertama di D6 dan turun ke D3.
+//
+// Yang berubah hanya peta pin dan nama yang dicetak di layar. Seluruh logika
+// memakai INDEKS 0..3, tidak pernah nomor pin, jadi fungsi tiap tombol tetap
+// menempel pada tombol fisik yang sama dan tidak ada tabel lain yang bergeser.
+// Pin 3 dan 6 tidak dipakai modul mana pun: LiDAR di Wire (18/19), OLED dan
+// driver servo di Wire2 (24/25).
+#define PIN_TOMBOL_A    6     // D6
+#define PIN_TOMBOL_B    5     // D5
 #define PIN_TOMBOL_C    4     // D4
-#define PIN_TOMBOL_D    5     // D5
+#define PIN_TOMBOL_D    3     // D3
+
+// Indeks tombol kompas. Dipakai di LAYAR_IMU, yang memperlakukan tombol ini
+// berbeda dari tiga lainnya.
+#define TOMBOL_KOMPAS   2
+
+// REM. Keduanya mengirim 'm0' dan keduanya MELEWATI konfirmasi, di layar mana
+// pun, termasuk saat panel mati. Rem yang minta konfirmasi bukan rem: dua
+// gerakan untuk menghentikan robot yang sedang salah jalan adalah satu gerakan
+// terlalu banyak, dan menekan rem tidak pernah punya akibat yang perlu
+// ditanyakan dulu. Alasan yang sama sudah berlaku untuk pembatalan hitung
+// mundur sejak awal.
+//
+// TOMBOL_STOP tekan  = berhenti di ruas kini, ruasnya disimpan untuk 'lanjut'.
+// TOMBOL_RESET tahan = berhenti DAN penunjuk ruas serta poin kembali ke 0.
+//
+// Yang TIDAK ikut dikecualikan: TOMBOL_STOP tahan ('lanjut dari ruas
+// tersimpan') dan TOMBOL_RESET tekan (mirror). Yang pertama membuat robot
+// berjalan lagi -- itu gas, bukan rem.
+#define TOMBOL_STOP     1
+#define TOMBOL_RESET    3
 
 // Debounce dan ambang tahan. 2 detik sesuai permintaan R2C; cukup lama
 // sehingga tidak ada yang tak sengaja memicu aksi tahan, cukup pendek
 // sehingga tidak terasa seperti robot tidak merespons.
 #define TOMBOL_DEBOUNCE_MS   25
 #define TOMBOL_TAHAN_MS    2000
+
+// Berapa lama layar yang menunggu jawaban manusia boleh menyala tanpa disentuh.
+// Habis waktu = TIDAK JADI, dan layar kembali mati. Layar mati adalah keadaan
+// default, jadi tidak menjawab selalu berarti tidak terjadi apa-apa.
+//
+// LAYAR_IMU dan LAYAR_PIVOT TIDAK memakai batas ini: keduanya dimasuki sesudah
+// konfirmasi, dan operator di sana sedang memutar robot dengan dua tangan --
+// layar yang mati sendiri di tengah pencatatan empat arah kompas membuang
+// pekerjaan yang sudah dikerjakan.
+#define LAYAR_TIMEOUT_MS   5000
 
 // Hitung mundur sebelum berjalan, milidetik.
 //
@@ -69,8 +134,9 @@ class Misi;
 #define JALAN_MUNDUR_MS    1000
 
 enum LayarId : uint8_t {
-    LAYAR_DIAM = 0,   // "R2C UKSW" -- tekan apa saja untuk masuk menu
+    LAYAR_DIAM = 0,   // panel MATI -- tekan apa saja untuk menyalakan
     LAYAR_MENU,       // ruas, state, skor
+    LAYAR_TANYA,      // "mau jalankan ini?" -- tekan lagi = ya
     LAYAR_MUNDUR,     // hitung mundur sebelum m1/m4
     LAYAR_IMU,        // catat 4 arah kompas
     LAYAR_PIVOT,      // kalibrasi pivot berjalan
@@ -107,6 +173,14 @@ private:
     void bacaTombol();
     void tekan(uint8_t i);
     void tahan(uint8_t i);
+
+    // minta() memasang LAYAR_TANYA; aksi*() menjalankan perintahnya. Dipisah
+    // supaya hanya ada SATU tempat yang bisa menjalankan fungsi tombol, dan
+    // tempat itu cuma bisa dicapai lewat jawaban YA.
+    void minta(uint8_t i, bool tahanan);
+    void aksiTekan(uint8_t i);
+    void aksiTahan(uint8_t i);
+
     void gambar();
     void kirimCmd(const char* teks);
 
@@ -121,6 +195,10 @@ private:
     uint32_t _tGambar = 0;
     uint32_t _tCoba   = 0;            // kapan OLED terakhir dicoba lagi
     uint32_t _tMundur = 0;            // kapan hitung mundur mulai
+    uint32_t _tSentuh = 0;            // kapan tombol terakhir ditekan
+    bool     _nyala   = false;        // panel sedang menyala? (DISPLAYON)
+    uint8_t  _tanyaIdx   = 0;         // tombol yang sedang ditanyakan
+    bool     _tanyaTahan = false;     // yang ditanyakan: tekan atau tahan
     uint32_t _tPesan  = 0;            // sampai kapan pesan sementara tampil
     char     _pesan[22] = { 0 };
     uint8_t  _arahBerikut = 0;        // 0..3 -- utara, timur, selatan, barat
