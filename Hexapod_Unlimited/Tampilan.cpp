@@ -523,7 +523,19 @@ void Tampilan::aksiTekan(uint8_t i) {
             // RAM saja. 'W' menyimpannya bersama blok Calib; tanpa itu ia
             // kembali ke 0 saat Teensy reset, dan itu memang lebih aman
             // daripada robot yang menyala langsung dalam mode cermin.
+            //
+            // DITOLAK SELAMA MISI BERJALAN. Saklar ini dibaca TIAP KALI
+            // belokRuas()/kemudiRuas() dipanggil, bukan sekali di awal, jadi
+            // membaliknya di tengah lari menukar kiri dan kanan untuk sisa
+            // ruas saja -- separuh lintasan asli, separuh cerminnya. Robot
+            // tidak akan melapor apa pun; ia cuma berbelok ke arah yang salah
+            // mulai ruas berikutnya. Alasan yang sama dengan penolakan 'm5'
+            // selama berjalan (lihat Misi.h).
             {
+                if (_misi && _misi->berjalan()) {
+                    pesan("misi jalan - cermin dikunci");
+                    break;
+                }
                 const bool ke = (gParam[K_ARENA_MIRROR] < 0.5f);
                 gParam[K_ARENA_MIRROR] = ke ? 1.0f : 0.0f;
                 pesan(ke ? "CERMIN on - kiri/kanan tukar"

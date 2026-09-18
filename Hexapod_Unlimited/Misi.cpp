@@ -588,7 +588,7 @@ const Ruas RUAS_BAKU[] = {
 /*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 30.0f },
 /*25*/   { "R-11 geser KIRI, ukur KANAN",   BLK_LURUS, KMD_KANAN,  PRF_SEMPIT,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
 /*26*/   { "R-11 geser KIRI 20 (odometri)", BLK_LURUS, KMD_KIRI,   PRF_SEMPIT,   false, HNT_GESER,     20,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*27*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
+/*27*/   { "SZ-5 / FINISH",                 BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
 // <<< TABEL LINTASAN BAKU selesai
