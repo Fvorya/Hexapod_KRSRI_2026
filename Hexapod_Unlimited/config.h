@@ -1492,7 +1492,18 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // persentase utilisasi (rata-rata putaran dibagi periode 10 ms). Angka 100 Hz
 // adalah target rancangan, bukan janji yang ditegakkan siapa pun.
 #define CONTROL_HZ        100     // Hz, acuan utilisasi di baris PROF (BUKAN pembatas laju)
-#define PROFILE_LOOP      1       // 1 = cetak "PROF avg/max/util" tiap detik (saat tak tuning)
+// DIMATIKAN 18 Sep 2026. Ia sudah menjawab pertanyaannya -- util 2%, maks
+// 13 ms, lambat50 nol -- dan sesudah itu yang tersisa cuma ongkosnya: satu
+// baris per detik, TERUS-MENERUS termasuk saat robot diam.
+//
+// Ongkosnya bukan waktu CPU melainkan LOG. Penyangga HUD 400 baris; PROF yang
+// mencetak saat idle mendorong keluar bukti percobaan yang baru saja
+// dijalankan. Hari ini itu benar-benar terjadi: baris PUNCAK dan KOREKSI dari
+// satu perjalanan 'U' sudah hilang sebelum sempat dibaca, dan tanpa baris itu
+// gyro yang meleset tidak bisa didiagnosis sama sekali.
+//
+// Nyalakan lagi hanya saat benar-benar mengukur waktu loop.
+#define PROFILE_LOOP      0       // 1 = cetak "PROF avg/max/util" tiap detik (saat tak tuning)
 #define GAIT_DEBUG        0       // 1 = cetak fase gait tiap 200 ms (hanya saat melangkah)
 
 #endif
