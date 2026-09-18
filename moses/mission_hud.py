@@ -5439,7 +5439,7 @@ function ltsEkspor(){
   var E={belok:['BLK_LURUS','BLK_KANAN','BLK_BALIK','BLK_KIRI'],
          kemudi:['KMD_KANAN','KMD_KIRI','KMD_TENGAH'],
          profil:['PRF_DATAR','PRF_TANGGA','PRF_MERUNDUK','PRF_SEMPIT','PRF_KAIL','PRF_TANJAK'],
-         henti:['HNT_ODO','HNT_DEPAN','HNT_BELAKANG','HNT_LANGSUNG','HNT_SISI','HNT_MUNDUR','HNT_PUNCAK'],
+         henti:['HNT_ODO','HNT_DEPAN','HNT_BELAKANG','HNT_LANGSUNG','HNT_SISI','HNT_MUNDUR','HNT_PUNCAK','HNT_GESER'],
          aksi:['AKS_TIDAK_ADA','AKS_AMBIL','AKS_TARUH','AKS_KONFIRM'],
          aksiA:['ARM_DEPAN','ARM_BELAKANG']};
   var n=function(x){ x=Number(x)||0; return x===Math.round(x)? String(x) : x.toFixed(2); };
