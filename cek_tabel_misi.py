@@ -159,6 +159,15 @@ def main():
             awas.append("ruas %d HNT_PUNCAK tapi profilnya %s -- PUNCAK menunggu "
                         "badan MIRING dulu, dan di ruas datar itu tidak pernah "
                         "terjadi" % (i, profil))
+        # HNT_GESER: jaraknya jarak TEMPUH menyamping, bukan bacaan dinding,
+        # jadi batasnya lebar arena (45 cm lorong, alas 240 cm) bukan
+        # jangkauan LiDAR. Cermin tabelSiap().
+        if henti == "HNT_GESER" and not (1 <= cm <= 200):
+            salah.append("ruas %d geser %d cm di luar 1..200" % (i, cm))
+        # KMD_TENGAH tidak memilih sisi mana pun, dan geser HARUS punya arah.
+        if henti in ("HNT_SISI", "HNT_GESER") and kemudi == "KMD_TENGAH":
+            salah.append("ruas %d %s dengan KMD_TENGAH -- arah gesernya tidak "
+                         "ditentukan" % (i, henti))
         # PUNCAK dengan cm 0 SAH: artinya "gyro sendirian", dinding depan
         # dimatikan. HNT_DEPAN tidak punya arti itu -- di sana 0 salah tulis.
         if ((henti == "HNT_DEPAN" or (henti == "HNT_PUNCAK" and cm > 0))

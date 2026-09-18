@@ -436,8 +436,60 @@ int Navigation::jarakGeser(bool keKanan) const {
     return paling;
 }
 
+// Geser sejauh <cm>, diukur odometri. Lihat Navigation.h untuk alasannya.
+// Sengaja TIDAK memanggil ratakanMulai(): yang dibuang di sini justru
+// pemeriksaan penggaris yang jadi inti ratakanMulai, dan sebuah bendera
+// "lewati pemeriksaanmu sendiri" di dalam fungsi itu lebih sulit dibaca
+// daripada dua pembuka yang masing-masing jujur. Sisanya -- rataUpdate() --
+// tetap satu.
+bool Navigation::geserMulai(bool kiri, int cm, bool jagaBelakang) {
+    _rataOk = false;
+
+    if (!_robot.isArmed()) {
+        Serial.println("Geser DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
+        return false;
+    }
+    if (cm <= 0) {
+        Serial.println("Geser DITOLAK: jarak harus lebih dari 0 cm.");
+        return false;
+    }
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah geser.");
+
+    _rataGeser = kiri ? -RATA_LAJU : RATA_LAJU;
+
+    // Penjaga halangan yang SAMA dengan perataan. LiDAR samping tidak dipakai
+    // sebagai penggaris di sini, tapi ia tetap satu-satunya yang tahu ada
+    // tembok di arah yang dituju.
+    const int sisa = jarakGeser(!kiri);
+    if (sisa >= 0 && sisa <= (int)WALL_MIN_CM) {
+        Serial.print("Geser DITOLAK: sudah ada sesuatu "); Serial.print(sisa);
+        Serial.print(" cm di arah geser (pita terlalu dekat ");
+        Serial.print(WALL_MIN_CM, 0); Serial.println(" cm).");
+        _rataGeser = 0.0f;
+        return false;
+    }
+
+    _rataCh       = 255;          // tidak ada penggaris dinding
+    _rataCm       = 0;
+    _rataNaik     = false;
+    _rataOdoCm    = (float)cm;
+    _rataOdoAwal  = _robot.geserCm();
+    _mode         = NAV_RATA;
+    _tRata        = millis();
+    _rataBlkLapor = false;
+    _rataJagaBlk  = jagaBelakang;
+    _majuKini = _turnKini = 0.0f;
+
+    Serial.print("Geser "); Serial.print(kiri ? "KIRI " : "KANAN ");
+    Serial.print(cm); Serial.println(" cm, diukur ODOMETRI (tanpa penggaris dinding).");
+    if (!_rataJagaBlk)
+        Serial.println("  (jarak belakang TIDAK dijaga -- diminta oleh ruas ini)");
+    return true;
+}
+
 bool Navigation::ratakanMulai(bool kiri, int cm, bool jagaBelakang) {
     _rataOk = false;
+    _rataOdoCm = 0.0f;   // mode penggaris dinding, bukan odometri
 
     if (!_robot.isArmed()) {
         Serial.println("Ratakan DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
@@ -552,8 +604,26 @@ void Navigation::rataUpdate() {
     // SASARAN dinilai LEBIH DULU dan TIAP TICK -- itu seluruh gunanya
     // perintah ini. Robot berhenti di tengah langkah alih-alih menyelesaikan
     // sapuan penuh, dan sapuan penuh itulah yang tidak punya resolusi.
+    // MODE ODOMETRI (geserMulai): tidak ada penggaris, yang dinilai jarak
+    // lateral yang sudah ditempuh. Cabang ini keluar lebih dulu supaya sisa
+    // fungsi -- penjaga halangan, batas waktu, kompensasi hanyut -- tetap
+    // berlaku apa adanya untuk kedua mode.
+    if (_rataOdoCm > 0.0f) {
+        const float tempuh = fabsf(_robot.geserCm() - _rataOdoAwal);
+        if (tempuh >= _rataOdoCm) {
+            _rataOk   = true;
+            _mode     = NAV_DIAM;
+            _majuKini = _turnKini = 0.0f;
+            _robot.stop();
+            Serial.print("Geser SELESAI: "); Serial.print(tempuh, 1);
+            Serial.print(" cm (sasaran "); Serial.print(_rataOdoCm, 0);
+            Serial.println(" cm, odometri).");
+            return;
+        }
+    }
+
     int d = _lidar.getDistance(_rataCh);
-    if (d != LIDAR_MATI && d != LIDAR_JAUH &&
+    if (_rataOdoCm <= 0.0f && d != LIDAR_MATI && d != LIDAR_JAUH &&
         (_rataNaik ? (d >= _rataCm) : (d <= _rataCm))) {
         _rataOk   = true;
         _mode     = NAV_DIAM;
@@ -579,6 +649,8 @@ void Navigation::rataUpdate() {
     // Penggaris bisu -> -1 -> laju halus, bukan laju kasar buta.
     float keSasaran = (d == LIDAR_MATI || d == LIDAR_JAUH)
                           ? -1.0f : fabsf((float)(d - _rataCm));
+    if (_rataOdoCm > 0.0f)
+        keSasaran = _rataOdoCm - fabsf(_robot.geserCm() - _rataOdoAwal);
 
     // JARAK BELAKANG DIJAGA DI RATA_BLK_SASARAN_CM selama menggeser.
     //

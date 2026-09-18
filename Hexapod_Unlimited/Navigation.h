@@ -287,6 +287,24 @@ public:
     // ruas yang tidak punya acuan di belakang; lihat Ruas::jagaBelakang.
     bool ratakanMulai(bool kiri, int cm, bool jagaBelakang = true);
 
+    // GESER SEJAUH <cm>, diukur ODOMETRI, tanpa penggaris dinding sama sekali.
+    //
+    // Saudara ratakanMulai() dan memakai seluruh mesin yang sama -- laju,
+    // penjaga halangan di arah geser, batas waktu, kompensasi hanyut. Yang
+    // berbeda cuma SYARAT BERHENTINYA: jarak lateral yang sudah ditempuh,
+    // bukan bacaan sensor.
+    //
+    // Ada karena di R-11 sisi yang dituju adalah jurang, dan sisi seberangnya
+    // dinding yang belum tentu terbaca. ratakanMulai() GAGAL TERTUTUP kalau
+    // penggarisnya bisu -- benar untuk perataan, tapi di sana artinya ruasnya
+    // tidak jalan sama sekali.
+    //
+    // Harganya: odometri geser memakai skala slip yang sama dengan odometri
+    // maju, dan skala itu dikalibrasi untuk MAJU. Jarak geser karena itu
+    // kurang teliti daripada bacaan dinding. Pakai ini hanya kalau dindingnya
+    // memang tidak bisa diandalkan.
+    bool geserMulai(bool kiri, int cm, bool jagaBelakang = false);
+
     // SETEL JARAK BELAKANG, berumpan-balik, DUA ARAH.
     //
     // Sasarannya bacaan LiDAR BELAKANG. Bacaan DI ATAS sasaran berarti robot
@@ -399,6 +417,8 @@ private:
     bool     _rataNaik = false; // true = sasaran LEBIH JAUH dari bacaan awal
     bool     _rataOk   = false; // hasil perataan TERAKHIR: sasaran tercapai?
     float    _rataGeser = 0.0f; // vektor geser yang sedang dipakai (+ = kanan)
+    float    _rataOdoCm = 0.0f; // >0 = berhenti pada ODOMETRI sejauh ini, bukan sensor
+    float    _rataOdoAwal = 0.0f;
     void     setelBelakangUpdate();
 
     uint32_t _tRata    = 0;

@@ -108,7 +108,8 @@ enum Henti : uint8_t {
     HNT_LANGSUNG,    // tidak berjalan sama sekali -- ruas ini hanya aksi
     HNT_SISI,        // GESER menyamping sampai dinding sisi = `nilai` cm
     HNT_MUNDUR,      // BERJALAN MUNDUR sampai LiDAR belakang = `nilai` cm
-    HNT_PUNCAK       // NAIK lalu DATAR lagi (gyro), atau depan <= `nilai` cm
+    HNT_PUNCAK,      // NAIK lalu DATAR lagi (gyro), atau depan <= `nilai` cm
+    HNT_GESER        // GESER menyamping sejauh `nilai` cm, diukur ODOMETRI
 };
 
 // HNT_PUNCAK vs HNT_DEPAN -- keduanya membaca LiDAR DEPAN, dan yang satu
@@ -166,6 +167,23 @@ enum Henti : uint8_t {
 // Gunanya standoff per korban: "sejauh mungkin dari tembok yang dihadapi,
 // mepet ke tembok seberang". Sebelum ini standoff itu hanya bisa diatur dari
 // Raspi lewat 'J', jadi ia hidup di HUD dan bukan di tabel misi.
+
+// HNT_GESER vs HNT_SISI -- keduanya menggeser badan menyamping, dan kolom
+// `kemudi` sama-sama memilih arahnya. Yang berbeda apa yang menghentikannya:
+//
+//   HNT_SISI  berhenti pada BACAAN DINDING. `nilai` = jarak ke dinding sisi
+//             itu dalam cm. Lebih teliti, dan robot berakhir di tempat yang
+//             diketahui relatif terhadap arena -- tapi ia GAGAL TERTUTUP
+//             kalau penggarisnya bisu, dan ruasnya tidak jalan sama sekali.
+//
+//   HNT_GESER berhenti pada ODOMETRI. `nilai` = jarak geser dalam cm, dan
+//             arah `kemudi` adalah arah yang DITUJU, bukan yang diukur.
+//             Tidak butuh dinding di sisi mana pun.
+//
+// Pakai HNT_GESER hanya di tempat yang dindingnya tidak bisa diandalkan --
+// di R-11 sisi yang dituju jurang dan sisi seberangnya belum tentu terbaca.
+// Harganya nyata: odometri geser memakai skala slip yang dikalibrasi untuk
+// MAJU, jadi jaraknya kurang teliti daripada bacaan dinding.
 
 // HNT_SISI: ruas ini tidak MAJU sama sekali, ia bergeser menyamping sampai
 // sensor sisinya membaca `nilai` cm. SISI MANA dibaca dari kolom `kemudi`

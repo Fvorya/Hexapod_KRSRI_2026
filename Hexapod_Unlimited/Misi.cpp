@@ -586,10 +586,9 @@ const Ruas RUAS_BAKU[] = {
 // /*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 30.0f },
-/*25*/   { "maju sedikit",                  BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_BELAKANG,  18,              AKS_TIDAK_ADA, 0 },
-/*26*/   { "R-11 geser KIRI, ukur KANAN",   BLK_LURUS, KMD_KANAN,  PRF_SEMPIT,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*27*/   { "R-11 geser, ukur KIRI",         BLK_LURUS, KMD_KIRI,   PRF_SEMPIT,   false, HNT_SISI,      20,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*28*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
+/*25*/   { "R-11 geser KIRI, ukur KANAN",   BLK_LURUS, KMD_KANAN,  PRF_SEMPIT,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*26*/   { "R-11 geser KIRI 20 (odometri)", BLK_LURUS, KMD_KIRI,   PRF_SEMPIT,   false, HNT_GESER,     20,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*27*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
 // <<< TABEL LINTASAN BAKU selesai
@@ -1470,6 +1469,14 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         //    setelBelakangMulai() menolak sasaran <= WALL_MIN_CM, dan tanpa
         //    pemeriksaan ini penolakan itu datang di arena -- sesudah ruas
         //    sebelumnya selesai dan robot sudah berdiri di tempatnya.
+        if (RUAS[i].henti == HNT_GESER && RUAS[i].nilai >= 0.0f &&
+            (RUAS[i].nilai < 1.0f || RUAS[i].nilai > 200.0f)) {
+            Serial.print("Gagal: ruas "); Serial.print(i);
+            Serial.print(" geser "); Serial.print(RUAS[i].nilai, 0);
+            Serial.println(" cm di luar 1..200.");
+            ok = false;
+        }
+
         if (RUAS[i].henti == HNT_MUNDUR &&
             _cm[i] >= 0.0f && _cm[i] <= (float)MUNDUR_MIN_CM) {
             Serial.print("Gagal: ruas "); Serial.print(i);
@@ -2073,6 +2080,16 @@ bool Misi::ruasJalan() {
     // lupnya sendiri (syarat henti dibaca tiap tick), jadi di sini cukup
     // menyalakannya dan menunggu -- ruasSehat()/ruasSelesai() punya cabang
     // sendiri untuk membaca hasilnya.
+    if (x.henti == HNT_GESER) {
+        if (!_nav.geserMulai(kemudiRuas(_i) == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
+            lewati("geser ditolak -- sebabnya tercetak di atas.");
+            return false;
+        }
+        _ruasAwal = _robot.jarakCm();
+        _serongT0 = 0;
+        return true;
+    }
+
     if (x.henti == HNT_SISI) {
         if (!_nav.ratakanMulai(kemudiRuas(_i) == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
             lewati("perataan sisi ditolak -- sebabnya tercetak di atas.");
@@ -2183,7 +2200,7 @@ bool Misi::ruasSehat() {
     // halangan di arah geser, batas waktu), dan tidak satu pun penjaga di
     // bawah berlaku untuknya: ia tidak memakai mode arena, tidak menempuh
     // jarak maju, dan memang tidak menghadap arah ruas selama bergeser.
-    if (RUAS[_i].henti == HNT_SISI) {
+    if (RUAS[_i].henti == HNT_SISI || RUAS[_i].henti == HNT_GESER) {
         if (_nav.ratakanSedangJalan()) return true;
         if (!_nav.ratakanTercapai()) {
             lewati("perataan sisi berhenti sebelum sasaran -- sebabnya tercetak di atas.");
@@ -2287,7 +2304,8 @@ bool Misi::ruasSelesai() {
 
     // Navigation sudah berhenti sendiri begitu sasaran tercapai; kalau ia
     // berhenti karena GAGAL, ruasSehat() sudah membatalkan misi lebih dulu.
-    if (x.henti == HNT_SISI)     return !_nav.ratakanSedangJalan();
+    if (x.henti == HNT_SISI ||
+        x.henti == HNT_GESER)    return !_nav.ratakanSedangJalan();
     if (x.henti == HNT_MUNDUR)   return !_nav.setelBelakangSedangJalan();
 
     if (x.henti == HNT_PUNCAK) {
@@ -2823,6 +2841,9 @@ void Misi::setRuasCm(uint8_t idx, float cm) {
     if (RUAS[idx].henti == HNT_PUNCAK)   { lo = (float)FRONT_STOP_CM + 1.0f; hi = 200.0f; }
     if (RUAS[idx].henti == HNT_BELAKANG) { hi = (float)LIDAR_MAX_CM - 15.0f; }
     if (RUAS[idx].henti == HNT_SISI)     { lo = WALL_MIN_CM + 1.0f; hi = (float)LIDAR_MAX_CM; }
+    // GESER: jarak tempuh menyamping, bukan bacaan dinding. Batas atasnya
+    // lebar arena, bukan jangkauan LiDAR.
+    if (RUAS[idx].henti == HNT_GESER)    { lo = 1.0f; hi = 200.0f; }
     // MUNDUR: batas bawahnya sama dengan yang dipakai setelBelakangMulai()
     // untuk menolak sasaran -- kalau berbeda, 'm7' akan menerima angka yang
     // nanti ditolak lagi di arena, sesudah robot terlanjur berangkat.
@@ -2886,6 +2907,7 @@ void Misi::cetakRuas(uint8_t idx) {
         case HNT_SISI:      Serial.print("sisi "); break;
         case HNT_MUNDUR:    Serial.print("mdr  "); break;
         case HNT_PUNCAK:    Serial.print("pck  "); break;
+        case HNT_GESER:     Serial.print("gsr  "); break;
         default:            Serial.print("--   "); break;
     }
     if (x.henti == HNT_LANGSUNG)   Serial.print("     ");
