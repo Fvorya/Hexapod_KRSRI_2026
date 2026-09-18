@@ -5314,7 +5314,7 @@ const LTS_KOLOM = [
   ['kemudi','enum',['ikut KANAN','ikut KIRI','TENGAH']],
   ['profil','enum',['DATAR','TANGGA','MERUNDUK','SEMPIT','KAIL','TANJAK']],
   ['abaikanDepan','bool',null],
-  ['henti','enum',['odo','depan','belakang','langsung','sisi','mundur','puncak']],
+  ['henti','enum',['odo','depan','belakang','langsung','sisi','mundur','puncak','geser']],
   ['nilai','num',null],
   ['aksi','enum',['-','AMBIL','TARUH','KONFIRM']],
   ['aksiA','enum',['lengan DEPAN','lengan BELAKANG']],
