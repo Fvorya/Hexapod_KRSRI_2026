@@ -31,7 +31,7 @@ static const char* const TOMBOL_FUNGSI[TOMBOL_N][2] = {
     { "JALAN misi (seketika)",       "belum dipakai"                 },
     { "STOP di ruas kini",        "STOP + ruas & poin ke 0"      },
     { "catat 1 arah kompas",      "kalibrasi pivot"               },
-    { "arena cermin on/off",      "siapkan: I lalu R lalu b"      },
+    { "arena cermin on/off",      "siapkan: I lalu b lalu R"      },
 };
 
 // Peta pin dibalik sekali (D2..D5 menjadi D6..D3) dan bisa dibalik lagi. Dua
@@ -602,10 +602,16 @@ void Tampilan::aksiTahan(uint8_t i) {
             break;
 
         case 3:   // D3 tahan -- siapkan robot. Diminta R2C 18 Sep 2026.
+            // URUTANNYA I, b, R -- bukan I, R, b. 'R' menolak dengan "Servo
+            // masih lemas -- ketik 'b' dulu" selama servo belum hidup, jadi
+            // urutan yang lama TIDAK PERNAH menyalakan servo lengan sekali pun.
+            // Gejalanya diam: kaki berdiri, lengan tetap lemas, dan satu-
+            // satunya keluhan tercetak di serial yang tidak dibaca siapa pun
+            // saat lomba.
             kirimCmd("I");
-            kirimCmd("R");
             kirimCmd("b");
-            pesan("init, capit nol, berdiri");
+            kirimCmd("R");
+            pesan("init, berdiri, lengan rehat");
             break;
     }
 }

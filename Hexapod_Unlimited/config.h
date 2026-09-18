@@ -1270,6 +1270,15 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // baca LiDAR belakang.
 #define MUNDUR_MIN_CM      WALL_KAKI_CM
 
+// Berapa kali misi boleh MENCOBA MENGHIDUPKAN ULANG LiDAR yang putus di
+// tengah lari, sebelum menyerah. Sama dengan mengetik 'I', tapi robot tidak
+// boleh disentuh saat lomba, jadi ia harus mencobanya sendiri.
+//
+// Dihitung per MISI, bukan per ruas: satu kanal yang mati lalu hidup lagi
+// tiga kali sepanjang satu lari bukan sensor yang berkedip, itu kabel yang
+// lepas. Percobaan keempat cuma menunda kesimpulan yang sama.
+#define LIDAR_ULANG_MAKS      3
+
 #define MUNDUR_BATAS_MS    12000
 
 #define MISI_VISI_BATAS_MS  20000

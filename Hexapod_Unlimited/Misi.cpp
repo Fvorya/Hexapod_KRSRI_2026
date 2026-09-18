@@ -581,7 +581,7 @@ const Ruas RUAS_BAKU[] = {
 /*19*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*20*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
 /*21*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       10,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       24,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       22,              AKS_TIDAK_ADA, 0 },
 // /*21*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
 // /*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
@@ -1759,6 +1759,7 @@ void Misi::mulaiDari(uint8_t idx, uint8_t sampai) {
     _visiJalan    = false;
     _sebab   = nullptr;
     _serongT0 = 0;
+    _lidarUlang = 0;
 
     Serial.println("\n=== MISI MULAI ===");
     Serial.print("  ruas "); Serial.print(idx); Serial.print(" dari 0..");
@@ -2392,12 +2393,47 @@ bool Misi::lidarMati() {
     return _lidar.jumlahHidup() < NUM_LIDAR;
 }
 
+bool Misi::pulihkanLidar() {
+    if (_lidarUlang >= LIDAR_ULANG_MAKS) {
+        Serial.print("  sudah "); Serial.print(_lidarUlang);
+        Serial.println(" kali dipindai ulang dan tetap putus -- menyerah.");
+        return false;
+    }
+    _lidarUlang++;
+
+    // BERHENTI DULU. pindaiI2C() memblokir beberapa ratus milidetik sambil
+    // mematikan dan menghidupkan tiap kanal mux. Robot yang masih melangkah
+    // selama itu berjalan buta, dan yang menghentikannya cuma ruas berikutnya
+    // -- terlambat.
+    _nav.navBerhenti("LiDAR dipindai ulang.");
+
+    Serial.print("\n!! LiDAR PUTUS di tengah misi -- pindai ulang (");
+    Serial.print(_lidarUlang); Serial.print(" dari ");
+    Serial.print(LIDAR_ULANG_MAKS); Serial.println(")");
+
+    _lidar.pindaiI2C();
+
+    const bool pulih = !lidarMati();
+    Serial.println(pulih ? "  PULIH."
+                         : "  masih ada yang tidak menjawab.");
+    return pulih;
+}
+
 void Misi::lewati(const char* sebab) {
     // LiDAR MATI MENANG atas 'lewati'. Sebab lunak apa pun yang terjadi
     // bersamaan dengan sensor yang berhenti menjawab bukan lagi sebab lunak:
     // ruas berikutnya akan gagal dengan cara yang sama, dan meneruskan cuma
     // memindahkan kegagalan ke tempat yang lebih sulit dibaca.
     if (lidarMati()) {
+        // Robot tidak boleh disentuh saat lomba, jadi ia mencoba sendiri dulu.
+        // Berhasil: ruas ini DIULANG dari awal, bukan dilewati -- ia berhenti
+        // karena sensornya berkedip, bukan karena ruasnya tidak bisa dikerjakan.
+        if (pulihkanLidar()) {
+            Serial.println("  CATATAN: odometri ruas ini dihitung dari nol lagi,");
+            Serial.println("  jadi jarak yang sudah ditempuh akan ditempuh dua kali.");
+            ruasMasuk();
+            return;
+        }
         gagal("LiDAR tidak merespons -- periksa 'l' lalu 'I'.");
         return;
     }
