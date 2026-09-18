@@ -1913,6 +1913,22 @@ class Teensy:
     RE_TRIM = re.compile(
         r"^#TRIM\s+(\d+)\s+(\S+)\s+([01])\s+([+-]?\d+)\s*$", re.I)
 
+    # JAWABAN SATU SLOT, dicetak Hexapod::setTrim() sesudah 'Yt<slot> <us>':
+    #     Trim K1_TIBIA (slot 5) = 25 us -- RAM saja, 'YtW' untuk menyimpan.
+    #
+    # WAJIB diparse, bukan hiasan. Tabel trim hanya diisi baris '#TRIM', yang
+    # cuma datang dari 'Yt' penuh -- jadi tanpa baris ini, menekan +5 mengubah
+    # angka di firmware tapi poll berikutnya MENIMPA kotaknya kembali dengan
+    # angka lama. Dari luar tombolnya terlihat tidak bekerja sama sekali.
+    #
+    # Angkanya diambil dari SINI, bukan dari yang dikirim: firmware menjepit ke
+    # TRIM_MAKS_US, jadi baris ini yang tahu nilai yang benar-benar berlaku.
+    RE_TRIM1 = re.compile(
+        r"^Trim\s+(\S+)\s+\(slot\s+(\d+)\)\s*=\s*([+-]?\d+)\s*us", re.I)
+
+    # 'Yt!' -- seluruh trim dinolkan sekaligus, tanpa mencetak 24 baris.
+    RE_TRIM_NOL = re.compile(r"^Seluruh trim DINOLKAN", re.I)
+
     # OFFSET SUDUT SERVO. Dicetak Hexapod::cetakOffset() sebagai jawaban 'Yo':
     #     #OFFSET 0 K0_COXA -3.0
     #     slot nama derajat
@@ -2012,6 +2028,27 @@ class Teensy:
                 "invert": int(m.group(3)),
                 "us":     int(m.group(4)),
             }
+            self.t_trim = time.time()
+            return
+
+        m = self.RE_TRIM1.match(baris.strip())
+        if m:
+            # SATU slot, jawaban 'Yt<slot> <us>'. invert tidak ada di baris ini,
+            # jadi yang sudah diketahui dipertahankan -- menuliskan 0 di sini
+            # akan menghapus tanda 'inv' di kartu tiap kali satu trim disetel.
+            slot = int(m.group(2))
+            lama = self.trim.get(slot, {})
+            self.trim[slot] = {
+                "nama":   m.group(1),
+                "invert": lama.get("invert", 0),
+                "us":     int(m.group(3)),
+            }
+            self.t_trim = time.time()
+            return
+
+        if self.RE_TRIM_NOL.match(baris.strip()):
+            for v in self.trim.values():
+                v["us"] = 0
             self.t_trim = time.time()
             return
 

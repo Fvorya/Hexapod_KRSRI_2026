@@ -3887,6 +3887,24 @@ cek("baris '#TRIM' cacat diabaikan", len(_lg87.trim), _n87)
 # boleh menghapus slot yang sudah benar.
 _lg87._parse("#TRIM 0 K0_COXA 0 +7")
 cek("baris ulang menimpa slotnya saja", _lg87.trim[0]["us"], 7)
+
+# JAWABAN SATU SLOT ikut diparse. Tanpa ini tombol +5 di kartu trim TERLIHAT
+# tidak bekerja: firmware menerima angkanya, tapi tabel hanya diisi baris
+# '#TRIM' dari 'Yt' penuh, jadi poll berikutnya menimpa kotaknya dengan angka
+# lama. Dilaporkan R2C 18 Sep 2026.
+_lg87._parse("Trim K0_COXA (slot 0) = 12 us -- RAM saja, 'YtW' untuk menyimpan.")
+cek("jawaban satu slot memperbarui us", _lg87.trim[0]["us"], 12)
+cek("  dan invert yang sudah diketahui DIPERTAHANKAN",
+    _lg87.trim[0]["invert"], 0)
+_lg87._parse("Trim K0_FEMUR (slot 1) = -25 us -- RAM saja, 'YtW' untuk menyimpan.")
+cek("  us negatif terbaca", _lg87.trim[1]["us"], -25)
+cek("  invert slot lain tidak ikut hilang", _lg87.trim[1]["invert"], 1)
+
+# 'Yt!' menolkan semua tanpa mencetak 24 baris.
+_lg87._parse("Seluruh trim DINOLKAN -- RAM saja, 'YtW' untuk menyimpan.")
+cek("'Yt!' menolkan seluruh tabel",
+    [t["us"] for t in _lg87.trim.values()], [0] * len(_lg87.trim))
+cek("  tanpa menghapus slotnya", len(_lg87.trim), _n87)
 cek("  dan tidak menghapus slot lain", len(_lg87.trim), _n87)
 
 # Trim ikut /state DARI LINK. Lewat Kalib ia jadi cermin KETIGA, dan cermin
