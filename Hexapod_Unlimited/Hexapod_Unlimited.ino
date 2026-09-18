@@ -485,7 +485,8 @@ static void handleCmd(char* s) {
                 Serial.println("    i1     abaikan sensor depan -- PALING AKHIR, lihat komentar");
                 Serial.println("  Plus koreksi BERHENTI-DULU: robot berhenti, memutar badan sejajar dinding,");
                 Serial.println("  baru jalan lagi. Ukur bias sudutnya dengan 'Y0' di lorong lurus dulu.");
-                Serial.println("  Jaraknya WAJIB: dengan depan buta, rem satu-satunya yang menghentikan.");
+                Serial.println("  BERHENTI SENDIRI di puncak, dibaca gyro -- rem jarak tinggal batas.");
+                Serial.println("  Jaraknya tetap WAJIB: kalau gyro meleset, itu satu-satunya sisa penahan.");
                 Serial.println("  Berhenti apa pun ('s'/'x'/Enter/rem) memulihkan sensor depan.");
                 break;
             }
@@ -525,6 +526,9 @@ static void handleCmd(char* s) {
             // boleh meninggalkan koreksi berhenti-dulu menyala untuk perintah
             // navigasi berikutnya.
             nav.koreksiDiam(true);
+            // BERHENTI DARI GYRO saat sampai di atas. Rem jarak di atas tetap
+            // terpasang sebagai batas -- yang mana lebih dulu. Diminta R2C.
+            nav.hentiPuncak(true);
             Serial.print("NAIK TANGGA: tanjak + dinding ");
             Serial.print(cermin ? "KIRI (arena cermin)" : "KANAN");
             Serial.print(", koreksi sambil berhenti, buta ke depan, rem ");

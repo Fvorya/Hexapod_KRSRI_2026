@@ -1233,6 +1233,21 @@ void Navigation::koreksiDiam(bool ya) {
     }
 }
 
+void Navigation::hentiPuncak(bool ya) {
+    _puncakAktif    = ya;
+    _puncakNaik     = false;
+    _puncakDatarT0  = 0;
+    // ACUAN dicatat SEKARANG, bukan nol. pitchDeg() mentah -- tare() tidak
+    // pernah dipanggil -- dan profil TANJAK sudah memiringkan badan
+    // TANJAK_PITCH_DEG yang ikut terbaca IMU. Selisih terhadap angka ini
+    // bersih dari keduanya.
+    _puncakAwal = (ya && _imu.hasData()) ? _imu.pitchDeg() : NAN;
+    if (!ya) return;
+    Serial.print("Henti PUNCAK dipasang, acuan pitch ");
+    if (isnan(_puncakAwal)) Serial.println("TIDAK ADA -- IMU bisu, rem jarak sendirian.");
+    else { Serial.print(_puncakAwal, 1); Serial.println(" der."); }
+}
+
 void Navigation::setKemudiMode(uint8_t m) {
     _wallSamar = (m & 1u) != 0;
     _wallSudut = (m & 2u) != 0;
@@ -1278,6 +1293,10 @@ void Navigation::navBerhenti(const char* alasan) {
     // tiap beberapa langkah di lantai datar -- tanpa ada yang menyebutnya.
     // 'U' memasangnya SESUDAH navMulai(), jadi perjalanannya sendiri selamat.
     koreksiDiam(false);
+    // Henti puncak ikut dilepas: ia milik SATU perjalanan 'U'. Dibiarkan
+    // menyala, ia akan menghentikan perintah navigasi berikutnya di tanjakan
+    // yang tidak ada.
+    _puncakAktif = false;
 
     // Sudah diam -> tidak ada yang perlu dihentikan. Dulu baris ini hanya
     // menyaring pemanggilan tanpa alasan, sehingga tiap 's'/'x'/Enter mencetak
@@ -1336,6 +1355,38 @@ void Navigation::navUpdate() {
         _robot.stop();                        // mengurus 'w' manual
         Serial.print("Rem jarak: berhenti di "); Serial.print(_robot.jarakCm(), 1);
         Serial.println(" cm.");
+    }
+
+    // PUNCAK TANJAKAN, dari gyro. Cermin HNT_PUNCAK milik Misi, ambang sama.
+    //
+    // Di SINI, bersama rem jarak, karena keduanya menjawab pertanyaan yang
+    // sama: kapan perjalanan ini selesai. Rem jarak tetap terpasang sebagai
+    // batas -- yang mana lebih dulu.
+    if (_puncakAktif && !isnan(_puncakAwal) && _imu.hasData()) {
+        const float simpang = fabsf(_imu.pitchDeg() - _puncakAwal);
+        if (!_puncakNaik) {
+            // GERBANG MENDAKI. Tanpa ini perjalanan berakhir SEKETIKA di kaki
+            // tangga, karena di sana badan memang sedekat itu dengan acuannya.
+            if (simpang >= PUNCAK_NAIK_DEG) {
+                _puncakNaik = true;
+                Serial.print("  PUNCAK: mendaki terlihat, simpang ");
+                Serial.print(simpang, 1); Serial.println(" der.");
+            }
+        } else if (simpang > PUNCAK_DATAR_DEG) {
+            _puncakDatarT0 = 0;          // masih mendaki
+        } else if (_puncakDatarT0 == 0) {
+            _puncakDatarT0 = millis();   // mulai menghitung datar
+        } else if (millis() - _puncakDatarT0 >= PUNCAK_DATAR_MS) {
+            // DATAR HARUS BERTAHAN. Satu sampel datar muncul juga di tengah
+            // pendakian, tiap kali kaki depan menapak anak tangga berikutnya.
+            Serial.print("  PUNCAK: datar lagi ("); Serial.print(simpang, 1);
+            Serial.print(" der) selama "); Serial.print(PUNCAK_DATAR_MS);
+            Serial.println(" ms -- sudah di atas.");
+            _remJarakCm = 0.0f;                  // rem jarak tidak perlu lagi
+            navBerhenti("puncak tanjakan tercapai (gyro).");
+            _robot.stop();
+            return;
+        }
     }
 
     if (_mode == NAV_DIAM) return;

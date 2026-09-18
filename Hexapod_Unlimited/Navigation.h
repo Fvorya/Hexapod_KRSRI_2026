@@ -141,6 +141,15 @@ public:
     // milik SATU perjalanan 'U'. 'U' memasangnya sesudah navMulai(), jadi
     // perjalanannya sendiri selamat.
     void koreksiDiam(bool ya);
+
+    // BERHENTI DI PUNCAK TANJAKAN, dari gyro. Dipasang 'U'.
+    //
+    // Rem jarak tetap terpasang dan tetap berlaku -- yang mana lebih dulu.
+    // Gyro tahu KAPAN robot sampai; odometri gait cuma menghitung siklus, dan
+    // di anak tangga tiap siklus memindahkan robot sejauh yang tidak
+    // diketahui. Diukur 18 Sep 2026: sampai atas pada ~230 cm odometri untuk
+    // tangga yang panjang miringnya 103 cm.
+    void hentiPuncak(bool ya);
     bool koreksiDiamAktif() const { return _koreksiDiam; }
     bool sedangKoreksi()    const { return _sedangKoreksi; }
 
@@ -362,6 +371,14 @@ private:
     bool  _koreksiDiam   = false;   // fitur menyala (hanya 'U')
     bool  _sedangKoreksi = false;   // sedang berdiri memutar badan
     uint32_t _tKoreksi   = 0;       // jam NAV_KOREKSI_BATAS_MS
+
+    // HENTI PUNCAK, dipasang 'U'. Cermin HNT_PUNCAK milik Misi, memakai
+    // ambang PUNCAK_* yang SAMA -- yang berbeda cuma siapa yang menghentikan:
+    // di sini Navigation, di sana ruasSelesai().
+    bool     _puncakAktif  = false;
+    float    _puncakAwal   = NAN;   // pitch saat dipasang; NAN = IMU bisu
+    bool     _puncakNaik   = false; // sudah pernah melewati PUNCAK_NAIK_DEG
+    uint32_t _puncakDatarT0 = 0;
     float _biasKiri = WALL_BIAS_KIRI_CM, _biasKanan = WALL_BIAS_KANAN_CM;   // 0 = rem tidak terpasang
     float    _pivotTarget = 0;  // heading tujuan NAV_PIVOT (derajat absolut)
 
