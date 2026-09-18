@@ -78,7 +78,7 @@ public:
     // Bentuk bersama TANJAK dan SEMPIT. Keduanya memakai geometri kaki, pitch
     // badan, dan pose lengan yang sama persis; yang membedakan cuma SLOT
     // profilnya, supaya HUD tetap bisa menyetel keduanya sendiri-sendiri.
-    void bentukTanjak(uint8_t slot);
+    void bentukTanjak(uint8_t slot, float pitchDeg);
     void pilihProfil(uint8_t id);
     bool ubahProfil(uint8_t id, const GaitProfile& p);
     bool simpanProfil();

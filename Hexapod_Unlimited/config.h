@@ -558,6 +558,13 @@
 #define TANJAK_LENGAN_SIKU   90.0f
 #define TANJAK_LENGAN_PRG    90.0f
 
+// Pitch badan profil SEMPIT (R-11). Bentuknya sama dengan TANJAK, tapi
+// pitch-nya sendiri: di R-9 pitch besar melawan tanjakan, sedangkan R-11
+// jalan datar dan pitch yang sama cuma memindahkan berat ke kaki depan.
+// Setengah dari TANJAK. BELUM DIUKUR -- coba 'T3' di robot lalu lihat
+// apakah badan masih goyang ke samping.
+#define SEMPIT_PITCH_DEG      5.0f
+
 #define TANJAK_PITCH_DEG     10.0f
 
 // --- PUNCAK TANJAKAN, dibaca gyro (HNT_PUNCAK) ---------------------------
