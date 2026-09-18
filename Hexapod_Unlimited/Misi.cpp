@@ -1913,7 +1913,11 @@ bool Misi::ruasSehat() {
     //    hilang terlalu lama) DAN navigasi yang diambil alih dari serial
     //    ('f', 'F', 'p', 'o', 'C', ...). Alternatifnya menaruh sebelas kait
     //    di parser, dan yang kedua belas pasti terlupa.
-    ModeNav m = (RUAS[_i].kemudi == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
+    // kemudiRuas(), BUKAN RUAS[_i].kemudi. Di mode cermin keduanya berbeda,
+    // dan ruasJalan() menyalakan navigasi memakai yang tercermin -- kalau
+    // pemeriksa ini memakai kolom mentah, ia mengira navigasi 'diambil alih'
+    // pada tiap ruas ikut-dinding dan membatalkan misi di langkah pertama.
+    ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
     if (_nav.navMode() != m) {
         gagal("navigasi berhenti atau diambil alih -- sebabnya tercetak di atas.");
         return false;

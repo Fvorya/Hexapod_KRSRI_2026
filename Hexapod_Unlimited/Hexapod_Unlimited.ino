@@ -473,7 +473,10 @@ static void handleCmd(char* s) {
                 Serial.println("  Sama dengan mengetik, berurutan:");
                 Serial.println("    T5     profil TANJAK -- langkah 75 mm, satu-satunya yang terbukti naik anak tangga");
                 Serial.println("    Z0     kemudi IKUT DINDING, bukan menengah");
-                Serial.println("    F      ikut dinding KANAN -- kedua LiDAR kanan yang dipakai");
+                Serial.println("    F/G    ikut dinding KANAN -- atau KIRI kalau arena.mirror 1");
+                Serial.println("           Sisinya IKUT SAKLAR CERMIN: di lapangan cermin dinding");
+                Serial.println("           tangga pindah ke kiri, dan menyusuri kanan berarti");
+                Serial.println("           menyusuri dinding yang tidak ada.");
                 Serial.println("    D<cm>  rem jarak");
                 Serial.println("    i1     abaikan sensor depan -- PALING AKHIR, lihat komentar");
                 Serial.println("  Plus koreksi BERHENTI-DULU: robot berhenti, memutar badan sejajar dinding,");
@@ -484,7 +487,15 @@ static void handleCmd(char* s) {
             }
             robot.profileTanjak();
             nav.setTengah(false);
-            nav.navMulai(NAV_DINDING_KANAN);
+            // SISI IKUT ARENA CERMIN. Di lapangan cermin dinding tangga pindah
+            // ke KIRI, dan 'U' yang mengunci kanan akan menyusuri dinding yang
+            // tidak ada -- lalu berbelok mencarinya, di tangga.
+            //
+            // Ruas 23 di tabel sudah ikut sendiri lewat kemudiRuas(); yang
+            // tertinggal cuma perintah operator ini, karena ia tidak membaca
+            // tabel sama sekali.
+            const bool cermin = Misi::arenaCermin();
+            nav.navMulai(cermin ? NAV_DINDING_KIRI : NAV_DINDING_KANAN);
             if (nav.navMode() == NAV_DIAM) {   // navMulai menolak, dan sudah
                 Serial.println("NAIK TANGGA dibatalkan -- sensor depan TIDAK jadi diabaikan.");
                 break;
@@ -495,7 +506,9 @@ static void handleCmd(char* s) {
             // boleh meninggalkan koreksi berhenti-dulu menyala untuk perintah
             // navigasi berikutnya.
             nav.koreksiDiam(true);
-            Serial.print("NAIK TANGGA: tanjak + dinding kanan, koreksi sambil berhenti, buta ke depan, rem ");
+            Serial.print("NAIK TANGGA: tanjak + dinding ");
+            Serial.print(cermin ? "KIRI (arena cermin)" : "KANAN");
+            Serial.print(", koreksi sambil berhenti, buta ke depan, rem ");
             Serial.print(p[0], 0); Serial.println(" cm.");
             break;
         }
