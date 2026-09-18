@@ -551,7 +551,7 @@ extern Skor gSkor;
 const Ruas RUAS_BAKU[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    13,              AKS_TIDAK_ADA, 0 },
+/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,     9,              AKS_TIDAK_ADA, 0 },
 /*2*/    { "K-1 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
 /*3*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
 /*4*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
@@ -559,11 +559,11 @@ const Ruas RUAS_BAKU[] = {
 /*6*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
 /*7*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     23,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*8*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
-/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,    13,              AKS_TIDAK_ADA, 0 },
+/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,     9,              AKS_TIDAK_ADA, 0 },
 /*10*/   { "K-2 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f }, 
 /*11*/   { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
 /*12*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
-/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
+/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
 /*14*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
 /*15*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*16*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
@@ -576,12 +576,12 @@ const Ruas RUAS_BAKU[] = {
 // /*20*/   { "hadap BARAT (rotasi saja)",     BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
 // /*21*/   { "K-4: pendekatan milik CARI",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
 // /*22*/   { "K-4 angkat korban",             BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true,  true,  35.0f, 20.0f },
-/*17*/   { "jalan sampai bebatuan",         BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
+/*17*/   { "jalan sampai bebatuan",         BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       76,              AKS_TIDAK_ADA, 0 },
 /*18*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
 /*19*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*20*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
-/*21*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+/*21*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       10,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       18,              AKS_TIDAK_ADA, 0 },
 // /*21*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
 // /*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
@@ -1982,6 +1982,24 @@ bool Misi::pasangProfil() {
         case PRF_KAIL:     _robot.profileKail();   break;
         case PRF_TANJAK:   _robot.profileTanjak(); break;
         default:           _robot.profileFlat();   break;
+    }
+
+    // KELUAR DARI TANJAK: lengan dipulangkan ke pose REHAT, sama dengan 'R'.
+    // Bentuk TANJAK melipat lengan ke atas supaya tidak menyapu anak tangga;
+    // di ruas datar lipatan itu tidak ada gunanya, dan boneka yang digendong
+    // duduk di REHAT. Diminta R2C 18 Sep 2026, DI MISI SAJA -- 'T0'..'T4'
+    // manual tidak menyentuh lengan, supaya penyetelan lengan dengan tangan
+    // tidak terhapus tiap ganti profil.
+    //
+    // PRF_SEMPIT ikut dikecualikan: ia memakai bentuk TANJAK, jadi ia sudah
+    // memasang pose lengannya sendiri dan REHAT di sini akan menimpanya.
+    if (_i > 0 && RUAS[_i - 1].profil == PRF_TANJAK &&
+        x.profil != PRF_TANJAK && x.profil != PRF_SEMPIT &&
+        _robot.isArmed()) {
+        _robot.armEnable(ARM_DEPAN, true);
+        _robot.setSudutLengan(ARM_DEPAN, REHAT_BAHU, REHAT_SIKU,
+                                         REHAT_PERGELANGAN, nullptr);
+        Serial.println("  lengan dipulangkan ke pose REHAT (keluar dari TANJAK).");
     }
 
     bool pakaiSensor = (x.henti == HNT_DEPAN ||

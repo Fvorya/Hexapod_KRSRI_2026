@@ -71,9 +71,14 @@ public:
     void profileFlat();
     void profileStairs();
     void profileCrouch();
-    void profileNarrow();
+    void profileNarrow();        // R-11: bentuk yang SAMA dengan TANJAK
     void profileKail();          // R-9: depan mengait, belakang mengangkat hidung
     void profileTanjak();        // R-9 lambat: langkah tinggi, kaki depan maju
+
+    // Bentuk bersama TANJAK dan SEMPIT. Keduanya memakai geometri kaki, pitch
+    // badan, dan pose lengan yang sama persis; yang membedakan cuma SLOT
+    // profilnya, supaya HUD tetap bisa menyetel keduanya sendiri-sendiri.
+    void bentukTanjak(uint8_t slot);
     void pilihProfil(uint8_t id);
     bool ubahProfil(uint8_t id, const GaitProfile& p);
     bool simpanProfil();

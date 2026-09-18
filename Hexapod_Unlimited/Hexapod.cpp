@@ -553,9 +553,21 @@ void Hexapod::profileKail() {
 // di profil ini justru tinggi ayunan itu. Kalau telapak depan ternyata
 // MENGGARUK tapak (bukan gagal naik), itu knop berikutnya: pasang
 // _lututKunci = (1 << 0) | (1 << 5) tepat sebelum kurung tutup.
-void Hexapod::profileTanjak() {
+void Hexapod::profileTanjak() { bentukTanjak(5); }
+
+// R-11 memakai bentuk yang SAMA dengan R-9. Diminta R2C 18 Sep 2026: pitch
+// badannya ikut menahan robot supaya tidak jatuh ke kiri atau ke kanan di
+// jalan sempit.
+//
+// PERHATIAN, lebarnya bertambah: SEMPIT yang lama berdiri di radius 45 mm
+// (STAND_RADIUS 70 - 25), bentuk ini di 60 mm dengan kaki tengah 30 mm lagi
+// ke luar. Lorong R-11 selebar 30 cm, dan itu belum diukur terhadap bentuk
+// ini. Ukur sebelum percaya: lihat WALL_KAKI_CM di config.h.
+void Hexapod::profileNarrow() { bentukTanjak(3); }
+
+void Hexapod::bentukTanjak(uint8_t slot) {
     pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH - 15.0f,
-                   GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI }, 5);
+                   GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI }, slot);
 
     // PITCH BADAN ikut profil ini, tidak diketik terpisah. Disetel di robot
     // dengan 'r0 5 0'; tanpanya robot cenderung jatuh di tanjakan R-9.
@@ -605,12 +617,6 @@ void Hexapod::profileTanjak() {
                                      // setProfile() menghapus offset.
 }
 
-void Hexapod::profileNarrow() {
-    // 3 SEMPIT: { 30, 45, 1000, 100, 45 }
-    // Perubahan: Tinggi(-10), Langkah(-15), Siklus(+100), Lebar Kaki(-25)
-    pasangProfil({ GAIT_STEP_HEIGHT - 10.0f, GAIT_STEP_LENGTH - 15.0f, 
-                       GAIT_CYCLE_TIME + 100.0f, STAND_HEIGHT, STAND_RADIUS - 25.0f }, 3);
-}
 
 // RENTANG SAH TIAP KOLOM PROFIL -- satu tempat.
 //
