@@ -1436,7 +1436,28 @@ void Navigation::navUpdate() {
     // sampai ke mari sebagai LIDAR_JAUH, dan ditangani cabang "dinding hilang".
     float turn;
     _pitaDekat = false;
-    if (samping == LIDAR_MATI) {
+
+    // KOMPAS SAJA, TANPA DINDING. Diminta R2C 18 Sep 2026: "jangan gabungkan
+    // kompas dengan lidar".
+    //
+    // Menyala saat koreksi berhenti-dulu aktif DAN heading terkunci, yaitu
+    // persis keadaan 'U'. Di tanjakan sepasang sensor sisi tidak bisa dipakai
+    // -- badan menunduk ~28 der, berkas depan dan belakang mengenai dinding di
+    // ketinggian yang jauh berbeda -- jadi PD dinding menyumbang derau, bukan
+    // koreksi. Menjumlahkannya dengan suku kompas berarti satu penguasa yang
+    // benar ditarik-tarik penguasa kedua yang sedang salah.
+    //
+    // Cabang "dinding hilang" ikut DILEWATI, dan itu yang paling penting: di
+    // sana robot MEMBELOK ke arah dinding dengan kekuatan tetap untuk
+    // mencarinya. Di tangga, dinding yang "hilang" cuma berarti berkasnya
+    // menembak udara di atas anak tangga -- dan berbelok mencarinya di sana
+    // adalah cara jatuh.
+    const bool kompasSaja = (_koreksiDiam && !isnan(headingTerkunci()));
+    if (kompasSaja) {
+        turn = kemudiHeading(headingTerkunci());
+        _errAda = false; _errTurunan = 0.0f; _errStempel = 0;
+        _tCari = 0;
+    } else if (samping == LIDAR_MATI) {
         navBerhenti("sensor SAMPING tidak merespons.");
         return;
     } else if (samping == LIDAR_JAUH) {
@@ -1562,7 +1583,7 @@ void Navigation::navUpdate() {
     // menunjukkan perintah putar jenuh 61% waktu saat mulai dari tengah.
     turn = clampf(turn, -NAV_WALL_TURN_MAX, NAV_WALL_TURN_MAX);
 
-    if (arenaTerkunci()) {
+    if (arenaTerkunci() && !kompasSaja) {
         // Dinding mengoreksi posisi LATERAL; arah hadap diurus heading arena.
         turn += kemudiHeading(headingTerkunci());
     }
