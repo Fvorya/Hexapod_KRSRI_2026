@@ -70,11 +70,23 @@ static const char* const SLOT_NAMA[EE_SM_SLOTS] = {
 };
 
 // BATAS TRIM, mikrodetik. Trim itu koreksi netral, bukan pemetaan: pada
-// 500..2500 us untuk 180 der, 200 us sudah 18 der. Yang menuntut lebih dari
-// itu bukan trim yang kurang, melainkan horn terpasang di gigi yang salah
+// 500..2500 us untuk 180 der, 1 us = 0,09 der. Yang menuntut lebih dari batas
+// ini bukan trim yang kurang, melainkan horn terpasang di gigi yang salah
 // atau invert yang terbalik -- dan menutupinya dengan trim besar membuang
-// setengah jangkauan servo di satu ujung.
-#define TRIM_MAKS_US  200
+// jangkauan servo di satu ujung.
+//
+// DIPERKETAT 200 -> 25 pada 18 Sep 2026, diminta R2C. 25 us = 2,25 der, dan
+// itu memang seluruh yang boleh dikoreksi trim: satu gigi pada horn 25T
+// sudah 14,4 der, jadi apa pun yang lebih besar daripada 25 us PASTI horn,
+// bukan netral yang meleset. Batas longgar cuma membuat kesalahan pemasangan
+// terlihat seperti kalibrasi yang berhasil.
+//
+// NILAI LAMA DI EEPROM TIDAK IKUT DIJEPIT. loadServoMap() menyalin apa adanya,
+// dan hanya setTrim() yang menjepit -- jadi slot yang pernah disetel di atas
+// 25 us tetap berlaku sampai ada yang menyuntingnya. 'Yt' mencetak angka
+// sebenarnya; kalau ada yang di luar +-25, itu peninggalan, bukan setelan yang
+// sah.
+#define TRIM_MAKS_US  25
 
 // ------------------------------------------------------------ 1792
 // Ditulis TES_IMU dan perintah 'e' di firmware.

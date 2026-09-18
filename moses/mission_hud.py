@@ -4860,7 +4860,7 @@ input.lebar{width:170px}
         <button class=danger data-tip="Nolkan seluruh trim di RAM. Tidak menyentuh EEPROM sampai Simpan ditekan. Firmware: Yt!." onclick="if(confirm('NOLKAN seluruh trim di RAM.\n\nEEPROM belum berubah sampai Simpan ditekan.'))cmd('man','Yt!')">Nolkan semua (Yt!)</button>
         <table>
           <tr><td class=mid width=80>urutan</td><td class=kecil>Setel pada pose yang DIPAKAI, berbeban &mdash; bukan di 90 der tanpa beban. Trim ditambahkan sesudah konversi derajat ke pulse, jadi galatnya nol tepat di 90 der dan tumbuh sebanding jaraknya dari situ. Pose berdiri jauh dari 90 (femur &minus;10,6 der, tibia &minus;8,0 der).</td></tr>
-          <tr><td class=mid>bukan trim</td><td class=kecil>Kalau satu sendi menuntut lebih dari &plusmn;200 us, yang salah bukan trim: horn terpasang di gigi yang salah, atau invert terbalik. Firmware menjepitnya di 200.</td></tr>
+          <tr><td class=mid>bukan trim</td><td class=kecil>Kalau satu sendi menuntut lebih dari &plusmn;25 us, yang salah bukan trim: horn terpasang di gigi yang salah, atau invert terbalik. Satu gigi pada horn 25T sudah 14,4 der, sedangkan 25 us cuma 2,25 der. Firmware menjepitnya di 25.</td></tr>
         </table>
       </div>
 
@@ -5209,14 +5209,14 @@ async function tarikSekali(){
         if(t.slot<18 && t.slot%3===0) kepala=`<div class=mid>${KAKI[t.slot/3]}</div>`;
         if(t.slot===18) kepala='<div class=mid>Lengan &mdash; perlu R dulu</div>';
         return kepala+`<div>${t.slot} ${t.nama}${t.invert?' <b>inv</b>':''}
-          <button onclick="trimGeser(${t.slot},-20)">&minus;20</button>
+          <button onclick="trimGeser(${t.slot},-10)">&minus;10</button>
           <button onclick="trimGeser(${t.slot},-5)">&minus;5</button>
           <button onclick="trimGeser(${t.slot},-1)">&minus;1</button>
           <input id="tr_${t.slot}" size=5
             onchange="cmd('man','Yt${t.slot} '+this.value)">
           <button onclick="trimGeser(${t.slot},1)">+1</button>
           <button onclick="trimGeser(${t.slot},5)">+5</button>
-          <button onclick="trimGeser(${t.slot},20)">+20</button></div>`;
+          <button onclick="trimGeser(${t.slot},10)">+10</button></div>`;
       }).join('');
     }
     $('trim').dataset.n=String(d.trim.length);
