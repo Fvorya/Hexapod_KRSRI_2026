@@ -535,7 +535,21 @@
 // adalah pose netral -- tapi jangan kaget kalau robot jadi mudah jatuh lagi
 // sesudah menekannya. Ketik 'T5' sekali lagi, atau 'U' yang memasang seluruh
 // rangkaiannya.
-#define TANJAK_PITCH_DEG      5.0f
+// 12, naik dari 5 pada 18 Sep 2026: pada 5 sudut BAWAH-DEPAN sasis menyangkut
+// bibir anak tangga terakhir. Di puncak kaki depan sudah di lantai atas
+// sementara tengah dan belakang masih di tanjakan, jadi badan belum sempat
+// naik saat sudut itu menyapu melewati bibirnya.
+//
+// Mendongak, bukan tinggi badan: yang menyangkut khusus bagian DEPAN, dan
+// menaikkan tinggi badan mengangkat belakang juga -- membayar stabilitas untuk
+// sesuatu yang tidak menyangkut. Sudut bawah-depan sekitar 100 mm di depan
+// pusat badan, jadi tiap derajat mengangkatnya ~1,7 mm: 5 der = 8,7 mm,
+// 12 der = 20,8 mm.
+//
+// Belakang ikut turun sebanyak itu, dan itu tidak apa-apa: di puncak, belakang
+// masih di tanjakan yang MENURUN menjauh, jadi ruangnya justru bertambah.
+// BODY_MAX_ROT_DEG 20 plafonnya.
+#define TANJAK_PITCH_DEG     12.0f
 
 // --- PUNCAK TANJAKAN, dibaca gyro (HNT_PUNCAK) ---------------------------
 //

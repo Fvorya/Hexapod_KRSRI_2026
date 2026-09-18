@@ -469,7 +469,11 @@ static void handleCmd(char* s) {
         case 'U': {
             float p[1] = { 0.0f };
             if (argFloats(s, p, 1) < 1 || p[0] <= 0.0f) {
-                Serial.println("U<cm> = NAIK TANGGA. Contoh: 'U103' untuk R-9.");
+                Serial.println("U<cm> = NAIK TANGGA. Contoh: 'U230' untuk R-9.");
+                Serial.println("  230, bukan 103. Angka ini ODOMETRI GAIT, dan 103 itu panjang");
+                Serial.println("  MIRING tangganya. Di anak tangga tiap siklus gait memindahkan");
+                Serial.println("  robot jauh lebih sedikit daripada di lantai datar -- diukur");
+                Serial.println("  18 Sep 2026, sampai atas pada ~230.");
                 Serial.println("  Sama dengan mengetik, berurutan:");
                 Serial.println("    T5     profil TANJAK -- langkah 75 mm, satu-satunya yang terbukti naik anak tangga");
                 Serial.println("    Z0     kemudi IKUT DINDING, bukan menengah");
