@@ -1896,8 +1896,8 @@ class Teensy:
     RE_LEPAS = re.compile(r"^#LEPAS\s+(\d+)", re.I)
 
     # TOMBOL PCB. Dicetak Tampilan::lapor() tiap tombol dipicu:
-    #     #TOMBOL D2 TEKAN siapkan: I lalu R lalu b
-    #     #TOMBOL D5 TAHAN reset ruas & poin ke 0
+    #     #TOMBOL D6 TEKAN JALAN (hitung mundur 1 detik)
+    #     #TOMBOL D3 TAHAN reset ruas & poin ke 0
     # Pin, jenis picuan, lalu fungsinya dalam kata-kata. Fungsi ikut dikirim
     # firmware, bukan dipetakan lagi di sini: peta kedua di Pi akan diam-diam
     # berbohong begitu tombolnya dipindah di Teensy.

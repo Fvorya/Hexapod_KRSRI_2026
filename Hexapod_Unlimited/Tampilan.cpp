@@ -28,7 +28,7 @@ static const char* const TOMBOL_PIN[TOMBOL_N] = { "D6", "D5", "D4", "D3" };
 // Teks ini juga yang dibaca operator di LAYAR_TANYA, jadi ia harus menjelaskan
 // akibatnya, bukan namanya. Muat 2 baris x 21 kolom = 42 karakter.
 static const char* const TOMBOL_FUNGSI[TOMBOL_N][2] = {
-    { "siapkan: I lalu R lalu b", "JALAN (hitung mundur 1 detik)" },
+    { "JALAN (hitung mundur 1 detik)", "siapkan: I lalu R lalu b" },
     { "STOP di ruas kini",        "lanjut dari ruas tersimpan"    },
     { "catat 1 arah kompas",      "kalibrasi pivot"               },
     { "mirror -- BELUM ADA",      "reset ruas & poin ke 0"        },
@@ -405,11 +405,18 @@ void Tampilan::minta(uint8_t i, bool tahanan) {
 
 void Tampilan::aksiTekan(uint8_t i) {
     switch (i) {
-        case 0:   // D6 -- siapkan robot
-            kirimCmd("I");
-            kirimCmd("R");
-            kirimCmd("b");
-            pesan("init, capit nol, berdiri");
+        case 0:   // D6 tekan -- JALAN, sesudah hitung mundur pendek.
+            //
+            // DITUKAR dengan aksi tahan pada 18 Sep 2026, diminta R2C: yang
+            // paling sering ditekan di arena adalah start misi, dan menahan
+            // tombol sambil robot menunggu itu detik yang terbuang tiap
+            // percobaan. Berdiri pindah ke tahan.
+            //
+            // Tetap aman: kedua aksi sama-sama lewat LAYAR_TANYA, jadi start
+            // misi masih menuntut DUA sentuhan, dan hitung mundur di bawah
+            // masih memberi jalan membatalkan sesudah sentuhan kedua.
+            _layar   = LAYAR_MUNDUR;
+            _tMundur = millis();
             break;
 
         case 1:   // D5 -- STOP di ruas saat ini
@@ -504,9 +511,12 @@ void Tampilan::tahan(uint8_t i) {
 
 void Tampilan::aksiTahan(uint8_t i) {
     switch (i) {
-        case 0:   // D6 tahan -- JALAN, sesudah hitung mundur pendek
-            _layar   = LAYAR_MUNDUR;
-            _tMundur = millis();
+        case 0:   // D6 tahan -- siapkan robot. Lihat aksiTekan() case 0:
+            //    keduanya ditukar 18 Sep 2026.
+            kirimCmd("I");
+            kirimCmd("R");
+            kirimCmd("b");
+            pesan("init, capit nol, berdiri");
             break;
 
         case 1:   // D5 tahan -- lanjutkan dari ruas tempat berhenti
