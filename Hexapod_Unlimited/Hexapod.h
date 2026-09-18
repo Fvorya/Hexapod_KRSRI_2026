@@ -309,6 +309,22 @@ private:
     void pasangProfil(const GaitProfile& p, int8_t id = -1) {
         _profilId = id;
         _lututKunci = 0;
+
+        // PITCH BADAN DINOLKAN DI SINI, alasan yang sama dengan kunci lutut di
+        // atas. TANJAK dan SEMPIT memiringkan badan; profil lain tidak pernah
+        // memulangkannya, jadi keluar dari tangga ke ruas datar meninggalkan
+        // badan mendongak 10 der sepanjang sisa misi. Tidak ada gejala lain --
+        // robot berjalan miring dan tidak ada yang melaporkannya.
+        //
+        // bentukTanjak() memasang pitch-nya SESUDAH memanggil fungsi ini, jadi
+        // kedua profil miring tetap mendapat kemiringannya.
+        //
+        // ROLL DAN YAW DIPERTAHANKAN. Stabilisasi IMU menulis roll, dan
+        // menolkannya di sini menjatuhkan badan kembali ke datar di atas bidang
+        // yang memang miring -- pola yang sama dipakai bentukTanjak().
+        const Vec3 r0 = bodyRotTargetDeg();
+        setBodyRotation(r0.x, 0.0f, r0.z);
+
         _gait.setProfile(id >= 0 && (_profil.mask & (1 << id)) ? _profil.nilai[id] : p);
     }
     uint8_t _lututKunci = 0;     // bitmask kaki yang lututnya dibekukan
