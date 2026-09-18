@@ -1277,7 +1277,12 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // Dihitung per MISI, bukan per ruas: satu kanal yang mati lalu hidup lagi
 // tiga kali sepanjang satu lari bukan sensor yang berkedip, itu kabel yang
 // lepas. Percobaan keempat cuma menunda kesimpulan yang sama.
-#define LIDAR_ULANG_MAKS      3
+// Satu percobaan, bukan tiga. Diminta R2C 19 Sep 2026: tiap percobaan
+// menahan lup utama sampai 1,6 detik (delapan kanal x setTimeout 200 ms) dan
+// jam kontes 300 detik tidak ikut berhenti. Sensor yang tidak pulih pada
+// percobaan pertama hampir tidak pernah pulih pada yang kedua -- yang pulih
+// itu kanal yang berkedip, dan kedipan sembuh sekali pindai.
+#define LIDAR_ULANG_MAKS      1
 
 #define MUNDUR_BATAS_MS    12000
 

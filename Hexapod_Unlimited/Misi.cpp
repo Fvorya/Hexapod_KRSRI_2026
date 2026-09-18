@@ -2081,7 +2081,21 @@ bool Misi::ruasJalan() {
     // menyalakannya dan menunggu -- ruasSehat()/ruasSelesai() punya cabang
     // sendiri untuk membaca hasilnya.
     if (x.henti == HNT_GESER) {
-        if (!_nav.geserMulai(kemudiRuas(_i) == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
+        // SISA, bukan jarak penuh. Mengulang 20 cm geser berarti menempuh 40 cm
+        // ke arah yang sama, dan di R-11 arah itu jurang.
+        int gsr = (int)_cm[_i];
+        if (_lanjutRuas) {
+            const int tempuh = (int)_nav.geserTempuhCm();
+            gsr -= tempuh;
+            Serial.print("  geser dilanjutkan: sudah "); Serial.print(tempuh);
+            Serial.print(" cm, sisa "); Serial.print(gsr); Serial.println(" cm.");
+            if (gsr < 1) {     // praktis sudah sampai
+                _lanjutRuas = false;
+                _serongT0 = 0;
+                return true;
+            }
+        }
+        if (!_nav.geserMulai(kemudiRuas(_i) == KMD_KIRI, gsr, x.jagaBelakang)) {
             lewati("geser ditolak -- sebabnya tercetak di atas.");
             return false;
         }
@@ -2161,6 +2175,23 @@ bool Misi::ruasJalan() {
     // navMulai() karena navBerhenti() yang dipanggilnya melepas kunci ini,
     // persis seperti yang terjadi pada abaikanDepan di atas.
     _nav.kunciHeading(headingRuas(_i));
+
+    // MELANJUTKAN, bukan mengulang: titik nol dan penanda gyro DIBIARKAN apa
+    // adanya. Tidak ada perhitungan tambahan di sini -- yang dikerjakan justru
+    // MELEWATI penulisan ulang. Jarak yang sudah ditempuh tetap terhitung.
+    //
+    // Yang tidak ikut: HNT_SISI, HNT_DEPAN, HNT_BELAKANG dan HNT_MUNDUR
+    // sasarannya BACAAN MUTLAK sensor, jadi mereka melanjutkan sendiri tanpa
+    // perlu diberi tahu. Yang benar-benar butuh ini cuma yang menghitung
+    // TEMPUH: HNT_ODO lewat _ruasAwal, dan HNT_GESER lewat sisa jaraknya.
+    if (_lanjutRuas) {
+        Serial.print("  ruas DILANJUTKAN dari ");
+        Serial.print(_robot.jarakCm() - _ruasAwal, 0);
+        Serial.println(" cm yang sudah ditempuh.");
+        _lanjutRuas = false;
+        _serongT0 = 0;
+        return true;
+    }
 
     _ruasAwal = _robot.jarakCm();
     _serongT0 = 0;
@@ -2436,6 +2467,7 @@ bool Misi::pulihkanLidar() {
     _lidar.pindaiI2C(false);
 
     const bool pulih = !lidarMati();
+    _lanjutRuas = pulih;
     Serial.println(pulih ? "  PULIH."
                          : "  masih ada yang tidak menjawab.");
     return pulih;

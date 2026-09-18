@@ -324,6 +324,14 @@ public:
     bool setelBelakangMulai(int cm);
     bool setelBelakangSedangJalan() const { return _mode == NAV_SETEL_BLK; }
     bool setelBelakangTercapai() const    { return _setelBlkOk; }
+    // Sudah bergeser berapa jauh pada ruas HNT_GESER yang sedang atau BARU
+    // SAJA berjalan. navBerhenti() tidak menghapus acuannya, jadi angka ini
+    // masih sah sesaat sesudah geser dihentikan -- itulah yang dipakai
+    // Misi untuk melanjutkan dari sisa alih-alih mengulang penuh.
+    float geserTempuhCm() const {
+        return (_rataOdoCm > 0.0f) ? fabsf(_robot.geserCm() - _rataOdoAwal) : 0.0f;
+    }
+
     bool ratakanSedangJalan() const { return _mode == NAV_RATA; }
     bool ratakanTercapai() const    { return _rataOk; }
 

@@ -550,6 +550,12 @@ private:
     // "coba pakai kamera; kalau tidak ada jawaban, kerjakan cara lama".
     bool     _tungguVision = true;
     uint8_t  _lidarUlang   = 0;   // jatah pindai ulang, dinolkan tiap misi
+
+    // Ruas berikutnya DILANJUTKAN, bukan diulang dari nol. Dipasang
+    // pulihkanLidar() tepat sebelum ruasMasuk(), dibersihkan ruasJalan()
+    // sesudah dipakai sekali. Tidak ada perhitungan tambahan: yang
+    // dikerjakannya cuma MELEWATI penulisan ulang titik nol.
+    bool     _lanjutRuas   = false;
     // MISI_KONFIRM dipakai DUA hal dengan ujung berbeda: ruas AKS_KONFIRM
     // (-> ruasBerikut) dan parkir vision (-> MISI_LENGAN). Ini yang
     // membedakannya. Tanpa pembeda ini 'm2' akan MELOMPATI pengambilannya dan
