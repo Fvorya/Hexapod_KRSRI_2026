@@ -562,12 +562,12 @@ const Ruas RUAS[] = {
 /*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     18,              AKS_TIDAK_ADA, 0 },
 /*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
 /*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
-/*15*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
+/*15*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
 /*16*/   { "TIMUR sampai tembok",           BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*17*/   { "R-6 pecah: SELATAN ke SZ-3",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     22,              AKS_TIDAK_ADA, 0 },
 /*18*/   { "SZ-3 taruh korban",             BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
 /*19*/   { "balik maju ke depan K-4",       BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
-/*20*/   { "K-4 angkat korban",             BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
+/*20*/   { "K-4 angkat korban",             BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
 /*21*/   { "jalan ke depan tangga",         BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*22*/   { "ratakan 13 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*23*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,    40,              AKS_TIDAK_ADA, 0 },
@@ -670,9 +670,8 @@ static const uint32_t MISI_SERONG_MIN_MS = 3000;
 // ====================================================================
 // SEKUENS LENGAN -- TAHAP 1: GERBANG JARAK + POSE TETAP
 //
-// Robot sudah BERHENTI di sini, pada jarak yang ditentukan LiDAR depan
-// (HNT_DEPAN KORBAN_JARAK_CM di baris AMBIL), dan kamera sudah meluruskan
-// kiri-kanan sebelum ruas ini. Yang tersisa buat lengan cuma memainkan pose
+// Robot sudah BERHENTI di sini, dan kamera sudah meluruskan kiri-kanan
+// sebelum ruas ini. Yang tersisa buat lengan cuma memainkan pose
 // yang sudah disetel. TIDAK ADA IK dari sensor, dan tidak ada umpan balik
 // posisi dari servo mana pun -- karena itu tiap langkah diberi waktu tetap.
 //
@@ -683,9 +682,19 @@ static const uint32_t MISI_SERONG_MIN_MS = 3000;
 // titik capit lewat moveArmGrip(), dan tinggi badan profil ikut menentukan --
 // benar untuk satu profil, meleset 15 mm untuk yang lain, DIAM-DIAM.
 //
-// Harganya: jangkauan capit tidak lagi mengikuti gerbang. Gerbang HNT_DEPAN
-// KORBAN_JARAK_CM tetap menentukan robot berhenti di mana, jadi menggeser
-// gerbang sekarang MENUNTUT sudut sendi disetel ulang dengan tangan.
+// Harganya: jangkauan capit tidak lagi mengikuti jarak berhenti. Memindahkan
+// tempat robot berhenti sekarang MENUNTUT sudut sendi disetel ulang dengan
+// tangan -- tidak ada lagi yang menghitungnya sendiri.
+//
+// DAN SEJAK 18 Sep 2026 TEMPAT ITU TIDAK LAGI DI TABEL. Seluruh baris AMBIL
+// memakai HNT_LANGSUNG: ruas AMBIL tidak berjalan sama sekali, dan yang
+// menaruh robot pada jarak yang benar adalah ruas-ruas SEBELUMNYA. Jadi kalau
+// capit meleset, yang disetel panjang ruas sebelumnya -- bukan baris AMBIL,
+// yang tidak lagi punya angka jarak untuk disetel.
+//
+// KORBAN_JARAK_CM karena itu tidak lagi dipakai satu baris tabel pun. Ia masih
+// menurunkan KORBAN_CAPIT_MM, yang hanya dibaca cek_korban.cpp -- pemeriksa
+// amplop di PC, bukan firmware.
 //
 // setSudutLengan() menandai sudut yang keluar 0..180 servo, tapi TETAP
 // mengirimkannya; amplop IK-nya sendiri masih disapu cek_korban.cpp.
