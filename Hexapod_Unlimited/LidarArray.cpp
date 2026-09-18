@@ -884,7 +884,7 @@ void LidarArray::cetakOffset() {
 // Pemindai I2C: memastikan mux dan keenam sensor benar-benar ada SEBELUM
 // menyalahkan program -- SEKALIGUS meng-init ulang yang ada tapi belum aktif.
 // Dijalankan lewat perintah 'I'.
-void LidarArray::pindaiI2C() {
+void LidarArray::pindaiI2C(bool bolehResetBus) {
     // Nomor pin dicetak dari konstanta, bukan ditulis tangan: bus ini sudah
     // sekali pindah, dan judul yang berbohong soal pin mengirim orang
     // mengukur jalur yang salah.
@@ -901,6 +901,15 @@ void LidarArray::pindaiI2C() {
     // pernah diisi saat boot, jadi mux yang baru disambungkan tetap dianggap
     // hilang selamanya -- dan navMulai() menolak jalan tanpa sebab yang terlihat.
     _muxOk = mux;
+
+    if (!mux && !bolehResetBus) {
+        // DI TENGAH MISI. Mux bisu berarti seluruh bus hilang, dan tidak ada
+        // yang bisa dikerjakan di sini tanpa memutus bus. Menyerah dengan
+        // jujur; Misi::pulihkanLidar() akan melihat sensornya masih mati dan
+        // membatalkan misi sesudah jatahnya habis.
+        Serial.println("  mux bisu, dan reset bus TIDAK dijalankan di tengah misi.");
+        return;
+    }
 
     if (!mux) {
         // KEADAAN GARIS DULU, baru tuduhan. Tapi pin 18/19 sedang dipegang

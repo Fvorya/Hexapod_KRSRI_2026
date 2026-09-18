@@ -2429,7 +2429,11 @@ bool Misi::pulihkanLidar() {
     Serial.print(_lidarUlang); Serial.print(" dari ");
     Serial.print(LIDAR_ULANG_MAKS); Serial.println(")");
 
-    _lidar.pindaiI2C();
+    // false = jangan memulai ulang peripheral I2C walau mux bisu. Lihat
+    // LidarArray::pindaiI2C(): pemulihan bus adalah langkah diagnostik, dan
+    // di tengah lari ia memutus bus yang sedang dipakai sambil menahan lup
+    // utama lebih lama lagi.
+    _lidar.pindaiI2C(false);
 
     const bool pulih = !lidarMati();
     Serial.println(pulih ? "  PULIH."

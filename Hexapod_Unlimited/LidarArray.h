@@ -86,7 +86,15 @@ public:
     // jadi tanpa ini sensor yang gagal init (mis. modul belum siap saat papan
     // menyala, atau kabel yang baru dibetulkan) tetap mati sampai di-reset --
     // padahal pindaiannya sendiri melaporkan modulnya "ADA".
-    void pindaiI2C();
+    // bolehResetBus false = JANGAN memulai ulang peripheral I2C dan jangan
+    // menyapu seluruh alamat, walaupun mux tidak menjawab. Dipakai
+    // Misi::pulihkanLidar() yang memanggil pindaian ini DI TENGAH MISI:
+    // LIDAR_I2C_BUS.end() + bit-bang 9 pulsa + begin() adalah pemulihan
+    // diagnostik, aman diketik operator, tapi di tengah lari ia memutus bus
+    // yang sedang dipakai round-robin dan menahan lup utama lebih lama lagi.
+    // Catatan itu sudah ada di badan fungsinya sejak awal; sekarang ada yang
+    // menegakkannya.
+    void pindaiI2C(bool bolehResetBus = true);
 
     // UJI PIN, bukan uji bus. Dipanggil lewat 'I1' saat bus mati dan yang
     // dipertanyakan tinggal pin Teensy-nya sendiri. Tidak memakai peripheral
