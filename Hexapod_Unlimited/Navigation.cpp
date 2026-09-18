@@ -655,12 +655,16 @@ bool Navigation::setelBelakangMulai(int cm) {
     // terlalu dekat = MAJU.
     _setelBlkMaju = (d0 < cm);
 
-    // Sasaran di bawah pita "terlalu dekat" akan ditolak penjaga mundur tepat
-    // sebelum tercapai -- tolak sekarang, bukan di tengah gerakan. Hanya
-    // berlaku untuk arah mundur; yang MAJU justru menjauhi dinding itu.
-    if (!_setelBlkMaju && cm <= (int)WALL_MIN_CM) {
+    // Sasaran di bawah lantai mundur akan ditolak penjaga mundur tepat sebelum
+    // tercapai -- tolak sekarang, bukan di tengah gerakan. Hanya berlaku untuk
+    // arah mundur; yang MAJU justru menjauhi dinding itu.
+    //
+    // MUNDUR_MIN_CM, BUKAN wall.min. Lihat config.h: wall.min milik kemudi
+    // ikut-dinding di samping, dan memakainya di sini melarang robot mendekat
+    // ke tembok belakang yang memang sedang dituju.
+    if (!_setelBlkMaju && cm <= (int)MUNDUR_MIN_CM) {
         Serial.print("Setel jarak belakang DITOLAK: sasaran "); Serial.print(cm);
-        Serial.print(" cm <= wall.min "); Serial.print(WALL_MIN_CM, 0);
+        Serial.print(" cm <= lantai mundur "); Serial.print(MUNDUR_MIN_CM, 0);
         Serial.println(" cm -- penjaga akan menghentikannya sebelum sampai.");
         return false;
     }
@@ -736,7 +740,7 @@ void Navigation::setelBelakangUpdate() {
             navBerhenti("halangan di depan -- setel jarak belakang dihentikan.");
             return;
         }
-    } else if (d != LIDAR_JAUH && d <= (int)WALL_MIN_CM) {
+    } else if (d != LIDAR_JAUH && d <= (int)MUNDUR_MIN_CM) {
         navBerhenti("dinding belakang sudah terlalu dekat -- setel jarak dihentikan.");
         return;
     }

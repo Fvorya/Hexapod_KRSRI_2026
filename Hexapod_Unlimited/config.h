@@ -1218,6 +1218,20 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // Batas waktu perintah 'J' (setel jarak belakang, dua arah). Sama besarnya
 // dengan perataan: keduanya gerak lambat berumpan-balik LiDAR, dan keduanya
 // butuh jaring terakhir.
+// LANTAI JARAK MUNDUR. Ruas MUNDUR boleh mendekat lebih rapat daripada
+// wall.min, dan memang harus: wall.min menjaga kemudi ikut-dinding di
+// SAMPING, di mana badan bergerak sejajar dinding dan satu langkah salah
+// menyeretnya. Mundur ke tembok belakang lain sifatnya -- robot menuju
+// dinding itu dengan sengaja, pelan, dan berhenti pada bacaan.
+//
+// Angkanya WALL_KAKI_CM: itu bacaan LiDAR saat telapak menyentuh dinding,
+// diukur 14 Sep 2026. Di bawah itu kaki yang membentur, bukan sensor yang
+// salah. BELUM DIUKUR UNTUK SISI BELAKANG -- geometri kaki belakang tidak
+// sama dengan kaki tengah kanan yang dipakai mengukur. Ukur ulang dengan
+// mendorong robot mundur sampai telapak belakang menyentuh tembok, lalu
+// baca LiDAR belakang.
+#define MUNDUR_MIN_CM      WALL_KAKI_CM
+
 #define MUNDUR_BATAS_MS    12000
 
 #define MISI_VISI_BATAS_MS  20000

@@ -551,7 +551,7 @@ extern Skor gSkor;
 const Ruas RUAS_BAKU[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    10,              AKS_TIDAK_ADA, 0 },
+/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    13,              AKS_TIDAK_ADA, 0 },
 /*2*/    { "K-1 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
 /*3*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
 /*4*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
@@ -559,11 +559,11 @@ const Ruas RUAS_BAKU[] = {
 /*6*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
 /*7*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     23,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*8*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
-/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,    10,              AKS_TIDAK_ADA, 0 },
+/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,    13,              AKS_TIDAK_ADA, 0 },
 /*10*/   { "K-2 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f }, 
 /*11*/   { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
 /*12*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
-/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
+/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
 /*14*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
 /*15*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*16*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
@@ -1470,10 +1470,10 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         //    pemeriksaan ini penolakan itu datang di arena -- sesudah ruas
         //    sebelumnya selesai dan robot sudah berdiri di tempatnya.
         if (RUAS[i].henti == HNT_MUNDUR &&
-            _cm[i] >= 0.0f && _cm[i] <= (float)WALL_MIN_CM) {
+            _cm[i] >= 0.0f && _cm[i] <= (float)MUNDUR_MIN_CM) {
             Serial.print("Gagal: ruas "); Serial.print(i);
             Serial.print(" sasaran mundur "); Serial.print(_cm[i], 0);
-            Serial.print(" cm <= wall.min "); Serial.println(WALL_MIN_CM, 0);
+            Serial.print(" cm <= lantai mundur "); Serial.println(MUNDUR_MIN_CM, 0);
             Serial.println("  setelBelakangMulai() akan menolaknya sebelum berangkat.");
             ok = false;
         }
