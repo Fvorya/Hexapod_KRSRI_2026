@@ -556,6 +556,89 @@ static void handleCmd(char* s) {
                     else             misi.tabel();
                     break;
                 }
+                case '5': {
+                    // EDITOR TABEL LINTASAN DARI HUD. Satu pintu di bawah 'm'
+                    // yang sudah ada, jadi tidak ada huruf perintah baru.
+                    //
+                    //   m5                       cetak '#TABV <crc> <n>'
+                    //   m5d                      cetak seluruh tabel sebagai
+                    //                            '#TABR <idx> <13> | <nama>'
+                    //   m5s <idx> <13> | <nama>  setel satu baris penuh
+                    //   m5r                      RAM kembali ke tabel flash
+                    //
+                    //   m5+ <idx>                sisip baris kosong di idx
+                    //   m5- <idx>                hapus baris idx
+                    //
+                    // Sisip dan hapus menggeser nomor ruas, jadi peta poin
+                    // SKOR_RAM di Skor.cpp digeser bersamanya -- tanpa itu
+                    // poin jatuh ke ruas yang salah tanpa satu pun keluhan.
+                    //
+                    // Diurai di sini, bukan lewat argFloats(): argFloats mulai
+                    // di s+1 dan berhenti di huruf pertama yang bukan angka,
+                    // jadi ia tidak bisa melewati sub-perintah 'd'/'s'/'r'.
+                    const char* p = s + 2;
+                    while (*p == ' ') p++;
+                    if (*p == 'r') {
+                        misi.tabelBaku();
+                        Serial.println("m5r: tabel RAM dipulangkan ke tabel flash.");
+                        misi.tabelVersi();
+                        break;
+                    }
+                    if (*p == 'd') { misi.tabelDump(); break; }
+                    if (*p == '+' || *p == '-') {
+                        const char sub = *p++;
+                        while (*p == ' ') p++;
+                        char* end;
+                        long idx = strtol(p, &end, 10);
+                        if (end == p) {
+                            Serial.println("Format: m5+ <idx> sisip baris, m5- <idx> hapus baris.");
+                            break;
+                        }
+                        const bool ok = (sub == '+') ? misi.sisipBaris((uint8_t)idx)
+                                                     : misi.hapusBaris((uint8_t)idx);
+                        if (ok) misi.tabelVersi();
+                        break;
+                    }
+                    if (*p == 's') {
+                        p++;
+                        float v[14] = {0};
+                        uint8_t n = 0;
+                        while (n < 14) {
+                            while (*p == ' ' || *p == ',') p++;
+                            if (!*p || *p == '|') break;
+                            char* end;
+                            float x = strtof(p, &end);
+                            if (end == p) break;
+                            v[n++] = x;
+                            p = end;
+                        }
+                        if (n < 14) {
+                            Serial.print("m5s butuh indeks + 13 kolom = 14 angka, dapat ");
+                            Serial.println(n);
+                            Serial.println("Format: m5s <idx> <belok kemudi profil buta henti nilai "
+                                           "aksi aksiA putar condong jagaBlk mundurMm condongMm> | <nama>");
+                            break;
+                        }
+                        // Nama di belakang '|', boleh kosong. Pemisah ini
+                        // dipakai supaya spasi di dalam nama tidak dibaca
+                        // sebagai angka berikutnya.
+                        const char* nama = nullptr;
+                        while (*p && *p != '|') p++;
+                        if (*p == '|') { p++; while (*p == ' ') p++; nama = p; }
+                        if (misi.setBaris((uint8_t)v[0], v + 1, nama)) {
+                            // Panjang ruas hasil 'm7' untuk baris ini hilang:
+                            // _cm[] disalin ulang dari tabel. Dicetak supaya
+                            // tidak ditemukan sebagai angka yang "berubah
+                            // sendiri" di tengah percobaan.
+                            Serial.print("m5s "); Serial.print((uint8_t)v[0]);
+                            Serial.println(" OK -- panjang ruas hasil 'm7' dipulangkan ke tabel.");
+                            misi.tabelVersi();
+                        }
+                        break;
+                    }
+                    misi.tabelVersi();
+                    break;
+                }
                 case '6': {
                     float p[2] = {0, 0};
                     if (argFloats(s, p, 2) >= 2) misi.ukur((uint8_t)p[1]);
@@ -580,6 +663,11 @@ static void handleCmd(char* s) {
                     Serial.println("m=status  m4=tabel lintasan  m1=mulai  m0=batal");
                     Serial.println("m4 <idx>      = mulai dari satu ruas sampai akhir lintasan");
                     Serial.println("m4 <awal> <akhir> = jalankan SEBAGIAN, misal m4 0 13 (HOME..kaki tangga)");
+                    Serial.println("m5            = sidik tabel RAM: '#TABV <crc> <jumlah baris>'");
+                    Serial.println("m5d           = cetak seluruh tabel: '#TABR <idx> <13 kolom> | <nama>'");
+                    Serial.println("m5s <idx> <13 kolom> | <nama> = setel satu baris tabel (dari HUD)");
+                    Serial.println("m5+ <idx> / m5- <idx> = sisip / hapus baris tabel");
+                    Serial.println("m5r           = tabel RAM kembali ke tabel flash");
                     Serial.println("m6 <idx>      = MODE UKUR: jalan tanpa henti, robot cetak cm-nya");
                     Serial.println("m7 <idx> <cm> = setel panjang ruas");
                     Serial.println("m2/m3         = saat menunggu konfirmasi: lanjut / ulangi ruas");
@@ -1880,6 +1968,31 @@ void setup() {
 
     Serial.println("\n\nMemulai Hexapod Unlimited...");
 
+    // TABEL LINTASAN DIISI DI SINI, BUKAN DIANDALKAN DARI KONSTRUKTOR.
+    //
+    // Konstruktor `misi` sudah memanggil tabelBaku(), dan itu TIDAK CUKUP.
+    // `Ruas RUAS[RUAS_MAKS]` punya anggota bernilai baku (putar, condong,
+    // jagaBelakang, mundurMm, condongMm), jadi array itu punya inisialisasi
+    // DINAMIS sendiri. `misi` hidup di unit terjemahan lain, dan urutan
+    // antar-unit tidak ditentukan bahasa: di papan ini konstruktor `misi`
+    // jalan LEBIH DULU, mengisi RUAS[] dengan benar, lalu inisialisasi
+    // RUAS[] menimpa persis kelima kolom itu dengan nilai bakunya.
+    //
+    // Gejalanya DIAM dan mahal, terukur di robot 18 Sep 2026 lewat 'm5d':
+    // ruas 11 melapor jagaBelakang 1 padahal tabel menulis false; ruas 7
+    // melapor mundurMm 0 padahal tabel menulis 35; ruas 5 melapor putar 0
+    // padahal tabel menulis -20. Artinya jangkauan lengan tiap ruas AMBIL,
+    // seluruh belok pecahan, dan fase BADAN MUNDUR hilang tanpa satu pun
+    // pesan -- capit turun lalu maju menabrak reruntuhan.
+    //
+    // setup() jalan SESUDAH seluruh inisialisasi statis selesai, jadi
+    // panggilan di sini deterministik. Ia juga idempoten.
+    misi.tabelBaku();
+    if (!misi.tabelSamaBaku()) {
+        Serial.println("!! Tabel RAM TIDAK sama dengan tabel flash sesudah tabelBaku().");
+        Serial.println("   Ini bukan hasil 'm5s' -- ini kesalahan inisialisasi.");
+    }
+
     // 0. KALIBRASI DULU -- HARUS SEBELUM robot.begin()!
     //    gCalib adalah global yang ter-zero-init. Tanpa ini SERVO_PULSE_MIN/MAX = 0,
     //    sehingga angleToPulse() selalu menghasilkan 0 us (servo tak dapat sinyal /
@@ -2126,7 +2239,13 @@ void loop() {
     }
 
     // 6. PARSER SERIAL MONITOR
-    static char buf[96];
+    // 192, naik dari 96 pada 18 Sep 2026. Satu 'm5s <idx> <13 kolom> | <nama>'
+    // dari editor lintasan berukuran sampai ~95 karakter -- tepat di bibir
+    // batas lama. Karakter yang lewat dari buffer DIBUANG diam-diam lalu
+    // barisnya tetap dijalankan, jadi yang terpotong adalah ujung namanya:
+    // CRC tabel tidak akan pernah cocok dan HUD mengirim ulang tanpa henti,
+    // dengan gejala yang tidak terbaca sebagai "baris kepanjangan".
+    static char buf[192];
     static uint8_t len = 0;
     // Byte sebelumnya, untuk mengenali CRLF. static, karena kedua byte sebuah
     // akhir baris bisa tiba di dua pemanggilan loop() yang berbeda.

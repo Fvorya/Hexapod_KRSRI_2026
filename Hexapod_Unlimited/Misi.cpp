@@ -545,46 +545,69 @@ extern Skor gSkor;
 // Robot berjalan buta ke depan sepanjang ruas itu, jadi harus ada yang lain
 // yang menghentikannya -- tabelSiap() menolak tabel yang melanggar ini.
 // ====================================================================
-const Ruas RUAS[] = {
+// >>> TABEL LINTASAN BAKU: acuan di FLASH, bukan yang dijalankan.
+// Yang dijalankan misi adalah salinannya di RAM (RUAS[] di bawah), yang boleh
+// diubah dari HUD lewat 'm5s'. 'm5r' memulangkan RAM ke tabel ini.
+const Ruas RUAS_BAKU[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
 /*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
-/*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
-/*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
+/*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
+/*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
 /*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
 /*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
-/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0,         +20.0f },
-/*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
-/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
-/*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
-/*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
-/*11*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     18,              AKS_TIDAK_ADA, 0 },
-/*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
-/*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
-/*15*/   { "maju sedikit",                  BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
-/*16*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
-/*17*/   { "TIMUR sampai tembok",           BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*18*/   { "R-6 pecah: SELATAN ke SZ-3",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     22,              AKS_TIDAK_ADA, 0 },
-/*19*/   { "SZ-3 taruh korban",             BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
-/*20*/   { "balik maju ke depan K-4",       BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
-/*21*/   { "maju sedikit",                  BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "K-4 angkat korban",             BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
-/*23*/   { "jalan ke depan tangga",         BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*24*/   { "ratakan 13 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*25*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
-/*26*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
-/*27*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       26,              AKS_TIDAK_ADA, 0 },
-/*28*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
-/*29*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
-/*30*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
-/*31*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
-/*32*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*33*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
+/*6*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     23,              AKS_TIDAK_ADA, 0,         +20.0f },
+/*7*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
+/*8*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
+/*9*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
+/*10*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
+/*11*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
+/*12*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*13*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*14*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+// /*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
+// /*15*/   { "maju sedikit (CARI yang halus)",BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_ODO,        8,              AKS_TIDAK_ADA, 0 },
+// /*16*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true,  true,  35.0f, 20.0f },
+// /*17*/   { "hadap SELATAN (rotasi saja)",   BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
+// /*18*/   { "R-6 pecah: SELATAN sampai 28",  BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     28,              AKS_TIDAK_ADA, 0 },
+// /*19*/   { "SZ-3 taruh korban",             BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
+// /*20*/   { "hadap BARAT (rotasi saja)",     BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
+// /*21*/   { "K-4: pendekatan milik CARI",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
+// /*22*/   { "K-4 angkat korban",             BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true,  true,  35.0f, 20.0f },
+/*15*/   { "jalan sampai bebatuan",         BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
+/*16*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+/*17*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+/*18*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
+/*19*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
+/*20*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       26,              AKS_TIDAK_ADA, 0 },
+/*21*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
+/*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
+/*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
+/*25*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*26*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
-const uint8_t RUAS_N = sizeof(RUAS) / sizeof(RUAS[0]);
-static_assert(sizeof(RUAS) / sizeof(RUAS[0]) <= RUAS_MAKS,
+// <<< TABEL LINTASAN BAKU selesai
+
+// --- TABEL YANG BENAR-BENAR DIJALANKAN, di RAM ----------------------------
+//
+// Salinan RUAS_BAKU[] yang boleh diubah dari HUD lewat 'm5s', jadi menyetel
+// lintasan tidak lagi menuntut satu putaran compile + flash per percobaan.
+// Isinya diisi tabelBaku() saat konstruktor Misi jalan; sebelum itu nol.
+//
+// Nama tidak boleh tetap menunjuk ke flash: begitu operator menggantinya, ia
+// harus menunjuk ke RAM. Kolam nama ini yang dipakai SEJAK AWAL -- termasuk
+// untuk nama yang belum diubah -- supaya cuma ada satu jenis pointer di tabel
+// dan tidak ada yang perlu mengingat mana yang boleh ditulisi.
+Ruas RUAS[RUAS_MAKS];
+static char NAMA_RAM[RUAS_MAKS][RUAS_NAMA_MAKS];
+
+// JUMLAHNYA BOLEH BERUBAH lewat 'm5+' / 'm5-'. Peta poin di Skor.cpp ikut
+// digeser di fungsi yang sama -- lihat skorSisip()/skorHapus().
+uint8_t RUAS_N = 0;                  // diisi tabelBaku()
+const uint8_t RUAS_BAKU_N = sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]);
+static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= RUAS_MAKS,
               "Tabel lintasan lebih panjang dari _cm[] -- naikkan RUAS_MAKS di Misi.h");
 
 // Plafon kedua, dan ia BUKAN soal RAM. RUAS_N, _i dan _iAkhir semuanya
@@ -596,7 +619,7 @@ static_assert(sizeof(RUAS) / sizeof(RUAS[0]) <= RUAS_MAKS,
 // Menaikkan RUAS_MAKS sendiri murah -- 9 byte per slot (_arah 1 + _serong 4
 // + _cm 4), 36 slot cuma 324 byte, dan EEPROM tidak ikut tersentuh. Batas
 // inilah yang tidak bisa dibeli dengan RAM.
-static_assert(sizeof(RUAS) / sizeof(RUAS[0]) <= 254,
+static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= 254,
               "Tabel > 254 baris: RUAS_N/_i/_iAkhir uint8_t, dan 255 dipakai "
               "_iAkhir sebagai penanda. Lebarkan ketiganya ke uint16_t dulu.");
 
@@ -1028,8 +1051,218 @@ static bool sekuensTaruh(Hexapod& robot, uint8_t lengan, uint8_t& langkah, uint3
 
 Misi::Misi(Hexapod& robot, Navigation& nav, LidarArray& lidar)
     : _robot(robot), _nav(nav), _lidar(lidar) {
+    tabelBaku();     // isi RUAS[] dari flash, lalu _cm[] + hitungArah()
+}
+
+// ====================================================================
+// EDITOR TABEL DARI HUD ('m5')
+//
+// Yang dijaga seluruh bagian ini cuma satu hal: tabel yang dijalankan saat
+// percobaan harus sama dengan tabel yang nanti di-flash. Karena itu tiap
+// perubahan memanggil tabelBerubah(), tiap perubahan ditolak selama misi
+// berjalan, dan tabelCrc() memberi HUD cara memastikannya tanpa menebak.
+// ====================================================================
+
+void Misi::salinBaris(uint8_t ke, const Ruas& dari) {
+    RUAS[ke] = dari;
+    strncpy(NAMA_RAM[ke], dari.nama ? dari.nama : "", RUAS_NAMA_MAKS - 1);
+    NAMA_RAM[ke][RUAS_NAMA_MAKS - 1] = '\0';
+    RUAS[ke].nama = NAMA_RAM[ke];
+}
+
+void Misi::tabelBaku() {
+    RUAS_N = RUAS_BAKU_N;
+    for (uint8_t i = 0; i < RUAS_N; i++) salinBaris(i, RUAS_BAKU[i]);
+    skorBaku();                       // peta poin ikut pulang ke flash
+    tabelBerubah();
+}
+
+bool Misi::tabelSamaBaku() const {
+    // Dibandingkan KOLOM PER KOLOM, bukan memcmp: `nama` sengaja menunjuk ke
+    // kolam RAM, jadi pointernya memang berbeda dan memcmp akan selalu gagal.
+    if (RUAS_N != RUAS_BAKU_N) return false;
+    for (uint8_t i = 0; i < RUAS_N; i++) {
+        const Ruas& a = RUAS[i];
+        const Ruas& b = RUAS_BAKU[i];
+        if (a.belok != b.belok || a.kemudi != b.kemudi || a.profil != b.profil
+            || a.abaikanDepan != b.abaikanDepan || a.henti != b.henti
+            || a.nilai != b.nilai || a.aksi != b.aksi || a.aksiA != b.aksiA
+            || a.putar != b.putar || a.condong != b.condong
+            || a.jagaBelakang != b.jagaBelakang || a.mundurMm != b.mundurMm
+            || a.condongMm != b.condongMm) return false;
+        if (strcmp(a.nama ? a.nama : "", b.nama ? b.nama : "") != 0) return false;
+    }
+    return true;
+}
+
+bool Misi::sisipBaris(uint8_t idx) {
+    if (!bolehUbahTabel()) return false;
+    if (RUAS_N >= RUAS_MAKS) {
+        Serial.print("m5+: tabel penuh, batas RUAS_MAKS ");
+        Serial.println(RUAS_MAKS);
+        return false;
+    }
+    if (idx > RUAS_N) idx = RUAS_N;
+    for (uint8_t i = RUAS_N; i > idx; i--) salinBaris(i, RUAS[i - 1]);
+    // Kurung kosong WAJIB: anggota awal struct Ruas (nama..aksiA) tidak punya
+    // nilai baku di deklarasinya, jadi `Ruas kosong;` berisi sampah stack --
+    // dan sampah di kolom `henti` adalah ruas yang berjalan tanpa syarat henti.
+    Ruas kosong{};
+    kosong.nama = "baris baru";
+    kosong.henti = HNT_LANGSUNG;       // baris kosong tidak boleh JALAN
+    salinBaris(idx, kosong);
+    RUAS_N++;
+    skorSisip(idx);                    // peta poin ikut bergeser
+    // Struktur berubah -> _cm[] disalin ulang seluruhnya, jadi override 'm7'
+    // pada ruas mana pun hilang. Disengaja, dan dicetak supaya tidak senyap.
+    tabelBerubah();
+    Serial.print("m5+ "); Serial.print(idx);
+    Serial.print(" -- "); Serial.print(RUAS_N);
+    Serial.println(" baris. Panjang ruas hasil 'm7' dipulangkan ke tabel.");
+    Serial.println("  Baris baru: HNT_LANGSUNG, tidak berjalan dan tidak berpoin.");
+    return true;
+}
+
+bool Misi::hapusBaris(uint8_t idx) {
+    if (!bolehUbahTabel()) return false;
+    if (idx >= RUAS_N) {
+        Serial.print("m5-: indeks "); Serial.print(idx);
+        Serial.print(" di luar tabel 0.."); Serial.println(RUAS_N - 1);
+        return false;
+    }
+    if (RUAS_N <= 1) {
+        Serial.println("m5-: tabel tinggal satu baris, tidak dihapus.");
+        return false;
+    }
+    for (uint8_t i = idx; i + 1 < RUAS_N; i++) salinBaris(i, RUAS[i + 1]);
+    RUAS_N--;
+    skorHapus(idx);
+    tabelBerubah();
+    Serial.print("m5- "); Serial.print(idx);
+    Serial.print(" -- "); Serial.print(RUAS_N);
+    Serial.println(" baris. Panjang ruas hasil 'm7' dipulangkan ke tabel.");
+    return true;
+}
+
+void Misi::tabelBerubah() {
+    // _cm[] adalah CACHE dari RUAS[].nilai, dan cache yang tidak diperbarui
+    // adalah sebab nomor satu "sebelum flash bisa, sesudah flash tidak".
     for (uint8_t i = 0; i < RUAS_N; i++) _cm[i] = RUAS[i].nilai;
+    // Arah mutlak tiap ruas turunan dari kolom `belok` + `putar`, jadi ia
+    // WAJIB dihitung ulang walau cuma satu baris yang berubah: satu belok
+    // yang bergeser memutar seluruh sisa lintasan.
     hitungArah();
+}
+
+bool Misi::bolehUbahTabel() {
+    if (!berjalan()) return true;
+    Serial.println("Tabel TIDAK diubah: misi sedang berjalan. Tekan 'm0' dulu.");
+    return false;
+}
+
+bool Misi::setBaris(uint8_t idx, const float* v, const char* nama) {
+    if (!bolehUbahTabel()) return false;
+    if (idx >= RUAS_N) {
+        Serial.print("m5s: indeks "); Serial.print(idx);
+        Serial.print(" di luar tabel 0.."); Serial.println(RUAS_N - 1);
+        return false;
+    }
+    Ruas& r = RUAS[idx];
+    r.belok        = (Belok)  (uint8_t)v[0];
+    r.kemudi       = (Kemudi) (uint8_t)v[1];
+    r.profil       = (Profil) (uint8_t)v[2];
+    r.abaikanDepan = v[3] > 0.5f;
+    r.henti        = (Henti)  (uint8_t)v[4];
+    r.nilai        = v[5];
+    r.aksi         = (Aksi)   (uint8_t)v[6];
+    r.aksiA        = (uint8_t)v[7];
+    r.putar        = v[8];
+    r.condong      = v[9]  > 0.5f;
+    r.jagaBelakang = v[10] > 0.5f;
+    r.mundurMm     = v[11];
+    r.condongMm    = v[12];
+    if (nama) {
+        strncpy(NAMA_RAM[idx], nama, RUAS_NAMA_MAKS - 1);
+        NAMA_RAM[idx][RUAS_NAMA_MAKS - 1] = '\0';
+    }
+    r.nama = NAMA_RAM[idx];
+    // MENANG ATAS 'm7'. tabelBerubah() menyalin ulang seluruh _cm[] dari
+    // tabel, jadi panjang ruas yang pernah disetel 'm7 <idx> <cm>' dipulangkan
+    // ke angka tabel. Disengaja -- tabel RAM adalah satu-satunya sumber -- dan
+    // diperingatkan di .ino supaya tidak senyap.
+    tabelBerubah();
+    return true;
+}
+
+uint16_t Misi::tabelCrc() const {
+    // BENTUK KANONIK, dan ia harus sama byte per byte dengan
+    // moses/lintasan.py::crc_tabel(). Kalau urutan di sini bergeser, CRC HUD
+    // tidak akan pernah cocok lagi dan HUD mengirim ulang tabel tanpa henti --
+    // gejalanya tidak akan terbaca sebagai "urutan byte berubah".
+    uint8_t n = RUAS_N;
+    uint16_t crc = Calib::crc16(&n, 1);
+    for (uint8_t i = 0; i < RUAS_N; i++) {
+        const Ruas& r = RUAS[i];
+        uint8_t buf[25 + RUAS_NAMA_MAKS];
+        uint8_t k = 0;
+        buf[k++] = (uint8_t)r.belok;
+        buf[k++] = (uint8_t)r.kemudi;
+        buf[k++] = (uint8_t)r.profil;
+        buf[k++] = r.abaikanDepan ? 1 : 0;
+        buf[k++] = (uint8_t)r.henti;
+        memcpy(buf + k, &r.nilai, 4);     k += 4;
+        buf[k++] = (uint8_t)r.aksi;
+        buf[k++] = r.aksiA;
+        memcpy(buf + k, &r.putar, 4);     k += 4;
+        buf[k++] = r.condong ? 1 : 0;
+        buf[k++] = r.jagaBelakang ? 1 : 0;
+        memcpy(buf + k, &r.mundurMm, 4);  k += 4;
+        memcpy(buf + k, &r.condongMm, 4); k += 4;
+        const char* s = r.nama ? r.nama : "";
+        for (uint8_t j = 0; j < RUAS_NAMA_MAKS - 1 && s[j]; j++) buf[k++] = s[j];
+        buf[k++] = 0;
+        crc = Calib::crc16(buf, k, crc);
+    }
+    return crc;
+}
+
+void Misi::tabelVersi() {
+    // Satu baris, dibaca HUD tiap kali ia perlu tahu apakah tabel RAM masih
+    // sama dengan draft-nya. Sesudah reset Teensy, CRC kembali ke nilai tabel
+    // flash -- dan justru itu yang membuat reset terdeteksi tanpa saklar
+    // tambahan.
+    Serial.print("#TABV "); Serial.print(tabelCrc());
+    Serial.print(' ');      Serial.println(RUAS_N);
+}
+
+void Misi::tabelDump() {
+    // Kolomnya URUTAN YANG SAMA dengan yang diterima 'm5s', jadi satu baris
+    // '#TABR' bisa dikirim balik apa adanya sebagai 'm5s'. Angka pecahan
+    // dicetak 2 desimal supaya putar/mundurMm/condongMm tidak dibulatkan.
+    //
+    // NILAI SUMBER, bukan hasil pencerminan: yang diedit adalah tabelnya, dan
+    // belokRuas()/kemudiRuas() yang mencerminkannya saat dibaca. Ini kebalikan
+    // dari tabel(), yang sengaja mencetak yang BERLAKU.
+    for (uint8_t i = 0; i < RUAS_N; i++) {
+        const Ruas& r = RUAS[i];
+        Serial.print("#TABR ");         Serial.print(i);
+        Serial.print(' '); Serial.print((uint8_t)r.belok);
+        Serial.print(' '); Serial.print((uint8_t)r.kemudi);
+        Serial.print(' '); Serial.print((uint8_t)r.profil);
+        Serial.print(' '); Serial.print(r.abaikanDepan ? 1 : 0);
+        Serial.print(' '); Serial.print((uint8_t)r.henti);
+        Serial.print(' '); Serial.print(r.nilai, 2);
+        Serial.print(' '); Serial.print((uint8_t)r.aksi);
+        Serial.print(' '); Serial.print(r.aksiA);
+        Serial.print(' '); Serial.print(r.putar, 2);
+        Serial.print(' '); Serial.print(r.condong ? 1 : 0);
+        Serial.print(' '); Serial.print(r.jagaBelakang ? 1 : 0);
+        Serial.print(' '); Serial.print(r.mundurMm, 2);
+        Serial.print(' '); Serial.print(r.condongMm, 2);
+        Serial.print(" | ");
+        Serial.println(r.nama ? r.nama : "");
+    }
+    tabelVersi();
 }
 
 // Belok relatif -> mata angin mutlak. Dulu rumus ini punya kembaran di
@@ -2267,7 +2500,21 @@ void Misi::update() {
         // ruas ini, dan jarak datang dari LiDAR depan lewat HNT_DEPAN.
         KORBAN_SERIAL.print("#KORBAN ");
         KORBAN_SERIAL.print(x.aksi == AKS_AMBIL ? "AMBIL " : "TARUH ");
-        KORBAN_SERIAL.println(_i);
+        KORBAN_SERIAL.print(_i);
+        // ARAH MATA ANGIN RUAS INI (0..3) DAN SAKLAR CERMIN, dua kolom
+        // tambahan sejak 18 Sep 2026.
+        //
+        // Fase CARI di Raspi memakai keduanya: 'o<arah>' untuk meluruskan
+        // badan ke kompas sebelum menengahkan, dan cermin untuk memilih ke
+        // mana ia menggeser mencari korban. Dikirim dari sini, bukan dihitung
+        // ulang di Raspi, karena _arah[] SUDAH hasil pencerminan -- aturan
+        // cermin yang disalin ke sisi lain adalah aturan yang akan menyimpang
+        // diam-diam begitu salah satunya disentuh.
+        //
+        // Kolom TAMBAHAN di belakang, bukan format baru: pembaca lama yang
+        // hanya mengambil dua kolom pertama tetap bekerja apa adanya.
+        KORBAN_SERIAL.print(' '); KORBAN_SERIAL.print(_arah[_i]);
+        KORBAN_SERIAL.print(' '); KORBAN_SERIAL.println(arenaCermin() ? 1 : 0);
         _visiJalan = true;      // ditutup '#LEPAS', termasuk lewat lepasVisi()
 
         // PARKIR, bukan langsung menurunkan capit. Ini yang dikembalikan
@@ -2623,6 +2870,11 @@ void Misi::status() {
 
     Serial.print("  ruas        : "); Serial.print(_i); Serial.print(" dari 0..");
     Serial.print(RUAS_N - 1); Serial.print("  --  "); Serial.println(RUAS[_i].nama);
+
+    // Sidik tabel ikut di SETIAP status, bukan cuma saat diminta: HUD menarik
+    // status berkala, jadi tabel RAM yang tidak lagi sama dengan draft editor
+    // (misalnya sesudah Teensy reset) ketahuan tanpa perintah tambahan.
+    tabelVersi();
 
     if (_stat == MISI_JALAN) {
         const Ruas& x = RUAS[_i];

@@ -291,8 +291,39 @@ struct Ruas {
 
 // Tabel lintasan. Definisinya di Misi.cpp; jumlahnya dibuka supaya .ino bisa
 // memvalidasi indeks perintah 'm7 <idx> <cm>' tanpa menebak.
-extern const Ruas RUAS[];
-extern const uint8_t RUAS_N;
+//
+// DUA TABEL, dan bedanya yang membuat penyetelan lintasan tidak lagi menuntut
+// compile + flash tiap percobaan:
+//
+//   RUAS_BAKU[]  const, di FLASH. Acuan yang tidak pernah berubah -- lintasan
+//                seperti yang di-flash terakhir kali. 'm5r' memulangkan RAM
+//                ke sini, jadi percobaan yang kacau selalu punya jalan balik.
+//   RUAS[]       di RAM, dan INILAH yang dijalankan misi. Isinya disalin dari
+//                RUAS_BAKU[] saat menyala, lalu boleh diubah lewat 'm5s' dari
+//                HUD: satu baris penuh per perintah.
+//
+// Nama simbol RUAS DIPERTAHANKAN dengan sengaja walau isinya pindah ke RAM:
+// seluruh pemakaian RUAS[i] di Misi.cpp dan di luarnya (Skor, Tampilan, .ino)
+// tidak perlu disentuh.
+//
+// JUMLAH BARIS BISA BERUBAH lewat 'm5+' / 'm5-', jadi RUAS_N TIDAK const.
+//
+// SKOR_RUAS[] di Skor.cpp adalah tabel KEDUA yang diindeks dengan nomor ruas
+// yang sama. Menyisipkan baris di sini tanpa menggeser peta poin berarti poin
+// jatuh ke ruas yang salah, diam-diam -- persis bug yang ditemukan 18 Sep
+// 2026. Karena itu sisipBaris()/hapusBaris() menggeser KEDUANYA lewat
+// skorSisip()/skorHapus() di Skor.h, dan peta poin punya salinan RAM sendiri.
+extern const Ruas RUAS_BAKU[];
+extern Ruas RUAS[];
+extern uint8_t RUAS_N;
+extern const uint8_t RUAS_BAKU_N;
+
+// Panjang kolam nama per baris, termasuk NUL. Nama di RUAS_BAKU[] menunjuk ke
+// flash; begitu operator mengubahnya, ia harus menunjuk ke RAM, dan RAM itu
+// harus punya batas yang sama di kedua ujung serial -- HUD memotong nama di
+// RUAS_NAMA_MAKS-1 sebelum menghitung CRC, dan firmware melakukan hal yang
+// sama. Batas yang berbeda = CRC yang tidak pernah cocok pada nama panjang.
+#define RUAS_NAMA_MAKS 40
 
 // Kapasitas salinan panjang ruas yang bisa disetel operator (_cm[]). Tabelnya
 // ada di flash dan array ini di RAM, jadi keduanya tidak bisa saling
@@ -302,7 +333,10 @@ extern const uint8_t RUAS_N;
 // Cuma ukuran dua array RAM (_arah[] uint8 + _cm[] float) -- TIDAK menyentuh
 // EEPROM, jadi menaikkannya tidak membuang kalibrasi apa pun. 28 -> 36 pada
 // 8 Sep 2026 saat tabel tumbuh ke 34 baris; sisanya ruang tumbuh.
-#define RUAS_MAKS 34
+//
+// 34 -> 40 pada 18 Sep 2026: tabel sudah PERSIS 34 baris, jadi 'm5+' tidak
+// punya satu slot pun untuk menyisipkan dan selalu menjawab 'tabel penuh'.
+#define RUAS_MAKS 40
 
 enum StatMisi : uint8_t {
     MISI_DIAM = 0,
@@ -351,6 +385,44 @@ public:
     void tabel();                     // 'm4' tanpa argumen: cetak seluruh tabel
     void jawab(bool korban);          // 'm2' / 'm3'
     void setRuasCm(uint8_t idx, float cm);   // 'm7 <idx> <cm>'
+
+    // --- EDITOR TABEL DARI HUD ('m5') -----------------------------------
+    //
+    // Semuanya DITOLAK selama berjalan(): misi yang membaca dua tabel berbeda
+    // dalam satu lintasan adalah bug yang tidak bisa direproduksi, dan
+    // penolakannya lebih murah daripada mencarinya.
+    //
+    // 'm5s <idx> <13 kolom> | <nama>'. Satu baris penuh per perintah, bukan
+    // satu kolom: mengubah satu angka di editor tetap satu perintah, dan
+    // mengirim seluruh tabel tetap satu perintah per baris.
+    //
+    // Urutan `v` sama dengan urutan anggota struct Ruas, sama dengan urutan
+    // kolom yang dicetak tabelDump(), dan sama dengan urutan byte CRC:
+    // belok, kemudi, profil, abaikanDepan, henti, nilai, aksi, aksiA, putar,
+    // condong, jagaBelakang, mundurMm, condongMm.
+    bool setBaris(uint8_t idx, const float* v, const char* nama);
+    bool sisipBaris(uint8_t idx);     // 'm5+ <idx>' -- baris kosong di idx
+    bool hapusBaris(uint8_t idx);     // 'm5- <idx>'
+    void tabelBaku();                 // 'm5r' -- RAM kembali ke tabel flash
+
+    // Tabel RAM masih sama persis dengan tabel flash? Dipakai setup() untuk
+    // menangkap kesalahan urutan inisialisasi global, yang menolkan anggota
+    // bernilai baku tanpa satu pun pesan.
+    bool tabelSamaBaku() const;
+
+    // 'm5d' -- satu baris '#TABR <idx> <13 kolom> | <nama>' per ruas, dalam
+    // bentuk yang sama persis dengan yang diterima 'm5s'. Tanpa ini HUD harus
+    // menyimpan salinan tabelnya sendiri, dan salinan itu jadi sumber
+    // kebenaran kedua yang diam-diam menyimpang dari flash.
+    void tabelDump();
+
+    // 'm5' -- cetak '#TABV <crc16> <n>'. HUD menghitung CRC yang sama dari
+    // draft-nya; cocok berarti tabel RAM identik dengan draft, bukan
+    // kira-kira sama. Ia juga yang membuat reset Teensy terdeteksi sendiri:
+    // sesudah reset CRC kembali ke nilai tabel flash, dan HUD mengirim ulang
+    // tanpa diminta.
+    void tabelVersi();
+    uint16_t tabelCrc() const;
 
     // 'aa' / 'at' -- jalankan SEKUENS LENGAN saja, tanpa ruas di belakangnya.
     // Dipakai untuk menyetel pose korban di meja: sekuens yang sama persis
@@ -476,6 +548,17 @@ private:
     const Ruas& r() const { return RUAS[_i]; }
     float       cmKini() const { return _cm[_i]; }
     uint32_t    lewat() const { return millis() - _t0; }
+
+    // Tabel RAM baru berubah.
+    //
+    // WAJIB dipanggil sesudah tiap perubahan tabel. _cm[] dan _arah[] dulu
+    // hanya dihitung di konstruktor, jadi tanpa ini mengubah tabel RAM sesudah
+    // menyala tidak berpengaruh apa pun: misi tetap memakai angka lama, dan
+    // percobaan yang lulus sebelum flash akan gagal sesudahnya.
+    void tabelBerubah();
+    // Tabel boleh diubah sekarang? false + pesan kalau misi sedang berjalan.
+    bool bolehUbahTabel();
+    void salinBaris(uint8_t ke, const Ruas& dari);   // + nama ke kolam RAM
 
     void hitungArah();
     float headingRuas(uint8_t i) const;

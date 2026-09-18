@@ -567,6 +567,22 @@ void Hexapod::profileTanjak() {
     const Vec3 r0 = bodyRotTargetDeg();
     setBodyRotation(r0.x, TANJAK_PITCH_DEG, r0.z);
 
+    // LENGAN DEPAN DILIPAT, sealasan dengan pitch di atas: ia milik tangga,
+    // bukan sesuatu yang diketik terpisah sebelum naik. Lengan yang
+    // menggantung di depan menyapu muka anak tangga dan menyangkut di bibir
+    // atas. Pose 'as0 90 90', dipilih R2C 18 Sep 2026 di robot.
+    //
+    // isArmed(): pilihProfil() juga dipanggil ubahProfil() saat operator
+    // menyunting kolom profil dari HUD, dan itu boleh terjadi dengan servo
+    // lemas. Menghidupkan servo lengan di situ berarti lengan terbanting
+    // tanpa ada yang menyuruh robot bergerak.
+    if (isArmed()) {
+        armEnable(ARM_DEPAN, true);
+        setSudutLengan(ARM_DEPAN, TANJAK_LENGAN_BAHU,
+                                  TANJAK_LENGAN_SIKU,
+                                  TANJAK_LENGAN_PRG, nullptr);
+    }
+
     // Telapak belakang diputar ke -y pada radius yang SAMA, jadi jangkauan D
     // tidak berubah sedikit pun -- yang berubah cuma arahnya.
     const float aBlk = deg2rad(BODY_LEG_ANGLE[2]);

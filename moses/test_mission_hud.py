@@ -478,14 +478,15 @@ def sampai(misi, link, aksi, kalib, n=400):
 
 
 kk = M.Kalib()
-cek("rantai AMBIL punya 6 state", len(M.RANTAI_AMBIL), 6)
+cek("rantai AMBIL punya 7 state", len(M.RANTAI_AMBIL), 7)
 cek("tiap state AMBIL ada di FSM",
     all(st in M.FSM for st in M.RANTAI_AMBIL), True)
 cek("tiap state AMBIL punya batas waktu",
     all(M.BATAS.get(st, 0) > 0 for st in M.RANTAI_AMBIL), True)
-cek("yang butuh kamera: TENGAH (kasar) dan HALUS (presisi)",
+cek("yang butuh kamera: CARI, TENGAH (kasar) dan HALUS (presisi)",
     sorted(st for st in M.RANTAI_AMBIL if st in M.VISION_ON),
-    sorted([M.S_A_TENGAH, M.S_A_HALUS]))
+    sorted([M.S_A_CARI, M.S_A_TENGAH, M.S_A_HALUS]))
+cek("CARI mendahului TENGAH", M.RANTAI_AMBIL.index(M.S_A_CARI), 0)
 cek("AMBIL_ANGKAT bermuara ke BERES", M.FSM[M.S_A_ANGKAT][1], M.S_BERES)
 
 # -- TENGAH: sudah lurus -> lanjut; masih miring -> kirim pivot
@@ -1474,7 +1475,7 @@ cek("kalau korban ketemu, tidak ada pesan diabaikan", sd2["dummy_saja"], "")
 
 print("\n34. Tata letak tab")
 h = M.HALAMAN
-cek("tetap 5 panel", len(re.findall(r'<div class="?panel', h)), 5)
+cek("tetap 6 panel", len(re.findall(r'<div class="?panel', h)), 6)
 _tabs = h[h.index("<div id=tabs>"):h.index("<script>")]
 # 23 sejak 18 Sep 2026: tiga kartu kalibrasi servo & LiDAR ditambahkan --
 # "Offset sudut servo" (Yo), "Offset jarak LiDAR" (Yd), dan "Offset tinggi
@@ -2876,7 +2877,7 @@ _ksrc = open(M.__file__ if M.__file__.endswith(".py") else "mission_hud.py",
 # mengemudi dengan bearing, jadi invarian di bawah berlaku untuknya juga.
 # TAHAN_TENGAH menyusul di hari yang sama, dengan alasan yang sama persis --
 # dan barisnya jadi terlipat dua, jadi yang dicari cuma awalannya.
-_i0 = _ksrc.index("if misi.state in (S_JEJAK, S_A_TENGAH, S_A_HALUS,",
+_i0 = _ksrc.index("if misi.state in (S_JEJAK, S_A_CARI, S_A_TENGAH,",
                   _ksrc.index("if segar:"))
 _i1 = _ksrc.index("elif misi.state == S_LIHAT:", _i0)
 # Komentar dibuang dulu: seksi ini menjelaskan gerbang yang DIHAPUS, jadi
@@ -3190,6 +3191,7 @@ _b75 = _s75[_s75.index("# --- vision HANYA di state tertentu ---"):
 _b75k = "\n".join(l.split("#")[0] for l in _b75.splitlines())
 
 for _st, _nama in ((M.S_JEJAK, "JEJAK"), (M.S_CENTER, "CENTERING"),
+                   (M.S_A_CARI, "AMBIL_CARI"),
                    (M.S_A_TENGAH, "AMBIL_TENGAH"), (M.S_A_HALUS, "AMBIL_HALUS")):
     cek(f"'{_nama}' terdaftar sebagai state kemudi", _st in M.MENGEMUDI, True)
 
@@ -3203,8 +3205,8 @@ cek("  dan cabang penulisnya memang lebih dari satu",
 # Tiap state kemudi harus benar-benar disebut di blok vision -- kalau tidak,
 # ia memakai bearing milik state sebelumnya.
 for _st in M.MENGEMUDI:
-    _var = [n for n in ("S_JEJAK", "S_CENTER", "S_A_TENGAH", "S_A_HALUS",
-                        "S_TAHAN")
+    _var = [n for n in ("S_JEJAK", "S_CENTER", "S_A_CARI", "S_A_TENGAH",
+                        "S_A_HALUS", "S_TAHAN")
             if getattr(M, n) == _st][0]
     cek(f"  '{_st}' disebut di blok vision", _var in _b75k, True)
 
@@ -3836,10 +3838,34 @@ cek("nol penjadwalan 'w' di luar tombol Manual",
     ('jadwal(("w"' in _sisa86) or (', ("w",' in _sisa86), False)
 cek("nol penjadwalan 'D<cm>' di luar tombol Manual",
     ('jadwal((f"D{' in _sisa86) or (', (f"D{' in _sisa86), False)
-cek("nol penjadwalan 'J<cm>' di mana pun",
-    ('jadwal((f"J{' in _src86) or (', (f"J{' in _src86), False)
-cek("nol penjadwalan 'H<amp>' -- ia melangkah",
-    ('jadwal((f"H{' in _src86) or (', (f"H{' in _src86), False)
+# FASE CARI DIKECUALIKAN untuk 'J' dan 'H', 18 Sep 2026, diminta R2C.
+#
+# Ini BUKAN pembatalan keputusan 17 September. Yang dikembalikan cuma fase
+# PENDEKATAN K-3/K-4: geser menyamping mencari korban ('H'), dengan jarak
+# dinding belakang dan arah kompas dikoreksi ('J', 'o') supaya penengahan
+# dimulai dari pose yang benar. PENENGAHANNYA sendiri tetap milik badan di
+# atas kaki yang diam -- 't' dan 'O', seperti K-1.
+#
+# Blok CARI dipotong dulu, persis seperti tombol Manual di atas, supaya sisa
+# berkas tetap dijaga sekeras sebelumnya: 'J' dan 'H' di luar CARI tetap nol.
+_i86c = _src86.index("    if misi.state == S_A_CARI:")
+_j86c = _src86.index("    if misi.state == S_A_TENGAH:", _i86c)
+_cari86 = _src86[_i86c:_j86c]
+_luar86 = _src86[:_i86c] + _src86[_j86c:]
+cek("blok CARI ketemu dan dipotong", len(_luar86) < len(_src86), True)
+
+cek("nol penjadwalan 'J<cm>' DI LUAR fase CARI",
+    ('jadwal((f"J{' in _luar86) or (', (f"J{' in _luar86), False)
+cek("nol penjadwalan 'H<amp>' DI LUAR fase CARI",
+    ('jadwal((f"H{' in _luar86) or (', (f"H{' in _luar86), False)
+# Dan di DALAM CARI keduanya memang ada -- kalau hilang, fase itu tinggal
+# nama dan robot berhenti mencari tanpa satu pun pesan.
+cek("CARI menjadwalkan 'H<amp>'", 'jadwal((f"H{' in _cari86, True)
+cek("CARI menjadwalkan 'J<cm>'", 'jadwal((f"J{' in _cari86, True)
+cek("CARI meluruskan ke kompas dengan 'o<arah>'",
+    'jadwal((f"o{' in _cari86, True)
+cek("CARI tidak memakai 'w' maupun 'D<cm>'",
+    ('(f"w' in _cari86) or ('(f"D{' in _cari86), False)
 cek("nol penjadwalan 'V<cm>' -- ia melangkah",
     ('jadwal((f"V{' in _src86) or (', (f"V{' in _src86), False)
 cek("konstanta MUNDUR_* sudah tidak ada", hasattr(M, "MUNDUR_LAJU"), False)

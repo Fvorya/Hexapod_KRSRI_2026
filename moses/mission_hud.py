@@ -58,6 +58,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ThreadingHTTPServer.request_queue_size = 64
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
+
+# Bentuk baris tabel lintasan + CRC-nya. Dipisah supaya bisa diuji tanpa
+# menarik kamera dan serial -- lihat test_lintasan.py.
+import lintasan as LTS
 from operator_control import operator_command, operator_state, operator_snapshot, parse_operator
 
 import cv2
@@ -185,6 +189,7 @@ S_TAHAN = "TAHAN_TENGAH"
 S_AWAS = "AWAS_KORBAN"
 S_A_SIAP = "AMBIL_SIAP"
 S_A_JEPIT = "AMBIL_JEPIT"
+S_A_CARI = "AMBIL_CARI"
 S_A_ANGKAT = "AMBIL_ANGKAT"
 S_GAGAL = "GAGAL"
 
@@ -194,6 +199,7 @@ FSM = {
     S_KONFIRM:   ("firmware menunggu m2/m3 - vision menilai",     S_IDLE),
     S_TAHAN:     ("tahan tengah sampai capit terangkat",         S_IDLE),
     S_AWAS:      ("ruas korban - vision MENGAMATI, tidak bergerak", S_IDLE),
+    S_A_CARI:    ("AMBIL 0/6 - cari korban: geser + luruskan kompas", S_A_TENGAH),
     S_A_TENGAH:  ("AMBIL 1/6 - tengahkan KASAR (pivot kaki)",       S_A_MAJU),
     S_A_MAJU:    ("AMBIL 2/6 - maju ke jarak capit",             S_A_HALUS),
     S_A_HALUS:   ("AMBIL 3/6 - tengahkan HALUS (putar badan)",   S_A_SIAP),
@@ -218,11 +224,12 @@ FSM = {
 
 # Vision hanya menyala di dua state ini. Di luar itu inferensi dilewati --
 # kamera tetap streaming supaya tidak membayar init ulang ~1,5 detik.
-VISION_ON = {S_CENTER, S_LIHAT, S_JEJAK, S_A_TENGAH, S_A_HALUS, S_KONFIRM,
-             S_AWAS, S_TAHAN}
+VISION_ON = {S_CENTER, S_LIHAT, S_JEJAK, S_A_CARI, S_A_TENGAH, S_A_HALUS,
+             S_KONFIRM, S_AWAS, S_TAHAN}
 
 # Rantai ambil korban, urut. Dipakai HUD untuk tahu 'sedang mengambil'.
-RANTAI_AMBIL = (S_A_TENGAH, S_A_MAJU, S_A_HALUS, S_A_SIAP, S_A_JEPIT, S_A_ANGKAT)
+RANTAI_AMBIL = (S_A_CARI, S_A_TENGAH, S_A_MAJU, S_A_HALUS, S_A_SIAP,
+                S_A_JEPIT, S_A_ANGKAT)
 
 # State yang MENGEMUDI dengan bearing: tiap frame mereka memakai
 # misi.bearing_deg untuk memilih arah gerak. Karena itu semuanya WAJIB
@@ -240,7 +247,7 @@ RANTAI_AMBIL = (S_A_TENGAH, S_A_MAJU, S_A_HALUS, S_A_SIAP, S_A_JEPIT, S_A_ANGKAT
 #
 # Satu daftar dipakai bersama supaya state kemudi berikutnya tidak bisa lagi
 # masuk ke satu daftar lalu terlupa di daftar satunya.
-MENGEMUDI = (S_JEJAK, S_CENTER, S_A_TENGAH, S_A_HALUS, S_TAHAN)
+MENGEMUDI = (S_JEJAK, S_CENTER, S_A_CARI, S_A_TENGAH, S_A_HALUS, S_TAHAN)
 
 # STATE YANG BELUM DIPROGRAM. langkah_fsm() sengaja diam di sini, bukan
 # pura-pura jalan -- tapi diam itu dulu TIDAK KELIHATAN dari halaman: robot
@@ -265,6 +272,11 @@ PEMICU_TUNGGU_BUKTI_S = 2.0
 
 BATAS = {S_STANDOFF: 20, S_CENTER: 20, S_LIHAT: 8, S_SLOT: 25,
          S_DEKATI: 25, S_CENGKERAM: 15, S_VERIF: 10,
+         # CARI melangkah: tiap putaran = satu 'H' (geser_tunggu_s) plus
+         # koreksi 'o'/'J' yang hanya dikirim saat memang meleset. Enam
+         # putaran penuh ~35 detik, jadi 45 memberi ruang tanpa
+         # menggantung: firmware sendiri parkir selama 'm8'.
+         S_A_CARI: 75,
          S_A_TENGAH: 8, S_A_MAJU: 30, S_A_HALUS: 8, S_KONFIRM: 25, S_A_SIAP: 10, S_A_JEPIT: 8,
          S_A_ANGKAT: 10,
          # Sekuens capit firmware = 6 fase x KORBAN_FASE_MS (1850) + fase
@@ -407,6 +419,48 @@ class Kalib:
     geser_k3: bool = True
     geser_k4: bool = True
     geser_k5: bool = False
+
+    # --- FASE CARI (K-3 / K-4), 18 Sep 2026 ------------------------------
+    #
+    # Menggantikan pendekatan hardcode ruas 14/15 (K-3) dan 21 (K-4), yang
+    # menaruh robot di depan korban lewat odometri dan jarak dinding saja --
+    # angka yang benar untuk satu penataan arena dan meleset di penataan
+    # berikutnya.
+    #
+    # Urutannya, tiap putaran: luruskan ke kompas ('o'), betulkan jarak
+    # dinding belakang ('J'), periksa gerbang kamera, baru geser satu siklus
+    # ('H'). Rotasi dan maju-mundur DIPAKAI HANYA UNTUK KOREKSI, bukan untuk
+    # menengahkan -- penengahan tetap milik badan di atas kaki yang diam,
+    # sama seperti K-1.
+    #
+    # Gerbang kamera, piksel dari garis tengah gambar. Di bawah ini fase CARI
+    # selesai dan penengahan badan yang mengerjakan sisanya.
+    cari_gerbang_px: float = 150.0
+    # AMPLITUDO 'H' PER POSISI, dan TANDANYA arah carinya: negatif KIRI,
+    # positif KANAN -- sama seperti perintah H firmware.
+    #
+    # K-3 dicari ke KIRI, K-4 ke KANAN. Bukan kebetulan: sesudah SZ-3 robot
+    # masuk ke K-4 dari sisi yang berlawanan, jadi korbannya ada di sisi yang
+    # berlawanan pula. Di arena cermin keduanya tertukar, dan itu dikerjakan
+    # di tempat lain -- lihat pemakaian misi.cermin.
+    cari_amp_k3: float = -0.20
+    cari_amp_k4: float = +0.20
+    cari_amp_k5: float = -0.20
+    # Berapa putaran 'H' boleh dicoba sebelum menyerah ke penengahan biasa.
+    # Menyerah TIDAK berarti gagal: S_A_TENGAH tetap dijalankan, cuma tanpa
+    # keuntungan geser -- itu perilaku sebelum 18 Sep 2026.
+    #
+    # 10, naik dari 6 pada 18 Sep 2026: sejak ruas 20/21 jadi rotasi saja,
+    # fase CARI menanggung SELURUH pendekatan ke K-4, bukan penghalusan
+    # beberapa sentimeter terakhir.
+    cari_maks_langkah: int = 10
+    # Toleransi jarak dinding belakang, cm. Di dalam pita ini 'J' TIDAK
+    # dikirim: 'J' menggerakkan kaki, dan langkah yang tidak perlu membuang
+    # waktu parkir yang jatahnya terbatas.
+    cari_belakang_tol_cm: float = 3.0
+    # Luruskan ke kompas tiap berapa putaran. Bukan tiap putaran: 'o' adalah
+    # pivot gait penuh, dan satu siklus geser tidak memutar badan sebanyak itu.
+    cari_luruskan_tiap: int = 2
 
     # Amplitudo 'H'. Menentukan panjang langkah geser, bukan lamanya -- 'H'
     # selalu satu siklus gait penuh.
@@ -1605,12 +1659,30 @@ class Teensy:
         # bekerja" dari "tombol bekerja tapi tidak terdengar".
         self.tombol = ""
         self.t_tombol = 0.0
+        # Dua kolom tambahan pemicu '#KORBAN': arah mata angin ruas (0..3,
+        # sudah hasil pencerminan) dan saklar arena cermin. None = firmware
+        # lama yang belum mengirimkannya.
+        self.pemicu_arah = None
+        self.pemicu_cermin = False
         # TRIM SERVO, {slot: {"nama","invert","us"}}, diisi baris '#TRIM'
         # jawaban 'Yt'. Kosong berarti BELUM PERNAH DIBACA, bukan "semua nol" --
         # tab trim membedakan keduanya, karena menggambar nol yang tidak pernah
         # dibaca lalu menekan simpan akan menulis nol itu ke EEPROM.
         self.trim = {}
         self.t_trim = 0.0
+        # TABEL LINTASAN DI RAM TEENSY.
+        #
+        # lintasan  {idx: dict kolom} dari baris '#TABR' jawaban 'm5d'.
+        #           Ditimpa PER BARIS, bukan tabel diganti utuh: 34 baris
+        #           berurutan, dan satu baris yang hilang di tengah (penyangga
+        #           serial penuh) tidak boleh menghapus baris yang sudah benar.
+        # tab_crc   sidik tabel RAM dari '#TABV'. None = belum pernah dibaca.
+        #           Firmware mencetaknya di tiap 'm' juga, jadi ia ikut poll
+        #           berkala -- itulah yang membuat reset Teensy ketahuan.
+        self.lintasan = {}
+        self.tab_crc = None
+        self.tab_n = 0
+        self.t_tabel = 0.0
         # OFFSET SUDUT SERVO, {slot: {"nama","der"}}, jawaban 'Yo'.
         #
         # BUKAN trim, dan tinggal di blok EEPROM yang BERBEDA: offset di
@@ -1887,7 +1959,12 @@ class Teensy:
     # Ini yang pertama kalinya firmware berbicara DULUAN ke Pi. Sebelumnya
     # Pi cuma bisa menebak dari nama ruas -- yang berarti menebak dari teks
     # yang formatnya bisa berubah kapan saja.
-    RE_PEMICU = re.compile(r"^#KORBAN\s+(AMBIL|TARUH)\s+(\d+)", re.I)
+    # Dua kolom terakhir OPSIONAL: arah mata angin ruas (0..3) dan saklar
+    # cermin, ditambahkan firmware 18 Sep 2026. Firmware lama yang tidak
+    # mengirimnya tetap terbaca -- keduanya jadi None, dan fase CARI yang
+    # membutuhkannya melapor lalu menyerah ke penengahan biasa.
+    RE_PEMICU = re.compile(
+        r"^#KORBAN\s+(AMBIL|TARUH)\s+(\d+)(?:\s+(\d+)\s+(\d+))?", re.I)
 
     # UJUNG BALIK. Dicetak firmware sesudah sekuens capit selesai:
     #     #LEPAS 1
@@ -2006,9 +2083,27 @@ class Teensy:
             self.t_zoff = time.time()
             return
 
+        # TABEL LINTASAN. Diperiksa lebih awal daripada pemicu: barisnya
+        # berawalan '#' seperti '#KORBAN', dan 34 baris '#TABR' sekaligus
+        # tidak boleh melewati seluruh rantai parser di bawah satu per satu.
+        hasil = LTS.parse_tabr(baris)
+        if hasil:
+            idx, ruas = hasil
+            self.lintasan[idx] = ruas
+            self.t_tabel = time.time()
+            return
+
+        hasil = LTS.parse_tabv(baris)
+        if hasil:
+            self.tab_crc, self.tab_n = hasil
+            self.t_tabel = time.time()
+            return
+
         m = self.RE_PEMICU.match(baris.strip())
         if m:
             self.pemicu = (m.group(1).upper(), int(m.group(2)), time.time())
+            self.pemicu_arah = int(m.group(3)) if m.group(3) is not None else None
+            self.pemicu_cermin = m.group(4) == "1" if m.group(4) is not None else False
             self.pemicu_baru = True
             return
 
@@ -2176,6 +2271,16 @@ class Teensy:
 
     def depan_cm(self):
         return self.terakhir.get("lidar_DEPAN", self.terakhir.get("depan_cm"))
+
+    def belakang_cm(self):
+        """Jarak DINDING belakang dari tabel 'l', cm.
+
+        BUKAN 'belakang_cm' milik baris status misi -- yang itu jarak TEMPUH
+        dari titik nol, dan memakainya sebagai jarak dinding akan menyuruh
+        robot mundur ke tempat yang salah. Karena itu di sini tidak ada
+        cadangan ke kunci bernama mirip.
+        """
+        return self.terakhir.get("lidar_BELAKANG")
 
     def ruas_fw(self):
         """Baris 'ruas' dari status misi firmware v1.9+.
@@ -2378,6 +2483,19 @@ class Misi:
         # Disimpan karena 'r' dan 't' itu perintah ABSOLUT, bukan tambahan --
         # untuk menambah 2 der kita harus mengirim total barunya, bukan '2'.
         self._lengan_diberitahu = False
+        # --- FASE CARI (K-3/K-4) ---
+        # arah_ruas : mata angin ruas korban dari pemicu '#KORBAN' (0..3,
+        #             SUDAH hasil pencerminan firmware). None = firmware lama.
+        # cermin    : arena cermin aktif -> arah cari dan prioritas korban
+        #             ikut tertukar kiri/kanan.
+        # cari_n    : sudah berapa siklus 'H' dipakai di korban ini.
+        self.arah_ruas = None
+        self.cermin = False
+        # Posisi korban ("K1".."K5") menurut nama ruas firmware. Disegarkan
+        # loop utama tiap putaran; kosong kalau ruas sekarang bukan ruas
+        # mengangkat korban.
+        self.posisi_fw = ""
+        self.cari_n = 0
         self.n_dummy_saja = 0
         self._dummy_diberitahu = False
         # Jarak dari kamera. Selalu berpasangan dengan SEBABNYA kalau
@@ -2760,18 +2878,52 @@ def pose_jepit_mm(kalib: Kalib):
     return kalib.lengan_r, kalib.lengan_h
 
 
+RE_POSISI_FW = re.compile(r"\bK-?([1-5])\b")
+
+
 def korban_kini(misi):
     """Nama posisi korban yang sedang dikerjakan ("K1".."K5"), atau "".
 
-    Dipakai untuk memilih tinggi efektif per posisi. Kalau robot sedang tidak
-    di ruang korban mana pun, kembalikan "" dan pemanggilnya jatuh ke nilai
-    global -- bukan ke nol, yang akan membuat jaraknya nol.
+    SUMBER PERTAMA: nama ruas yang sedang dijalankan FIRMWARE, disalin ke
+    misi.posisi_fw tiap putaran loop dari baris status 'm'. Itu satu-satunya
+    sumber yang benar selama misi dijalankan Teensy.
+
+    Dulu fungsi ini hanya membaca MISI[misi.idx], dan itu daftar RENCANA milik
+    HUD: majunya cuma lewat maju_misi() (tombol operator) dan jalur uji, tidak
+    pernah dari firmware. Akibatnya di K-3 robot masih dianggap di K-1 --
+    geser_k3 tidak pernah terbaca, fase CARI tidak pernah jalan, dan tinggi
+    efektif per posisi memakai angka posisi yang salah. Diam-diam, karena
+    kedua-duanya nama posisi yang sah.
+
+    MISI[misi.idx] tetap jadi cadangan: jalur uji ('uji1'/'uji3') memang tidak
+    punya ruas firmware, dan di sana pembukuan HUD-lah yang benar.
     """
+    fw = getattr(misi, "posisi_fw", "")
+    if fw:
+        return fw
     try:
         baris = MISI[misi.idx]
     except (IndexError, TypeError):
         return ""
     return baris[0] if baris[2] == KORBAN else ""
+
+
+def posisi_dari_ruas(nama_ruas):
+    """'16 dari 0..33  --  K-3 angkat korban' -> 'K3'. Kosong kalau bukan ruas korban.
+
+    Dicocokkan ke NAMA, bukan ke nomor ruas: nomor ruas bergeser tiap kali
+    operator menyisipkan baris dari HUD, sedangkan namanya yang dibaca manusia
+    justru itu yang dipertahankan.
+    """
+    if not nama_ruas:
+        return ""
+    teks = nama_ruas.upper()
+    # Hanya ruas yang benar-benar MENGANGKAT. 'SZ-3 taruh korban' juga memuat
+    # angka, dan menaruh bukan mengambil.
+    if "ANGKAT" not in teks and "AMBIL" not in teks:
+        return ""
+    m = RE_POSISI_FW.search(teks)
+    return "K" + m.group(1) if m else ""
 
 
 def tinggi_efektif_cm(kalib: Kalib, posisi=""):
@@ -2939,7 +3091,7 @@ def sedang_membawa(link, kalib: Kalib):
                   f"sendiri. Taruh dulu di safe zone.")
 
 
-def pilih_sasaran(lolos, names, kalib):
+def pilih_sasaran(lolos, names, kalib, cermin=False):
     """Pilih SATU deteksi untuk dikejar. Korban dulu, selalu.
 
     Mengembalikan (deteksi_atau_None, jumlah_dummy_yang_diabaikan).
@@ -2982,7 +3134,13 @@ def pilih_sasaran(lolos, names, kalib):
             # milik juri.saring(). Fungsi ini sudah membaca d[1], d[3] dan
             # d[5] langsung; ikut bergantung pada panjang tuple berarti ia
             # pecah untuk pemanggil yang memberi deteksi mentah.
-            return max(korban, key=lambda d: (d[0] + d[2]) / 2), 0
+            #
+            # ARENA CERMIN MENUKARNYA. Pencerminan menukar kiri dan kanan
+            # seluruh lintasan, jadi korban yang "di kanan" di arena baku
+            # muncul di KIRI frame di arena cermin. Aturannya tetap satu:
+            # kerjakan korban yang searah dengan sisi dinding yang diikuti.
+            cx = lambda d: (d[0] + d[2]) / 2          # noqa: E731
+            return (min(korban, key=cx) if cermin else max(korban, key=cx)), 0
         return max(korban, key=lambda d: (d[3] - d[1])), 0
     if kalib.jejak_hanya_korban:
         return None, len(lolos)
@@ -3542,7 +3700,27 @@ def tangani_pemicu(misi: Misi, link, aksi: Aksi, kalib: Kalib, armed,
     # kalibrasi K-3/K-4 sebagai catatan angka.
     misi.o_diam = 0
     misi.pivot_gait_mati = False
-    misi.ganti(S_A_TENGAH, f"ambil alih dari firmware, ruas {ruas}")
+    misi.arah_ruas = getattr(link, "pemicu_arah", None)
+    misi.cermin = bool(getattr(link, "pemicu_cermin", False))
+    misi.cari_n = 0
+    # FASE CARI hanya untuk posisi yang memang menengahkan dengan MENGGESER --
+    # K-3 dan K-4, tempat memutar badan menyapukan capit ke reruntuhan. Di
+    # posisi lain penengahan putar-badan sudah lebih teliti, dan menambah
+    # langkah geser di sana cuma membuang jatah waktu parkir.
+    #
+    # Tanpa arah dari firmware, fase ini TIDAK bisa meluruskan ke kompas, dan
+    # penengahan yang dimulai dari badan serong adalah penengahan yang salah.
+    # Jadi ia dilewati, dengan sebabnya dicetak -- bukan dijalankan separuh.
+    posisi = korban_kini(misi)
+    if geser_aktif(kalib, posisi) and misi.arah_ruas is not None:
+        misi.ganti(S_A_CARI, f"cari korban {posisi}, ruas {ruas}")
+    else:
+        if geser_aktif(kalib, posisi):
+            link.log.append(
+                "[CARI] dilewati: pemicu '#KORBAN' tidak menyebutkan arah ruas. "
+                "Firmware ini lebih tua dari 18 Sep 2026 -- flash ulang kalau "
+                "fase CARI memang dipakai.")
+        misi.ganti(S_A_TENGAH, f"ambil alih dari firmware, ruas {ruas}")
     link.log.append(
         f"[PEMICU] #KORBAN AMBIL ruas {ruas} -- AMBIL ALIH. Firmware parkir di "
         f"KONFIRM; Pi menengahkan, lalu menjawab 'm2' supaya Teensy melanjutkan "
@@ -3733,6 +3911,95 @@ def langkah_fsm(misi: Misi, link: Teensy, aksi: Aksi, kalib: Kalib, armed,
                 "gait' dan 'tengah bertahan'.")
             misi.ganti(S_IDLE, "firmware tidak lagi menunggu vision")
             return
+
+    if misi.state == S_A_CARI:
+        # CARI KORBAN DENGAN MENGGESER, bukan dengan odometri tabel.
+        #
+        # Menggantikan pendekatan hardcode ruas 14/15 (K-3) dan 21 (K-4).
+        # Angka-angka itu benar untuk satu penataan arena; begitu korban
+        # bergeser sedikit, robot berhenti di tempat yang salah dan tidak ada
+        # apa pun yang memberitahunya.
+        #
+        # SATU PUTARAN, satu aksi. Urutannya sengaja: koreksi dulu, gerbang
+        # kedua, geser terakhir.
+        #
+        #   1. luruskan ke kompas ('o<arah>')  -- tiap cari_luruskan_tiap siklus
+        #   2. betulkan jarak dinding belakang ('J<cm>') kalau di luar pita
+        #   3. korban sudah di dalam gerbang kamera? -> selesai
+        #   4. geser satu siklus gait ('H<amp>') ke arah cari
+        #
+        # Rotasi dan maju-mundur DIPAKAI HANYA UNTUK KOREKSI. Penengahan
+        # sendiri tetap milik badan di atas kaki yang diam (S_A_HALUS), sama
+        # seperti K-1 -- aturan 17 Sep 2026 tidak dibatalkan, cuma fase
+        # pendekatannya yang sekarang melihat.
+        if not aksi.kosong():
+            return                        # langkah sebelumnya belum selesai
+
+        # 1. LURUSKAN KE KOMPAS. 'o<arah>' adalah pivot gait penuh, jadi ia
+        #    tidak dikirim tiap siklus -- satu langkah geser tidak memutar
+        #    badan sebanyak itu, dan pivot yang tidak perlu membuang jatah
+        #    waktu parkir.
+        if misi.cari_n and misi.cari_n % max(1, kalib.cari_luruskan_tiap) == 0:
+            if not misi._geser_dijadwal:
+                misi._geser_dijadwal = True
+                aksi.jadwal((f"o{misi.arah_ruas:d}", 2.5), ("l", 0.3))
+                return
+
+        # 2. JARAK DINDING BELAKANG. Di dalam pita toleransi 'J' TIDAK
+        #    dikirim: ia menggerakkan kaki, dan langkah yang tidak perlu
+        #    membuang penengahan yang belum dibayar.
+        blk = link.belakang_cm()
+        sasar_blk = kalib.korban_belakang_cm
+        if (sasar_blk > 0 and blk is not None and blk != float("inf")
+                and abs(blk - sasar_blk) > kalib.cari_belakang_tol_cm):
+            aksi.jadwal((f"J{sasar_blk:.0f}", 4.0), ("l", 0.3))
+            link.log.append(f"[CARI] dinding belakang {blk:.0f} cm -> "
+                            f"J{sasar_blk:.0f}")
+            misi._geser_dijadwal = False
+            return
+
+        # 3. GERBANG KAMERA. Simpangan sudut diubah ke piksel supaya ambangnya
+        #    disetel di satuan tempat derau-nya hidup, sama seperti
+        #    bbox_tol_px dan tengah_tol_px.
+        err = misi.bearing_deg
+        if err is not None:
+            px = abs(err) * kalib.px_per_deg(lebar)
+            if px <= kalib.cari_gerbang_px:
+                misi._geser_dijadwal = False
+                misi.ganti(S_A_TENGAH,
+                           f"korban masuk gerbang {px:.0f} px "
+                           f"(<= {kalib.cari_gerbang_px:.0f})")
+                return
+
+        # 4. GESER SATU SIKLUS. Ke KIRI, dan kiri ikut tertukar di arena
+        #    cermin -- sama seperti belok dan kemudi seluruh tabel.
+        if misi.cari_n >= kalib.cari_maks_langkah:
+            misi._geser_dijadwal = False
+            misi.ganti(S_A_TENGAH,
+                       f"CARI menyerah sesudah {misi.cari_n} geser -- "
+                       f"korban tidak pernah masuk gerbang "
+                       f"{kalib.cari_gerbang_px:.0f} px. Penengahan biasa "
+                       f"tetap dicoba.")
+            return
+        # Arah DAN besar dari knob per posisi: K-3 ke kiri, K-4 ke kanan.
+        # Arena cermin menukar kiri dan kanan seluruh lintasan, jadi tandanya
+        # ikut dibalik.
+        posisi = korban_kini(misi)
+        amp = float(getattr(kalib, f"cari_amp_{posisi.lower()}", -abs(kalib.geser_amp)))
+        if misi.cermin:
+            amp = -amp
+        misi.cari_n += 1
+        misi._geser_dijadwal = False
+        aksi.jadwal((f"H{amp:.2f}", kalib.geser_tunggu_s))
+        if diam is not None:
+            diam.tunda(kalib.geser_tunggu_s)
+        link.log.append(
+            f"[CARI] geser {misi.cari_n}/{kalib.cari_maks_langkah} ke "
+            f"{'KANAN' if amp > 0 else 'KIRI'}"
+            f"{' (cermin)' if misi.cermin else ''} "
+            + ("(korban belum terlihat)" if err is None
+               else f"(korban {abs(err) * kalib.px_per_deg(lebar):.0f} px dari tengah)"))
+        return
 
     if misi.state == S_A_TENGAH:
         err = misi.bearing_deg
@@ -4218,6 +4485,16 @@ button.danger{border-color:#733}
 #tabs button.aktif{background:#243040;color:var(--warn);border-color:var(--acc)}
 .panel{display:none}.panel.aktif{display:block}
 #log{height:190px;overflow:auto;font-size:11px;color:#7f9c86;white-space:pre-wrap}
+/* Editor lintasan: rapat, satu layar untuk 34 baris x 14 kolom. */
+#lts_tabel table{font-size:11px}
+#lts_tabel th{color:var(--dim);font-weight:400;text-align:left;padding:2px 3px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+#lts_tabel td{padding:1px 3px}
+#lts_tabel select,#lts_tabel input[type=number]{font:inherit;padding:1px 2px}
+#lts_tabel input[type=number]{width:62px}
+#lts_tabel input.nm{width:190px}
+#lts_tabel tr.ubah td{background:#2a2410}
+#lts_tabel tr.ubah td:first-child{border-left:2px solid var(--warn)}
 .gagal{border:1px solid var(--bad);background:#2a0f0f}
 input{background:#0e1317;color:var(--txt);border:1px solid var(--line);
       border-radius:4px;padding:3px 5px;width:76px;font:inherit}
@@ -4291,6 +4568,7 @@ input.lebar{width:170px}
       <button onclick="tab(2,this)">Korban</button>
       <button onclick="tab(3,this)">Terminal</button>
       <button onclick="tab(4,this)">Kalibrasi</button>
+      <button onclick="tab(5,this);ltsGambar()">Lintasan</button>
     </div>
 
     <!-- 0. ROBOT -->
@@ -4710,7 +4988,7 @@ input.lebar{width:170px}
         <button data-tip="Cetak keadaan sensor depan. Aman. Firmware: i." onclick="cmd('man','i')">Sensor depan? (i)</button>
         <div class=mid>v1.8 &mdash; ruas terakhir di bawah turunan</div>
         <button data-tip="Cetak status misi, termasuk baris 'ruas akhir' yang baru di v1.8. Aman. Firmware: m." onclick="cmd('man','m')">Status misi (m)</button>
-        <button data-tip="Ambang sensor DEPAN untuk ruas terakhir di bawah turunan, bawaan 40 cm. Ketik di kotak bebas: m5 &lt;cm&gt;, misal m5 40. Harus lebih besar dari FRONT_STOP_CM (20)." onclick="cmd('man','m5 40')">m5 40 (ambang ruas akhir)</button>
+        <button data-tip="Sidik tabel lintasan di RAM Teensy: '#TABV &lt;crc&gt; &lt;jumlah baris&gt;'. Aman, hanya membaca. Yang dulu ada di sini -- 'm5 40' sebagai ambang sensor depan ruas terakhir -- sudah TIDAK ADA sejak v1.18: huruf m5 sekarang milik editor lintasan. Pakai tab Lintasan. Firmware: m5." onclick="cmd('man','m5')">Sidik tabel (m5)</button>
         <button class=danger data-tip="ABAIKAN sensor depan -- robot jadi buta ke depan. Hanya untuk turunan, di mana lantai yang menjauh terbaca sebagai halangan. JANGAN lupa i0 sesudahnya. Firmware: i1." onclick="cmd('man','i1')">i1 abaikan depan</button>
         <button data-tip="Pakai lagi sensor depan. Firmware: i0." onclick="cmd('man','i0')">i0 pakai depan</button>
       </div>
@@ -4949,6 +5227,40 @@ input.lebar{width:170px}
         </table>
       </div>
     </div>
+
+    <!-- 5. LINTASAN -->
+    <div class=panel>
+      <section class="card">
+        <div class=section-heading><div><span class=eyebrow>Editor lintasan</span>
+          <h1>Tabel ruas, tanpa flash ulang</h1></div></div>
+        <div class=mid>Yang diubah di sini adalah tabel di <b>RAM Teensy</b>, dan itu yang
+        dijalankan misi. Tabel di flash tidak tersentuh &mdash; <b>Pulangkan ke flash</b>
+        selalu jadi jalan balik. Setelan RAM <b>hilang tiap Teensy reset</b>; HUD menyimpan
+        draft-nya dan mengirim ulang sendiri kalau sidik tabelnya tidak lagi cocok.
+        Untuk membuatnya permanen, tekan <b>Ekspor</b> lalu tempel ke
+        <code>Hexapod_Unlimited/Misi.cpp</code>.</div>
+        <div class=mid style="margin-top:6px">Angka yang tampil adalah <b>nilai sumber</b>,
+        bukan hasil pencerminan arena. Kalau arena cermin aktif, kiri dan kanan tetap
+        ditukar saat dijalankan &mdash; itu terjadi di firmware, bukan di tabel.</div>
+        <div style="margin-top:8px">
+          <button data-tip="Firmware: m5d. Membaca seluruh tabel RAM Teensy baris per baris ('#TABR') lalu menggambarnya di bawah. Aman, hanya membaca." onclick="cmd('lintasan_baca')">Muat dari Teensy</button>
+          <button data-tip="Menyimpan draft ke moses/lintasan.json lalu mengirim SELURUH baris yang berbeda ke Teensy, satu 'm5s' per putaran loop. Ditolak firmware selama misi berjalan." onclick="ltsKirim(null)">Kirim semua</button>
+          <button class=danger data-tip="Firmware: m5r. Membuang draft HUD DAN memulangkan tabel RAM Teensy ke tabel yang di-flash. Semua setelan yang belum diekspor hilang." onclick="if(confirm('Buang draft dan pulangkan tabel Teensy ke tabel flash?'))cmd('lintasan_baku')">Pulangkan ke flash (m5r)</button>
+          <button data-tip="Menghasilkan blok RUAS_BAKU[] siap tempel ke Misi.cpp. Tidak mengubah berkas apa pun -- kamu yang menempelkannya." onclick="ltsEkspor()">Ekspor ke Misi.cpp</button>
+          <span class=mid id=lts_st style="margin-left:10px">&mdash;</span>
+        </div>
+        <div class=mid style="margin-top:6px"><b>+</b> menyisipkan baris kosong di
+        ATAS baris itu, <b>&minus;</b> menghapusnya. Keduanya menggeser seluruh nomor
+        ruas sesudahnya, dan peta poin di firmware ikut bergeser bersamanya.
+        Baris baru berpoin NIHIL &mdash; isi sendiri kalau ruas itu memang dinilai
+        juri.
+        </div>
+        <div id=lts_tabel style="margin-top:10px;overflow:auto"></div>
+        <textarea id=lts_ekspor hidden style="width:100%;height:280px;margin-top:8px;
+          background:#0e1317;color:var(--txt);border:1px solid var(--line);
+          border-radius:4px;font:11px/1.4 ui-monospace,Consolas,monospace"></textarea>
+      </section>
+    </div>
   </div>
 </div>
 <script>
@@ -4990,6 +5302,166 @@ function gambarDaya(r){
     + ' \u00b7 konsumsi 0-'+dmax.toFixed(1)+' W (isian biru) \u00b7 '
     + r.length+' sampel';
 }
+
+// ===================== EDITOR LINTASAN ==============================
+// Tabel yang digambar di sini SELALU berasal dari robot ('#TABR' jawaban
+// 'm5d') atau dari draft yang tersimpan -- tidak pernah dari salinan yang
+// ditulis tangan di halaman. Salinan tangan adalah sumber kebenaran kedua,
+// dan sumber kedua yang menyimpang diam-diam adalah seluruh masalah yang
+// mau dihindari fitur ini.
+const LTS_KOLOM = [
+  ['belok','enum',['LURUS','KANAN','BALIK','KIRI']],
+  ['kemudi','enum',['ikut KANAN','ikut KIRI','TENGAH']],
+  ['profil','enum',['DATAR','TANGGA','MERUNDUK','SEMPIT','KAIL','TANJAK']],
+  ['abaikanDepan','bool',null],
+  ['henti','enum',['odo','depan','belakang','langsung','sisi','mundur','puncak']],
+  ['nilai','num',null],
+  ['aksi','enum',['-','AMBIL','TARUH','KONFIRM']],
+  ['aksiA','enum',['lengan DEPAN','lengan BELAKANG']],
+  ['putar','num',null],
+  ['condong','bool',null],
+  ['jagaBelakang','bool',null],
+  ['mundurMm','num',null],
+  ['condongMm','num',null]
+];
+const LTS_JUDUL = ['belok','kemudi','profil','buta','henti','nilai','aksi','lengan',
+                   'putar°','condong','jagaBlk','mundurMm','condongMm'];
+var ltsRobot = [];     // apa yang ada di Teensy sekarang
+var ltsDraft = [];     // apa yang dilihat & diedit operator
+var ltsSiap = false;   // tabel sudah pernah digambar?
+
+function ltsTerima(d){
+  // Robot menang atas draft HANYA saat pertama kali: sesudah itu draft yang
+  // sedang diedit tidak boleh ditimpa oleh poll yang datang tiap 300 ms.
+  ltsRobot = d.lintasan || [];
+  if(!ltsSiap){
+    var awal = (d.lintasan_draft && d.lintasan_draft.length) ? d.lintasan_draft : ltsRobot;
+    if(awal.length){ ltsDraft = JSON.parse(JSON.stringify(awal)); ltsSiap = true; ltsGambar(); }
+  }
+  var s = $('lts_st'); if(!s) return;
+  var ket = d.tab_crc===null||d.tab_crc===undefined ? 'sidik tabel belum dibaca'
+          : ('#TABV '+d.tab_crc+' · '+d.tab_n+' baris');
+  var st = d.tab_sinkron;
+  s.textContent = ket + (st==='-' ? '' : ' · draft '+st);
+  s.style.color = st==='beda' ? 'var(--bad)' : st==='cocok' ? 'var(--ok)'
+                : st==='menyalin' ? 'var(--warn)' : 'var(--dim)';
+  if(ltsSiap) ltsTandai();
+}
+
+function ltsBeda(i){
+  if(!ltsRobot[i]) return true;
+  return LTS_KOLOM.some(function(k){
+    var a=ltsDraft[i][k[0]], b=ltsRobot[i][k[0]];
+    return k[1]==='bool' ? (!!a!==!!b) : (Number(a)!==Number(b));
+  }) || String(ltsDraft[i].nama||'')!==String(ltsRobot[i].nama||'');
+}
+
+function ltsTandai(){
+  ltsDraft.forEach(function(_,i){
+    var tr=$('lts_r'+i); if(tr) tr.classList.toggle('ubah', ltsBeda(i));
+  });
+}
+
+function ltsGambar(){
+  var box=$('lts_tabel'); if(!box) return;
+  if(!ltsDraft.length){
+    box.innerHTML='<div class=mid>Tabel belum dibaca. Tekan <b>Muat dari Teensy</b>.</div>';
+    return;
+  }
+  var h='<table><tr><th>#</th><th>nama</th>';
+  LTS_JUDUL.forEach(function(j){ h+='<th>'+j+'</th>'; });
+  h+='<th></th></tr>';
+  ltsDraft.forEach(function(r,i){
+    h+='<tr id=lts_r'+i+'><td class=mid>'+i+'</td>';
+    h+='<td><input class=nm maxlength=39 value="'+String(r.nama||'').replace(/"/g,'&quot;')
+     + '" oninput="ltsSet('+i+',\'nama\',this.value)"></td>';
+    LTS_KOLOM.forEach(function(k){
+      var nama=k[0], jenis=k[1], pil=k[2], v=r[nama];
+      if(jenis==='enum'){
+        h+='<td><select onchange="ltsSet('+i+',\''+nama+'\',+this.value)">';
+        pil.forEach(function(teks,n){
+          h+='<option value='+n+(Number(v)===n?' selected':'')+'>'+teks+'</option>';
+        });
+        h+='</select></td>';
+      } else if(jenis==='bool'){
+        h+='<td><input type=checkbox'+(v?' checked':'')
+         + ' onchange="ltsSet('+i+',\''+nama+'\',this.checked)"></td>';
+      } else {
+        h+='<td><input type=number step=any value="'+Number(v)
+         + '" oninput="ltsSet('+i+',\''+nama+'\',parseFloat(this.value)||0)"></td>';
+      }
+    });
+    h+='<td style=white-space:nowrap>'
+     + '<button onclick="ltsKirim('+i+')">Kirim</button>'
+     + '<button title="sisip baris kosong DI ATAS baris ini" '
+     + 'onclick="ltsSisip('+i+')">+</button>'
+     + '<button class=danger title="hapus baris ini" '
+     + 'onclick="ltsHapus('+i+')">&minus;</button></td></tr>';
+  });
+  box.innerHTML=h+'</table>';
+  ltsTandai();
+}
+
+function ltsSet(i,k,v){ ltsDraft[i][k]=v; var tr=$('lts_r'+i); if(tr) tr.classList.add('ubah'); }
+
+// SISIP / HAPUS BARIS. Keduanya menggeser SELURUH nomor ruas sesudahnya, jadi
+// tabel di halaman TIDAK digeser sendiri di sini: firmware yang menggesernya,
+// lalu 'm5d' membacanya kembali. Menggesernya di dua tempat berarti dua
+// kesempatan untuk menggesernya berbeda.
+//
+// Peta poin SKOR_RAM di firmware ikut bergeser di perintah yang sama. Baris
+// yang baru disisipkan berpoin NIHIL sampai kamu mengubahnya.
+function ltsSisip(i){
+  if(!confirm('Sisip baris kosong di atas ruas '+i+'?\n\n'
+            + 'Seluruh nomor ruas sesudahnya bergeser +1, dan draft yang belum '
+            + 'dikirim akan dibuang. Baris baru tidak berjalan (HNT_LANGSUNG) '
+            + 'dan tidak berpoin.')) return;
+  ltsSiap=false; cmd('lintasan_sisip', i);
+}
+function ltsHapus(i){
+  var nm = (ltsDraft[i]&&ltsDraft[i].nama)||('ruas '+i);
+  if(!confirm('HAPUS ruas '+i+' ("'+nm+'")?\n\n'
+            + 'Seluruh nomor ruas sesudahnya bergeser -1, dan draft yang belum '
+            + 'dikirim akan dibuang. Ini tidak bisa dibatalkan selain dengan '
+            + '"Pulangkan ke flash".')) return;
+  ltsSiap=false; cmd('lintasan_hapus', i);
+}
+
+function ltsKirim(hanya){
+  if(!ltsDraft.length){ alert('Tabel belum dibaca. Tekan "Muat dari Teensy" dulu.'); return; }
+  cmd('lintasan_kirim', JSON.stringify({tabel: ltsDraft, hanya: hanya}));
+}
+
+function ltsEkspor(){
+  // Blok C dirakit DI SINI, bukan di Python: yang perlu diekspor adalah apa
+  // yang sedang dilihat operator, dan itu cuma ada di halaman sampai Kirim
+  // ditekan.
+  var E={belok:['BLK_LURUS','BLK_KANAN','BLK_BALIK','BLK_KIRI'],
+         kemudi:['KMD_KANAN','KMD_KIRI','KMD_TENGAH'],
+         profil:['PRF_DATAR','PRF_TANGGA','PRF_MERUNDUK','PRF_SEMPIT','PRF_KAIL','PRF_TANJAK'],
+         henti:['HNT_ODO','HNT_DEPAN','HNT_BELAKANG','HNT_LANGSUNG','HNT_SISI','HNT_MUNDUR','HNT_PUNCAK'],
+         aksi:['AKS_TIDAK_ADA','AKS_AMBIL','AKS_TARUH','AKS_KONFIRM'],
+         aksiA:['ARM_DEPAN','ARM_BELAKANG']};
+  var n=function(x){ x=Number(x)||0; return x===Math.round(x)? String(x) : x.toFixed(2); };
+  var out=['const Ruas RUAS_BAKU[] = {'];
+  ltsDraft.forEach(function(r,i){
+    var k=['"'+String(r.nama||'').replace(/"/g,'\\"')+'"',
+           E.belok[r.belok], E.kemudi[r.kemudi], E.profil[r.profil],
+           r.abaikanDepan?'true':'false', E.henti[r.henti], n(r.nilai),
+           E.aksi[r.aksi], E.aksiA[r.aksiA]];
+    // Ekor opsional dipotong selama masih nilai baku -- inisialisasi agregat
+    // C++ menolkannya, dan blok sependek yang ditulis tangan itu yang membuat
+    // diff terhadap Misi.cpp terbaca.
+    var ek=[n(r.putar)+'f', r.condong?'true':'false', r.jagaBelakang?'true':'false',
+            n(r.mundurMm)+'f', n(r.condongMm)+'f'];
+    var baku=['0f','false','false','0f','0f'];
+    while(ek.length && ek[ek.length-1]===baku[ek.length-1]) ek.pop();
+    out.push('/*'+i+'*/ { '+k.concat(ek).join(', ')+' },');
+  });
+  out.push('};');
+  var ta=$('lts_ekspor'); ta.hidden=false; ta.value=out.join('\n'); ta.select();
+}
+
 $('host').textContent=location.host;
 function tab(i,el){document.querySelectorAll('.panel').forEach((p,n)=>p.classList.toggle('aktif',n===i));
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('aktif'));el.classList.add('aktif');}
@@ -5054,6 +5526,7 @@ async function tarikSekali(){
   $('mode').className='kendali';
   $('mode').textContent=d.manual?'Manual aktif · otomasi dihentikan':'Mode misi · aktifkan Manual untuk kendali arah';
   if(window.operatorUpdate) window.operatorUpdate(d);
+  ltsTerima(d);
   // State yang belum diprogram diberi warna kuning DAN label. Tanpa label,
   // robot yang diam di sini tidak bisa dibedakan dari robot yang sedang
   // menunggu sensor -- dan operator menunggu sesuatu yang tidak akan datang.
@@ -5567,8 +6040,88 @@ def petunjuk(misi):
     return ""
 
 
+# ---------------------------------------------------------------------
+# DRAFT TABEL LINTASAN
+#
+# Tabel yang diedit operator hidup di RAM Teensy dan HILANG tiap reset. Draft
+# di disk yang membuatnya selamat: kalau '#TABV' dari robot tidak lagi cocok
+# dengan CRC draft, HUD mengirim ulang seluruh baris sendiri.
+#
+# Dibungkus list satu elemen supaya rakit_state() dan loop utama melihat
+# perubahan yang sama tanpa `global` di lima tempat.
+# ---------------------------------------------------------------------
+_draft_lintasan = [LTS.muat_draft()]
+
+# Antrean baris yang belum terkirim + rem waktunya. Teensy.kirim() menulis
+# langsung ke port tanpa antrean, jadi 34 baris sekaligus adalah ~3 KB dalam
+# satu kedipan; dikirim satu per iterasi loop utama.
+_antre_lintasan = deque()
+_t_sinkron = [0.0]
+_gagal_sinkron = [0]
+
+# Tiga putaran kirim-ulang yang tidak mengubah apa pun berarti cermin CRC yang
+# meleset, bukan Teensy yang belum sempat membaca. Berhenti dan mengeluh --
+# lebih baik daripada membanjiri port selamanya.
+SINKRON_GAGAL_MAKS = 3
+SINKRON_JEDA_S = 10.0
+
+
+def _sinkron_lintasan(link):
+    """'cocok' / 'beda' / 'menyalin' / '-' untuk strip status di halaman."""
+    draft = _draft_lintasan[0]
+    if not draft:
+        return "-"
+    if _antre_lintasan:
+        return "menyalin"
+    crc = getattr(link, "tab_crc", None)
+    if crc is None:
+        return "-"
+    return "cocok" if crc == LTS.crc_tabel(draft) else "beda"
+
+
+def sinkron_lintasan(link, misi_jalan):
+    """Kirim satu baris antrean, atau isi antrean kalau tabel RAM menyimpang.
+
+    Dipanggil sekali per iterasi loop utama.
+    """
+    if _antre_lintasan:
+        idx, ruas = _antre_lintasan.popleft()
+        link.kirim(LTS.baris_m5s(idx, ruas), paksa=True)
+        if not _antre_lintasan:
+            link.kirim("m5", paksa=True)      # minta '#TABV' untuk memastikan
+        return
+
+    draft = _draft_lintasan[0]
+    if not draft or getattr(link, "tab_crc", None) is None or not link.hidup:
+        return
+    # Firmware menolak 'm5s' selama misi berjalan, dan ia benar: misi yang
+    # membaca dua tabel berbeda dalam satu lintasan tidak bisa direproduksi.
+    if misi_jalan:
+        return
+    if link.tab_crc == LTS.crc_tabel(draft):   # dijaga getattr di atas
+        _gagal_sinkron[0] = 0
+        return
+    if _gagal_sinkron[0] >= SINKRON_GAGAL_MAKS:
+        return
+    if time.time() - _t_sinkron[0] < SINKRON_JEDA_S:
+        return
+    _t_sinkron[0] = time.time()
+    _gagal_sinkron[0] += 1
+    _antre_lintasan.extend(enumerate(draft))
+    link.log.append(
+        "[LINTASAN] tabel Teensy tidak sama dengan draft (reset?) -- "
+        "mengirim ulang %d baris (percobaan %d/%d)"
+        % (len(draft), _gagal_sinkron[0], SINKRON_GAGAL_MAKS))
+    if _gagal_sinkron[0] == SINKRON_GAGAL_MAKS:
+        link.log.append(
+            "[LINTASAN] ini percobaan TERAKHIR. Kalau masih beda sesudah ini, "
+            "CRC HUD dan CRC firmware tidak sepakat -- jalankan "
+            "'python moses/test_lintasan.py'.")
+
+
 def rakit_state(misi, link, kalib, juri, stats, armed, pesan_kalib, kamera=None,
                 bersama=None, sehat=None):
+    tab_ram = getattr(link, "lintasan", None) or {}
     kelas_misi = []
     for i, (mid, label, jenis, slot, pasangan) in enumerate(MISI):
         t = misi.status[i]
@@ -5724,6 +6277,14 @@ def rakit_state(misi, link, kalib, juri, stats, armed, pesan_kalib, kamera=None,
         "tombol_baru": bool(getattr(link, "tombol", ""))
                        and (time.time() - getattr(link, "t_tombol", 0.0)) < 5.0,
         "ruas_fw": link.ruas_fw() or "-",
+        # getattr, bukan atribut langsung: rakit_state() juga dipanggil dengan
+        # link tiruan di test_mission_hud.py, dan kartu yang menambah atribut
+        # baru tidak boleh menjatuhkan seluruh halaman.
+        "lintasan": [tab_ram[i] for i in sorted(tab_ram)],
+        "lintasan_draft": _draft_lintasan[0] or [],
+        "tab_crc": getattr(link, "tab_crc", None),
+        "tab_n": getattr(link, "tab_n", 0),
+        "tab_sinkron": _sinkron_lintasan(link),
         "awas": (f"{misi.awas_kelas.upper()} conf {misi.awas_conf:.2f}"
                  if misi.awas_kelas else
                  "mengamati..." if misi.state == S_AWAS else "-"),
@@ -5958,7 +6519,7 @@ def main():
                     # antaranya memakai ulang hasil terakhir untuk digambar --
                     # kotaknya tidak berkedip, tapi CPU-nya menganggur.
                     jeda_min = (1.0 / kalib.jejak_hz
-                                if misi.state in (S_JEJAK, S_A_TENGAH)
+                                if misi.state in (S_JEJAK, S_A_CARI, S_A_TENGAH)
                                 and kalib.jejak_hz > 0
                                 else 0.0)
                     if (time.time() - t_infer) < jeda_min:
@@ -6010,8 +6571,13 @@ def main():
                         # sebelum kendali diserahkan ke firmware. Yang WAJIB
                         # dari cabang ini cuma satu: bearing_deg ditulis ulang
                         # tiap frame. Lihat MENGEMUDI.
-                        if misi.state in (S_JEJAK, S_A_TENGAH, S_A_HALUS,
-                                          S_TAHAN):
+                        # AMBIL_CARI ikut cabang PENUH ini, dan itu wajib:
+                        # gerbang 150 px fase CARI dihitung dari bearing_deg,
+                        # jadi bearing yang beku berarti korban lewat tanpa
+                        # pernah terdeteksi dan robot menggeser kelebihan --
+                        # persis yang terjadi di arena 18 Sep 2026.
+                        if misi.state in (S_JEJAK, S_A_CARI, S_A_TENGAH,
+                                          S_A_HALUS, S_TAHAN):
                             # PEMILIHAN SASARAN = VERSI 10 SEPTEMBER. Sengaja.
                             #
                             # Hari ini tiga gerbang baru ditaruh DI SINI, di
@@ -6038,7 +6604,8 @@ def main():
                             # penglihatan. Pengukuran jarak di bawah murni
                             # bacaan: ia tidak pernah membuang sasaran.
                             misi._bawa_diberitahu = False
-                            t, _n_dummy = pilih_sasaran(lolos, names, kalib)
+                            t, _n_dummy = pilih_sasaran(lolos, names, kalib,
+                                                       misi.cermin)
                             if t is not None:
                                 misi.n_dummy_saja = 0
                                 misi.bearing_deg = ((t[6] - (w / 2 + kalib.cx_offset_px))
@@ -6136,7 +6703,8 @@ def main():
                             # dulu melahirkan "kenapa di JEJAK mau, di CENTER
                             # tidak" -- dan gejala seperti itu tidak pernah
                             # menunjuk sebabnya sendiri.
-                            t, _n_dummy = pilih_sasaran(lolos, names, kalib)
+                            t, _n_dummy = pilih_sasaran(lolos, names, kalib,
+                                                       misi.cermin)
                             if t is not None:
                                 misi.bearing_deg = ((t[6] - (w / 2 + kalib.cx_offset_px))
                                                     / kalib.px_per_deg(w))
@@ -6296,6 +6864,65 @@ def main():
                         juri.reset()
                     elif k == "reset":
                         juri.reset()
+                    elif k == "lintasan_baca":
+                        link.lintasan.clear()
+                        link.kirim("m5d", paksa=True)
+                    elif k in ("lintasan_sisip", "lintasan_hapus") and v:
+                        # DRAFT DIBUANG, bukan digeser di sisi Pi.
+                        #
+                        # Menyisipkan baris menggeser SELURUH nomor ruas
+                        # sesudahnya, dan draft yang digeser sendiri di sini
+                        # adalah kesempatan kedua untuk menggesernya berbeda
+                        # dari firmware. Yang benar cuma satu: minta tabelnya
+                        # lagi lewat 'm5d' sesudah firmware menggesernya.
+                        try:
+                            idx = int(v)
+                        except (TypeError, ValueError):
+                            link.log.append("[LINTASAN] indeks tidak terbaca")
+                        else:
+                            _draft_lintasan[0] = None
+                            _antre_lintasan.clear()
+                            _gagal_sinkron[0] = 0
+                            LTS.hapus_draft()
+                            link.lintasan.clear()
+                            huruf = "+" if k == "lintasan_sisip" else "-"
+                            link.kirim(f"m5{huruf} {idx}", paksa=True)
+                            link.kirim("m5d", paksa=True)
+                            link.log.append(
+                                f"[LINTASAN] m5{huruf} {idx} -- draft dibuang, "
+                                f"tabel dibaca ulang dari Teensy")
+                    elif k == "lintasan_baku":
+                        _draft_lintasan[0] = None
+                        _antre_lintasan.clear()
+                        _gagal_sinkron[0] = 0
+                        LTS.hapus_draft()
+                        link.lintasan.clear()
+                        link.kirim("m5r", paksa=True)
+                        link.kirim("m5d", paksa=True)
+                        link.log.append("[LINTASAN] draft dibuang, tabel Teensy "
+                                        "dipulangkan ke tabel flash")
+                    elif k == "lintasan_kirim" and v:
+                        # v = JSON {"tabel": [...], "hanya": idx|null}. Draft
+                        # SELALU ditulis penuh: yang dikirim boleh satu baris,
+                        # tapi CRC dihitung atas seluruh tabel, jadi draft yang
+                        # separuh akan langsung terbaca sebagai "beda" dan
+                        # memicu kirim-ulang tanpa henti.
+                        try:
+                            paket = json.loads(v)
+                            tabel = paket["tabel"]
+                            hanya = paket.get("hanya")
+                        except (ValueError, TypeError, KeyError):
+                            link.log.append("[LINTASAN] paket tidak terbaca")
+                        else:
+                            _draft_lintasan[0] = tabel
+                            LTS.simpan_draft(tabel)
+                            _gagal_sinkron[0] = 0
+                            _antre_lintasan.clear()
+                            baris = ([(int(hanya), tabel[int(hanya)])]
+                                     if hanya is not None else list(enumerate(tabel)))
+                            _antre_lintasan.extend(baris)
+                            link.log.append("[LINTASAN] %d baris diantre ke Teensy"
+                                            % len(baris))
                     elif k == "man" and v:
                         link.kirim(v.strip(), armed)
                     elif k == "manpaksa" and v:
@@ -6753,6 +7380,17 @@ def main():
                         pesan_kalib = (f"disimpan ke {os.path.abspath(nama)} DAN "
                                        f"{KALIB_AKTIF} (yang ini dimuat otomatis)")
                         link.log.append(f"[KALIB] {pesan_kalib}")
+
+                # Posisi korban menurut FIRMWARE, disegarkan tiap putaran.
+                # korban_kini() membacanya; lihat catatan di sana.
+                misi.posisi_fw = posisi_dari_ruas(link.ruas_fw())
+
+                # --- tabel lintasan: satu baris antrean per putaran ---
+                # Sesudah perintah halaman diproses, supaya baris yang baru
+                # diantre di putaran ini ikut berangkat tanpa menunggu.
+                sinkron_lintasan(
+                    link, link.state_teensy().upper().startswith(
+                        ("BERJALAN", "PIVOT", "SEKUENS", "MENUNGGU", "MODE UKUR")))
 
                 # --- keluaran ---
                 n_fps += 1

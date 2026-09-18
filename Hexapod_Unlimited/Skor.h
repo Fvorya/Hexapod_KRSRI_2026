@@ -60,6 +60,22 @@ enum JenisSkor : uint8_t {
 extern const JenisSkor SKOR_RUAS[];
 extern const uint8_t    SKOR_RUAS_N;
 
+// PETA POIN YANG BENAR-BENAR DIPAKAI, di RAM.
+//
+// Kembaran RUAS[] milik Misi: sama seperti tabel lintasan, peta poin harus
+// bisa bergeser saat operator menyisipkan atau menghapus ruas dari HUD.
+// Tanpa ini 'm5+' menggeser lintasan tanpa menggeser poinnya, dan tiap ruas
+// sesudah titik sisip dinilai sebagai ruas yang salah -- diam-diam, karena
+// JenisSkor mana pun sah di indeks mana pun.
+//
+// Diisi skorBaku() saat menyala, dari SKOR_RUAS[] di flash.
+extern JenisSkor SKOR_RAM[];
+extern uint8_t   SKOR_RAM_N;
+
+void skorBaku();                    // RAM <- flash
+void skorSisip(uint8_t idx);        // sisip SK_NIHIL di idx
+void skorHapus(uint8_t idx);
+
 class Skor {
 public:
     // Dipanggil sekali tiap ruas SELESAI. Idempoten terhadap ruas yang sama:

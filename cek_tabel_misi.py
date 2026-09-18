@@ -80,8 +80,14 @@ def nilai_cm(x, cfg):
 
 
 def baca_tabel(teks):
-    awal = teks.index("const Ruas RUAS[] = {")
+    awal = teks.index("const Ruas RUAS_BAKU[] = {")
     blok = teks[awal:teks.index("};", awal)]
+    # Baris yang DIKOMENTARI bukan bagian tabel: firmware tidak melihatnya,
+    # jadi pemeriksa ini pun tidak boleh. Tanpa ini, K-3/K-4 yang dimatikan
+    # ikut terhitung dan SETIAP nomor ruas yang dilaporkan meleset sembilan --
+    # nomor yang salah lebih buruk daripada tidak ada nomor sama sekali.
+    blok = "\n".join(b for b in blok.splitlines()
+                      if not b.lstrip().startswith("//"))
     pola = re.compile(
         r'\{\s*"([^"]+)"\s*,\s*(BLK_\w+)\s*,\s*(KMD_\w+)\s*,\s*(PRF_\w+)\s*,'
         r'\s*(true|false)\s*,\s*(HNT_\w+)\s*,\s*(-?\d+|[A-Z_][A-Z0-9_]*)\s*,\s*(AKS_\w+)'
@@ -91,7 +97,7 @@ def baca_tabel(teks):
     )
     baris = pola.findall(blok)
     if not baris:
-        sys.exit("tabel RUAS[] tidak terbaca -- formatnya berubah?")
+        sys.exit("tabel RUAS_BAKU[] tidak terbaca -- formatnya berubah?")
     return baris
 
 

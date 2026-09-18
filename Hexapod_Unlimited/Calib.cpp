@@ -229,8 +229,8 @@ static const uint8_t INVERT_DEF[TOTAL_SERVOS] = {
     0, 0, 0     // lengan kiri
 };
 
-uint16_t Calib::crc16(const uint8_t* p, uint32_t n) {
-    uint16_t crc = 0xFFFF;                        // CRC16-CCITT
+uint16_t Calib::crc16(const uint8_t* p, uint32_t n, uint16_t awal) {
+    uint16_t crc = awal;                          // CRC16-CCITT
     for (uint32_t i = 0; i < n; i++) {
         crc ^= (uint16_t)p[i] << 8;
         for (int b = 0; b < 8; b++)

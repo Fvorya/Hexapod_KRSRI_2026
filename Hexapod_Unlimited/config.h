@@ -549,7 +549,16 @@
 // Belakang ikut turun sebanyak itu, dan itu tidak apa-apa: di puncak, belakang
 // masih di tanjakan yang MENURUN menjauh, jadi ruangnya justru bertambah.
 // BODY_MAX_ROT_DEG 20 plafonnya.
-#define TANJAK_PITCH_DEG     12.0f
+// Pose LENGAN DEPAN selama profil TANJAK, derajat GEOMETRIS -- satuan dan
+// jalur yang sama dengan perintah 'as<bahu> <siku> <pergelangan>'. Dipasang
+// profileTanjak(), jadi ia ikut pada misi, pada 'U', dan pada 'T5'.
+// Dipilih di robot 18 Sep 2026: lengan terlipat, tidak lagi menyapu muka
+// anak tangga.
+#define TANJAK_LENGAN_BAHU    0.0f
+#define TANJAK_LENGAN_SIKU   90.0f
+#define TANJAK_LENGAN_PRG    90.0f
+
+#define TANJAK_PITCH_DEG     10.0f
 
 // --- PUNCAK TANJAKAN, dibaca gyro (HNT_PUNCAK) ---------------------------
 //

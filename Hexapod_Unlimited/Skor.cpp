@@ -4,11 +4,21 @@
 // ====================================================================
 // PETA RUAS -> JENIS POIN
 //
-// DISUSUN ULANG 16 Sep 2026 untuk tabel lintasan 30 baris. Referensi OLED
-// datang dari tabel 34 baris; empat ruas perpindahan dihapus dan sisanya
-// bergeser, jadi peta lama akan memberi poin ke ruas yang salah -- diam-diam,
-// karena JenisSkor mana pun sah di indeks mana pun. Dicocokkan lewat NAMA
-// ruas, bukan nomornya.
+// DISUSUN ULANG 18 Sep 2026 untuk tabel lintasan 34 baris. Dicocokkan lewat
+// NAMA ruas, bukan nomornya.
+//
+// INI SUDAH SALAH DUA KALI, dan dua-duanya DIAM: JenisSkor mana pun sah di
+// indeks mana pun, jadi peta yang bergeser memberi poin ke ruas yang salah
+// tanpa satu pun keluhan dari kompiler. Yang terakhir (peta 30 baris melawan
+// tabel 34 baris) membuat ruas 16 "K-3 angkat korban" bernilai NOL, dan ruas
+// 30..33 -- termasuk "SZ-5 / FINISH" -- tidak dinilai sama sekali karena
+// ruasSelesai() keluar lebih dulu di `idx >= SKOR_RUAS_N`. Tanpa FINISH,
+// _finis tidak pernah true dan bonus waktu guidebook tidak pernah dihitung.
+//
+// ATURANNYA: tabel ini WAJIB sepanjang RUAS_BAKU[] di Misi.cpp, dan komentar
+// tiap baris WAJIB nama ruas pada indeks itu. Tampilan::begin() memeriksa
+// panjangnya saat menyala dan mengeluh ke Serial kalau tidak cocok -- baca
+// keluhan itu, jangan lewati.
 //
 //
 // Disusun dari NAMA ruas di tabel lintasan Misi.cpp, dan itu satu-satunya
@@ -30,35 +40,39 @@ const JenisSkor SKOR_RUAS[] = {
 /* 1*/ SK_ANGKAT,      // K-1 angkat korban
 /* 2*/ SK_RINTANG,     // R-1 jalan pecah
 /* 3*/ SK_RINTANG,     // M1 turunan + R-2/R-3  -- lihat catatan di atas
-/* 4*/ SK_NIHIL,       // sesudah turunan: ke tembok
-/* 5*/ SK_TARUH,       // SZ-1 taruh korban (di dalam R-4)
-/* 6*/ SK_RINTANG_SZ,  // R-4 -- lihat SK_RINTANG_SZ di Skor.h. Dinilai DI SINI
-       //          karena ruas 6 ("BALIK lalu -30 der ke kanan") selesai tepat
-       //          saat robot sampai di depan K-2; sebelum itu robot masih di
-       //          dalam R-4, tempat SZ-1 berada.
+/* 4*/ SK_NIHIL,       // Depan sampai 20 cm
+/* 5*/ SK_TARUH,       // SZ-1 taruh korban (dalam R-4)
+/* 6*/ SK_RINTANG_SZ,  // hadap kiri maju -- lihat SK_RINTANG_SZ di Skor.h.
+       //          R-4 dinilai DI SINI karena ruas 6 selesai tepat saat robot
+       //          sampai di depan K-2; sebelum itu robot masih di dalam R-4,
+       //          tempat SZ-1 berada.
 /* 7*/ SK_ANGKAT,      // K-2 angkat korban
-/* 8*/ SK_RINTANG,     // R-5 lumpur
-/* 9*/ SK_TARUH,       // SZ-2
-/*10*/ SK_NIHIL,       // SELATAN keluar R-5
+/* 8*/ SK_RINTANG,     // R-5 lumpur: BARAT sampai ujung
+/* 9*/ SK_TARUH,       // SZ-2 taruh korban (kanan 20)
+/*10*/ SK_NIHIL,       // SELATAN keluar R-5 (kiri 20)
 /*11*/ SK_NIHIL,       // ratakan ke dinding KANAN
 /*12*/ SK_NIHIL,       // SELATAN sampai tembok K-3
 /*13*/ SK_NIHIL,       // putar kiri lalu maju
 /*14*/ SK_NIHIL,       // kiri ke depan K-3
-/*15*/ SK_ANGKAT,      // K-3 angkat korban
-/*16*/ SK_NIHIL,       // TIMUR sampai tembok
-/*17*/ SK_RINTANG,     // R-6 pecah
-/*18*/ SK_TARUH,       // SZ-3
-/*19*/ SK_ANGKAT,      // K-4 angkat korban
-/*20*/ SK_NIHIL,       // jalan ke depan tangga
-/*21*/ SK_NIHIL,       // ratakan 20 cm dinding KANAN
-/*22*/ SK_RINTANG_R9,  // R-9 TANGGA
-/*23*/ SK_RINTANG,     // R-10 puing + lumpur miring
-/*24*/ SK_NIHIL,       // jalan ke kiri ke depan SZ-4
-/*25*/ SK_TARUH,       // SZ-4
-/*26*/ SK_NIHIL,       // jalan ke kanan depan K-5
-/*27*/ SK_ANGKAT,      // K-5 angkat korban
-/*28*/ SK_RINTANG,     // R-11 longsor
-/*29*/ SK_TARUH_SZ5,   // SZ-5 / FINISH
+/*15*/ SK_NIHIL,       // maju sedikit (CARI yang halus)
+/*16*/ SK_ANGKAT,      // K-3 angkat korban
+/*17*/ SK_NIHIL,       // hadap SELATAN (rotasi saja)
+/*18*/ SK_RINTANG,     // R-6 pecah: SELATAN sampai 28
+/*19*/ SK_TARUH,       // SZ-3 taruh korban
+/*20*/ SK_NIHIL,       // hadap BARAT (rotasi saja)
+/*21*/ SK_NIHIL,       // K-4: pendekatan milik CARI
+/*22*/ SK_ANGKAT,      // K-4 angkat korban
+/*23*/ SK_NIHIL,       // jalan ke depan tangga
+/*24*/ SK_NIHIL,       // ratakan 13 cm dinding KANAN
+/*25*/ SK_RINTANG_R9,  // R-9 TANGGA (miring 103)
+/*26*/ SK_NIHIL,       // Maju sedikit naik tangga
+/*27*/ SK_RINTANG,     // R-10 puing+lumpur miring
+/*28*/ SK_NIHIL,       // jalan ke kiri ke depan SZ-4
+/*29*/ SK_TARUH,       // SZ-4 taruh korban (dalam R-10)
+/*30*/ SK_NIHIL,       // jalan ke kanan depan K-5
+/*31*/ SK_ANGKAT,      // K-5 angkat korban
+/*32*/ SK_RINTANG,     // R-11 longsor (lebar jalan 30)
+/*33*/ SK_TARUH_SZ5,   // SZ-5 / FINISH
 };
 
 // RUAS_N adalah `const uint8_t` yang diisi sizeof di Misi.cpp, jadi ia bukan
@@ -66,6 +80,35 @@ const JenisSkor SKOR_RUAS[] = {
 // memakainya. Panjangnya dipakai saat jalan, dan ketidakcocokannya dilaporkan
 // sekali di begin() alih-alih diam.
 const uint8_t SKOR_RUAS_N = (uint8_t)(sizeof(SKOR_RUAS) / sizeof(SKOR_RUAS[0]));
+
+// --- SALINAN RAM, dan INILAH yang dibaca ruasSelesai() -------------------
+//
+// Panjangnya RUAS_MAKS, bukan SKOR_RUAS_N: sesudah 'm5+' peta ini ikut tumbuh
+// sampai sepanjang tabel lintasan, dan tabel lintasan dibatasi RUAS_MAKS.
+JenisSkor SKOR_RAM[RUAS_MAKS];
+uint8_t   SKOR_RAM_N = 0;
+
+void skorBaku() {
+    SKOR_RAM_N = SKOR_RUAS_N < RUAS_MAKS ? SKOR_RUAS_N : RUAS_MAKS;
+    for (uint8_t i = 0; i < SKOR_RAM_N; i++) SKOR_RAM[i] = SKOR_RUAS[i];
+}
+
+void skorSisip(uint8_t idx) {
+    if (SKOR_RAM_N >= RUAS_MAKS) return;
+    if (idx > SKOR_RAM_N) idx = SKOR_RAM_N;
+    for (uint8_t i = SKOR_RAM_N; i > idx; i--) SKOR_RAM[i] = SKOR_RAM[i - 1];
+    // SK_NIHIL, bukan menebak: ruas yang baru disisipkan belum punya arti di
+    // guidebook, dan poin yang ditebak lebih buruk daripada poin yang nol --
+    // yang nol kelihatan di papan skor, yang ditebak tidak.
+    SKOR_RAM[idx] = SK_NIHIL;
+    SKOR_RAM_N++;
+}
+
+void skorHapus(uint8_t idx) {
+    if (idx >= SKOR_RAM_N || SKOR_RAM_N == 0) return;
+    for (uint8_t i = idx; i + 1 < SKOR_RAM_N; i++) SKOR_RAM[i] = SKOR_RAM[i + 1];
+    SKOR_RAM_N--;
+}
 
 bool Skor::tandai(uint8_t idx) {
     if (idx >= 64) return false;
@@ -86,8 +129,8 @@ void Skor::ruasSelesai(uint8_t idx) {
     // Dijaga terhadap KEDUA panjang: tabel poin yang lebih pendek daripada
     // tabel lintasan akan membaca di luar batas, dan itu jenis kesalahan yang
     // muncul sebagai poin acak, bukan sebagai crash.
-    if (idx >= RUAS_N || idx >= SKOR_RUAS_N) return;
-    const JenisSkor j = SKOR_RUAS[idx];
+    if (idx >= RUAS_N || idx >= SKOR_RAM_N) return;
+    const JenisSkor j = SKOR_RAM[idx];
 
     // MUATAN DIPERBARUI WALAU RUASNYA DIULANG. Bit "sudah dinilai" menjaga
     // POIN dari dihitung dua kali; ia tidak boleh ikut membekukan keadaan

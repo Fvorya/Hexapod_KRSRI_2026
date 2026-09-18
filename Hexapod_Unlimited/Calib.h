@@ -107,7 +107,11 @@ namespace Calib {
     void  save();                               // ke EEPROM (+ hitung crc)
     int   findParam(const char* name);          // -1 bila tak ada
     bool  setParam(const char* name, float v);  // clamp ke [lo,hi]; false bila nama tak ada
-    uint16_t crc16(const uint8_t* p, uint32_t n);
+    // `awal` = nilai CRC sebelumnya, supaya potongan yang tidak berdekatan di
+    // memori bisa dirantai (tabel lintasan menghitung CRC-nya baris per baris
+    // tanpa lebih dulu menyusun seluruh tabel ke satu buffer). Pemanggil lama
+    // tidak berubah: bakunya 0xFFFF, sama seperti sebelumnya.
+    uint16_t crc16(const uint8_t* p, uint32_t n, uint16_t awal = 0xFFFF);
 }
 
 #endif

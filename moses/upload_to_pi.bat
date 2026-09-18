@@ -27,7 +27,7 @@ REM Pi dengan "ModuleNotFoundError: No module named 'operator_control'"
 REM karena modul barunya tidak pernah ikut terkirim -- dan detect.py dulu
 REM di balik --all dengan alasan "ukurannya besar", padahal 16 KB. Modul
 REM yang di-import program TIDAK boleh bergantung pada flag yang mudah lupa.
-set "BERKAS=mission_hud.py test_mission_hud.py operator_control.py test_operator.py detect.py test_detect.py bench.py test_bench.py cek_serial.py sidik_firmware.py sidik_imu.py flash_teensy.py run.sh run_hud.sh siapkan_teensy_pi.sh install_service.sh hemat_daya.sh simpan_arsip.sh cek_salinan.sh"
+set "BERKAS=mission_hud.py test_mission_hud.py lintasan.py test_lintasan.py operator_control.py test_operator.py detect.py test_detect.py bench.py test_bench.py cek_serial.py sidik_firmware.py sidik_imu.py flash_teensy.py run.sh run_hud.sh siapkan_teensy_pi.sh install_service.sh hemat_daya.sh simpan_arsip.sh cek_salinan.sh"
 
 echo.
 echo [upload] tujuan : %PI%:~/%DIR%/
