@@ -28,10 +28,17 @@ REM Laptop lain tinggal:  set SRC=D:\jalur\ke\vincent  lalu jalankan lagi.
 if "%SRC%"=="" set "SRC=%~dp0..\.."
 
 REM VERSI BAKU -- yang dipakai kalau kamu cuma menekan Enter di menu.
-REM Di laptop ini SRC menunjuk ke C:\Users\R2C\Desktop\Vincent\Hexapod,
-REM jadi baris di bawah ini adalah sketch v1.18 di dalamnya -- folder kerja
-REM yang sedang disunting. v1.17 di sebelahnya adalah salinan referensi OLED
-REM dan TIDAK berisi perbaikan 16 Sep 2026; jangan di-flash tanpa sengaja.
+REM Di laptop ini SRC menunjuk ke C:\Users\R2C\Desktop\Vincent\Hexapod, jadi
+REM baris di bawah ini adalah POHON KERJA -- folder yang sedang disunting, dan
+REM sumber yang sama persis yang dikirim kirim_teensy.bat ke Raspi. Kedua jalur
+REM flash memakai sumber yang sama; itu memang yang dituju.
+REM
+REM Sampai 19 Sep 2026 baku ini menunjuk ke Hexapod_Unlimited_v1.18\ dan itu
+REM SALAH sejak perapian tata letak 18 Sep: pohon kerja dipindah ke
+REM Hexapod_Unlimited\, dan yang tertinggal di folder v1.18 cuma berkas .bak --
+REM tidak ada Hexapod_Unlimited.ino di sana. Menekan Enter jatuh ke
+REM :sketch_hilang. Folder v1.17 di sebelahnya salinan referensi OLED dan tidak
+REM berisi perbaikan 16 Sep 2026; jangan di-flash tanpa sengaja.
 REM
 REM Menu TIDAK dihapus: versi lain tetap bisa dipilih dengan nomornya, dan
 REM tanggal tiap folder tetap dicetak. Yang berubah cuma apa yang terjadi
@@ -39,7 +46,7 @@ REM saat Enter -- dulu batal, sekarang pakai yang baku. Membatalkan
 REM sekarang: ketik 0.
 REM
 REM Versi baku lain:  set BAKU=%SRC%\<folder>\Hexapod_Unlimited
-if "%BAKU%"=="" set "BAKU=%SRC%\Hexapod_Unlimited_v1.18\Hexapod_Unlimited"
+if "%BAKU%"=="" set "BAKU=%SRC%\Hexapod_Unlimited"
 
 REM PILIH sketch dari daftar. TIDAK ditebak lagi.
 REM
