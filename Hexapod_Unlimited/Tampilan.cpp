@@ -486,16 +486,19 @@ void Tampilan::aksiTekan(uint8_t i) {
 
         case 3:   // D3 tekan -- balik saklar arena cermin.
             //
-            // BELUM BERPENGARUH KE ROBOT, dan itu harus terbaca di layar.
-            // 'arena.mirror' bertanda P_BELUM_DIPAKAI di Calib: slotnya ada,
-            // tidak satu baris pun membacanya. Jadi tombol ini menyimpan
-            // pilihan arena untuk dibaca kode yang belum ditulis -- pesannya
-            // mengatakan itu apa adanya, bukan berpura-pura robot berubah.
+            // BERPENGARUH SEJAK 18 Sep 2026. Misi::belokRuas/kemudiRuas/
+            // putarRuas membaca saklar ini, jadi membaliknya menukar kiri dan
+            // kanan di SELURUH tabel lintasan -- termasuk mata angin, karena
+            // hitungArah() menumpuk kolom belok yang sudah tercermin.
+            //
+            // RAM saja. 'W' menyimpannya bersama blok Calib; tanpa itu ia
+            // kembali ke 0 saat Teensy reset, dan itu memang lebih aman
+            // daripada robot yang menyala langsung dalam mode cermin.
             {
                 const bool ke = (gParam[K_ARENA_MIRROR] < 0.5f);
                 gParam[K_ARENA_MIRROR] = ke ? 1.0f : 0.0f;
-                pesan(ke ? "MIRROR on (belum dipakai)"
-                         : "MIRROR off (belum dipakai)");
+                pesan(ke ? "CERMIN on - kiri/kanan tukar"
+                         : "CERMIN off - tabel asli");
             }
             break;
     }

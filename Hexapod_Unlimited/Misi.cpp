@@ -548,18 +548,18 @@ extern Skor gSkor;
 const Ruas RUAS[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 30.0f, 30.0f },
+/*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
 /*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
 /*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
 /*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     28,              AKS_TIDAK_ADA, 0 },
 /*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -30.0f },
-/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       33,              AKS_TIDAK_ADA, 0,         +30.0f },
+/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0,         +30.0f },
 /*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
-/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
+/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       10,              AKS_TIDAK_ADA, 0 },
 /*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
 /*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*11*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       38,              AKS_TIDAK_ADA, 0 },
+/*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     15,              AKS_TIDAK_ADA, 0 },
 /*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
 /*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
 /*15*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
@@ -571,13 +571,14 @@ const Ruas RUAS[] = {
 /*21*/   { "jalan ke depan tangga",         BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*22*/   { "ratakan 13 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*23*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,    40,              AKS_TIDAK_ADA, 0 },
-/*24*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
-/*25*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      25,              AKS_TIDAK_ADA, 0 },
+/*24*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       32,              AKS_TIDAK_ADA, 0 },
+/*25*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
 /*26*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*27*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
-/*28*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
-/*29*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*30*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     40,              AKS_TARUH,     ARM_DEPAN },
+/*28*/   { "jalan sedikit ke depan",        BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     25,              AKS_TIDAK_ADA, 0 },
+/*29*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
+/*30*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*31*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     40,              AKS_TARUH,     ARM_DEPAN },
 };
 
 const uint8_t RUAS_N = sizeof(RUAS) / sizeof(RUAS[0]);
@@ -1034,15 +1035,45 @@ float Misi::selisihYaw() const {
     return d;
 }
 
+// --- ARENA CERMIN ---------------------------------------------------------
+//
+// Dibaca dari gParam, bukan disalin ke anggota: saklarnya boleh dibalik tombol
+// D3 kapan saja, dan salinan yang lupa diperbarui berarti misi separuh
+// tercermin. Harganya satu pembacaan float per pemakaian, dan itu tidak ada
+// artinya dibanding sekali salah arah.
+//
+// hitungArah() dipanggil ulang tiap 'm1' dan 'm4', jadi membalik saklar lalu
+// menjalankan misi sudah cukup -- tidak ada yang perlu dimuat ulang tangan.
+bool Misi::arenaCermin() { return gParam[K_ARENA_MIRROR] >= 0.5f; }
+
+Belok Misi::belokRuas(uint8_t i) const {
+    const Belok b = RUAS[i].belok;
+    if (!arenaCermin()) return b;
+    // (4 - b) % 4: LURUS 0 tetap 0, KANAN 1 jadi 3 (KIRI), BALIK 2 tetap 2,
+    // KIRI 3 jadi 1 (KANAN). Rumus, bukan tabel -- tabel kecil yang benar
+    // hari ini adalah tabel yang salah begitu enumnya disisipi nilai baru.
+    return (Belok)((4u - (uint8_t)b) % 4u);
+}
+
+Kemudi Misi::kemudiRuas(uint8_t i) const {
+    const Kemudi k = RUAS[i].kemudi;
+    if (!arenaCermin() || k == KMD_TENGAH) return k;   // TENGAH tidak berarah
+    return (k == KMD_KIRI) ? KMD_KANAN : KMD_KIRI;
+}
+
+float Misi::putarRuas(uint8_t i) const {
+    return arenaCermin() ? -RUAS[i].putar : RUAS[i].putar;
+}
+
 void Misi::hitungArah() {
     uint8_t a = MISI_ARAH_BERANGKAT;
     float   s = 0.0f;
     for (uint8_t i = 0; i < RUAS_N; i++) {
-        a = (uint8_t)((a + (uint8_t)RUAS[i].belok) % 4);
+        a = (uint8_t)((a + (uint8_t)belokRuas(i)) % 4);
         // Serong menumpuk seperti belok menumpuk: keduanya "belok masuk ruas
         // ini", cuma satuannya berbeda. Yang satu dibungkus modulo 4, yang
         // satu dijumlahkan lurus.
-        s += RUAS[i].putar;
+        s += putarRuas(i);
         _arah[i]   = a;
         _serong[i] = s;
     }
@@ -1167,7 +1198,7 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         //    pita yang sama, sehingga sasaran di bawahnya akan ditolak tepat
         //    sebelum tercapai -- gagal di tengah arena, bukan di sini.
         if (RUAS[i].henti == HNT_SISI) {
-            if (RUAS[i].kemudi == KMD_TENGAH) {
+            if (kemudiRuas(i) == KMD_TENGAH) {
                 Serial.print("Gagal: ruas "); Serial.print(i);
                 Serial.println(" bergeser tapi kemudinya MENENGAH -- pilih KANAN atau KIRI.");
                 Serial.println("  Perbaiki TABEL di Misi.cpp -- ini salah tulis, bukan salah setel.");
@@ -1416,7 +1447,7 @@ bool Misi::siapJalan(uint8_t idx, uint8_t sampai) {
     // ditolak karena kanal LiDAR yang tidak ada hubungannya.
     for (uint8_t i = idx; i <= sampai && i < RUAS_N; i++) {
         if (RUAS[i].henti != HNT_SISI) continue;
-        const uint8_t ch = (RUAS[i].kemudi == KMD_KIRI) ? LIDAR_KIRI_D : LIDAR_KANAN_D;
+        const uint8_t ch = (kemudiRuas(i) == KMD_KIRI) ? LIDAR_KIRI_D : LIDAR_KANAN_D;
         if (_lidar.getDistance(ch) != LIDAR_MATI) continue;
         Serial.print("Gagal: sensor "); Serial.print(LidarArray::nama(ch));
         Serial.print(" mati, padahal ruas "); Serial.print(i);
@@ -1543,8 +1574,9 @@ void Misi::ukur(uint8_t idx) {
     if (ruasSerong(idx)) { Serial.print(" serong "); Serial.print(_serong[idx], 0);
                            Serial.print(" der (heading "); Serial.print(headingRuas(idx), 0);
                            Serial.print(")"); }
-    Serial.print(", kemudi "); Serial.print(x.kemudi == KMD_TENGAH ? "MENENGAH" :
-                                            x.kemudi == KMD_KIRI   ? "dinding KIRI" : "dinding KANAN");
+    const Kemudi kmd = kemudiRuas(_i);
+    Serial.print(", kemudi "); Serial.print(kmd == KMD_TENGAH ? "MENENGAH" :
+                                            kmd == KMD_KIRI   ? "dinding KIRI" : "dinding KANAN");
     Serial.print(", profil ");
     Serial.println(x.profil == PRF_TANGGA   ? "TANGGA" :
                    x.profil == PRF_MERUNDUK ? "MERUNDUK" :
@@ -1749,7 +1781,7 @@ void Misi::ruasBerangkat() {
 bool Misi::ruasJalan() {
     const Ruas& x = RUAS[_i];
 
-    _nav.setTengah(x.kemudi == KMD_TENGAH);
+    _nav.setTengah(kemudiRuas(_i) == KMD_TENGAH);
     _nav.abaikanDepan(x.abaikanDepan);
 
     // Ruas yang cuma aksi: tidak ada yang perlu dijalankan.
@@ -1760,7 +1792,7 @@ bool Misi::ruasJalan() {
     // menyalakannya dan menunggu -- ruasSehat()/ruasSelesai() punya cabang
     // sendiri untuk membaca hasilnya.
     if (x.henti == HNT_SISI) {
-        if (!_nav.ratakanMulai(x.kemudi == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
+        if (!_nav.ratakanMulai(kemudiRuas(_i) == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
             gagal("perataan sisi ditolak -- sebabnya tercetak di atas.");
             return false;
         }
@@ -1783,7 +1815,7 @@ bool Misi::ruasJalan() {
         return true;
     }
 
-    ModeNav m = (x.kemudi == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
+    ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
     _nav.navMulai(m);
     if (_nav.navMode() != m) {
         gagal("gagal memulai navigasi untuk ruas ini -- sebabnya tercetak di atas.");
@@ -2421,7 +2453,11 @@ void Misi::cetakRuas(uint8_t idx) {
     Serial.print(idx); Serial.print("  ");
     Serial.print(_nav.namaArah(_arah[idx]));
     for (uint8_t k = strlen(_nav.namaArah(_arah[idx])); k < 8; k++) Serial.print(' ');
-    switch (x.belok) {
+    // YANG DICETAK ADALAH YANG BERLAKU, bukan yang tertulis di tabel. Di mode
+    // cermin keduanya berbeda, dan tabel yang menampilkan sumber sementara
+    // robot menjalankan cerminnya adalah tabel yang menyesatkan justru saat
+    // paling dibutuhkan.
+    switch (belokRuas(idx)) {
         case BLK_KANAN: Serial.print("kanan"); break;
         case BLK_KIRI:  Serial.print("kiri "); break;
         case BLK_BALIK: Serial.print("balik"); break;
@@ -2429,12 +2465,13 @@ void Misi::cetakRuas(uint8_t idx) {
     }
     // Serong dicetak MENEMPEL pada beloknya, bukan di kolom sendiri: ia
     // memang bagian dari belok itu, cuma satuannya derajat.
-    if (fabsf(x.putar) > 0.5f) { Serial.print(x.putar > 0 ? '+' : '-');
-                                 Serial.print(fabsf(x.putar), 0); }
+    const float ptr = putarRuas(idx);
+    if (fabsf(ptr) > 0.5f)     { Serial.print(ptr > 0 ? '+' : '-');
+                                 Serial.print(fabsf(ptr), 0); }
     else                       { Serial.print("  "); }
     Serial.print(' ');
 
-    switch (x.kemudi) {
+    switch (kemudiRuas(idx)) {
         case KMD_KIRI:   Serial.print("kiri   "); break;
         case KMD_TENGAH: Serial.print("tengah "); break;
         default:         Serial.print("kanan  "); break;
@@ -2470,6 +2507,15 @@ void Misi::cetakRuas(uint8_t idx) {
 
 void Misi::tabel() {
     Serial.println("\n--- TABEL LINTASAN ---");
+    // MODE CERMIN DIUMUMKAN DI KEPALA TABEL. Tanpa baris ini, satu-satunya
+    // tanda bahwa robot menjalankan cerminnya adalah kolom belok/kemudi yang
+    // "terasa terbalik" -- dan itu baru disadari sesudah robot berjalan ke
+    // arah yang salah.
+    if (arenaCermin()) {
+        Serial.println("  ARENA CERMIN AKTIF -- kiri dan kanan DITUKAR.");
+        Serial.println("  Yang tercetak di bawah sudah hasil pencerminan, bukan isi tabel.");
+        Serial.println("  Matikan dengan 'Qarena.mirror 0' atau tombol D3.");
+    }
     Serial.println("  #  arah    belok  kemudi profil   henti  cm  buta  aksi    nama");
     for (uint8_t i = 0; i < RUAS_N; i++) cetakRuas(i);
     Serial.println("  'm7 <idx> <cm>' menyetel panjang ruas.  'm4 <idx>' mulai dari satu ruas.");

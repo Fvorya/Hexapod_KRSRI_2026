@@ -468,6 +468,35 @@ private:
 
     void hitungArah();
     float headingRuas(uint8_t i) const;
+
+public:
+    // --- ARENA CERMIN -------------------------------------------------------
+    //
+    // Lapangan bisa dipasang sebagai cerminnya: yang di kiri jadi di kanan.
+    // Saklarnya 'arena.mirror' (K_ARENA_MIRROR), dibalik tombol D3 atau
+    // 'Qarena.mirror 1'.
+    //
+    // SATU PINTU, bukan tabel kedua. Menyalin RUAS[] jadi versi cermin berarti
+    // 30 baris yang harus disunting dua kali seumur hidup proyek, dan yang
+    // kedua pasti tertinggal. Ketiga pengakses ini yang dipakai SELURUH kode
+    // yang membaca kolom berarah, jadi mencerminkan misi cuma membalik saklar.
+    //
+    // Yang dicerminkan hanya TIGA kolom, dan itu cukup:
+    //   belok   BLK_KIRI <-> BLK_KANAN. LURUS dan BALIK tidak berubah, dan
+    //           karena hitungArah() menumpuk kolom ini, seluruh mata angin
+    //           misi ikut tercermin sendiri (TIMUR <-> BARAT, UTARA dan
+    //           SELATAN tetap).
+    //   kemudi  KMD_KIRI <-> KMD_KANAN. KMD_TENGAH tidak berarah.
+    //   putar   dinegasikan; serong 45 der ke kiri jadi 45 der ke kanan.
+    //
+    // Yang TIDAK dicerminkan: jarak, profil, aksi, lengan. Lengan cuma satu di
+    // depan, dan jarak tidak punya sisi.
+    static bool arenaCermin();
+    Belok  belokRuas(uint8_t i)  const;
+    Kemudi kemudiRuas(uint8_t i) const;
+    float  putarRuas(uint8_t i)  const;
+
+private:
     bool  ruasSerong(uint8_t i) const;            // belok relatif -> mata angin mutlak tiap ruas
     float selisihYaw() const;
     void masuk(StatMisi s);

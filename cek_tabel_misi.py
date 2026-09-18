@@ -48,6 +48,11 @@ NAMA_ARAH = ["UTARA", "TIMUR", "SELATAN", "BARAT"]
 #
 # Cocoknya POTONGAN nama, huruf kecil. Nama ruas boleh disunting selama
 # potongan ini tetap ada di dalamnya.
+# CATATAN: skrip ini membaca TABEL SUMBER, jadi ia selalu memeriksa versi yang
+# TIDAK tercermin. 'arena.mirror' adalah saklar RUNTIME di Teensy dan tidak
+# terbaca dari sini. Itu benar dan disengaja -- yang dijaga di sini isi tabel,
+# dan cerminnya hasil turunan yang dihitung firmware. Jangkar mata angin di
+# bawah karena itu juga hanya berlaku untuk mode normal.
 JANGKAR = [
     ("home", 0, "MISI_ARAH_AWAL 0 (UTARA) -- berangkat dari HOME"),
     ("k-1 angkat", 3, "MISI_ARAH_KORBAN1 3 (BARAT) -- K-1 di samping lintasan"),
