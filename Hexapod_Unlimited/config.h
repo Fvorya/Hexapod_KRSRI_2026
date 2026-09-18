@@ -508,6 +508,20 @@
 // yang kurang tinggi langkahnya, bukan siklusnya -- lihat catatan TANJAK.
 #define KAIL_CYCLE_TAMBAH_MS  300.0f
 
+// PITCH BADAN PROFIL TANJAK, derajat. Disetel di robot 18 Sep 2026 dengan
+// 'r0 5 0': tanpa ini robot cenderung jatuh ke belakang di tanjakan R-9.
+//
+// Tandanya mengikuti setBodyRotation(): pitch + = MENDONGAK. Di bidang miring
+// itu memindahkan titik berat ke arah kaki yang mendaki, yaitu menjauhi tepi
+// jungkir di belakang.
+//
+// HILANG SAAT 'b'. Perintah itu menolkan seluruh rotasi badan, jadi 'T5' lalu
+// 'b' meninggalkan profil TANJAK tanpa pitch-nya. Itu memang benar -- 'b'
+// adalah pose netral -- tapi jangan kaget kalau robot jadi mudah jatuh lagi
+// sesudah menekannya. Ketik 'T5' sekali lagi, atau 'U' yang memasang seluruh
+// rangkaiannya.
+#define TANJAK_PITCH_DEG      5.0f
+
 #define KAIL_TINGGI_BADAN   100.0f  // BUKAN 115 milik TANGGA -- lihat tabel
 #define KAIL_DEPAN_MAJU      60.0f  // kaki depan membuka ke DEPAN
 #define KAIL_DEPAN_NAIK      40.0f  // kaki depan NAIK ke tapak berikutnya

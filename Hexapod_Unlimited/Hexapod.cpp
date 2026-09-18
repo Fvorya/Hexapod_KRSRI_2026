@@ -557,6 +557,16 @@ void Hexapod::profileTanjak() {
     pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH - 15.0f,
                    GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI }, 5);
 
+    // PITCH BADAN ikut profil ini, tidak diketik terpisah. Disetel di robot
+    // dengan 'r0 5 0'; tanpanya robot cenderung jatuh di tanjakan R-9.
+    //
+    // Roll dan yaw DIPERTAHANKAN, bukan dinolkan: stabilisasi IMU menulis
+    // roll, dan menolkannya di sini menjatuhkan badan kembali ke datar di atas
+    // bidang yang memang miring. Pola yang sama dipakai fase pelurusan yaw di
+    // sekuens korban.
+    const Vec3 r0 = bodyRotTargetDeg();
+    setBodyRotation(r0.x, TANJAK_PITCH_DEG, r0.z);
+
     // Telapak belakang diputar ke -y pada radius yang SAMA, jadi jangkauan D
     // tidak berubah sedikit pun -- yang berubah cuma arahnya.
     const float aBlk = deg2rad(BODY_LEG_ANGLE[2]);
