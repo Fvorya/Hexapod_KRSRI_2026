@@ -565,6 +565,37 @@
 // apakah badan masih goyang ke samping.
 #define SEMPIT_PITCH_DEG      5.0f
 
+// SEMPIT berdiri LEBIH RAPAT dan LEBIH TINGGI dari TANJAK. Sebabnya bukan
+// lebar lorong: di R-11 sasis MENYENTUH TANAH, dan lomba tidak mengizinkannya.
+//
+// Kenapa radius harus ikut turun, padahal yang kurang cuma tinggi badan:
+// jangkauan kaki yang NYATA cuma 120 mm (femur 55 + tibia 65 terukur 14 Sep
+// 2026, bukan 80 + 90 yang tertulis di atas). Jarak yang harus ditempuh kaki
+// dari poros femur = hypot(radius - COXA_LENGTH, tinggi). Dihitung:
+//
+//   radius 60, tinggi 100 -> 107,7 mm   ok
+//   radius 60, tinggi 110 -> 117,0 mm   mepet, 97% jangkauan
+//   radius 60, tinggi 115 -> 121,8 mm   MENTOK, di luar jangkauan
+//   radius 45, tinggi 110 -> 112,8 mm   ok, 94%
+//   radius 45, tinggi 115 -> 117,7 mm   mepet
+//
+// Jadi pada radius 60 tinggi 115 TIDAK BISA DICAPAI. IK memakai 80/90 yang
+// tertulis, jadi ia mengira solusinya ada, mengirim sudutnya, dan kaki yang
+// nyata berhenti lebih pendek -- badan melorot. Itu persis gejalanya.
+// Merapatkan kaki adalah yang MEMBUAT badan yang lebih tinggi bisa dicapai.
+//
+// BELUM DIUKUR, dua-duanya:
+//   1. Tinggi badan NYATA pada 110. Pada 'b100' robot berdiri 75 mm, jadi
+//      perbandingannya sekitar 0,75 -- perkiraan 83 mm. Ukur dengan penggaris,
+//      dan pastikan sasis benar-benar bebas di puing R-11.
+//   2. Tinggi berkas LiDAR samping sesudah badan naik. R2C: kalau badan
+//      terlalu tinggi, berkasnya lewat DI ATAS dinding longsor dan sisi itu
+//      membaca LIDAR_JAUH -- ikut-dinding mati tanpa gejala lain. Pasang 'T3'
+//      di tempatnya lalu baca 'l'. Kalau sisi itu JAUH padahal dindingnya ada,
+//      turunkan tinggi sampai terbaca lagi, dan turunkan radius seperlunya.
+#define SEMPIT_RADIUS_KAKI   45.0f
+#define SEMPIT_TINGGI_BADAN 110.0f
+
 #define TANJAK_PITCH_DEG     10.0f
 
 // --- PUNCAK TANJAKAN, dibaca gyro (HNT_PUNCAK) ---------------------------

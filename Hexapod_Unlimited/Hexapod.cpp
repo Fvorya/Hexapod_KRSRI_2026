@@ -553,7 +553,9 @@ void Hexapod::profileKail() {
 // di profil ini justru tinggi ayunan itu. Kalau telapak depan ternyata
 // MENGGARUK tapak (bukan gagal naik), itu knop berikutnya: pasang
 // _lututKunci = (1 << 0) | (1 << 5) tepat sebelum kurung tutup.
-void Hexapod::profileTanjak() { bentukTanjak(5, TANJAK_PITCH_DEG); }
+void Hexapod::profileTanjak() {
+    bentukTanjak(5, TANJAK_PITCH_DEG, KAIL_RADIUS_KAKI, KAIL_TINGGI_BADAN);
+}
 
 // R-11 memakai bentuk yang SAMA dengan R-9. Diminta R2C 18 Sep 2026: pitch
 // badannya ikut menahan robot supaya tidak jatuh ke kiri atau ke kanan di
@@ -563,11 +565,13 @@ void Hexapod::profileTanjak() { bentukTanjak(5, TANJAK_PITCH_DEG); }
 // (STAND_RADIUS 70 - 25), bentuk ini di 60 mm dengan kaki tengah 30 mm lagi
 // ke luar. Lorong R-11 selebar 30 cm, dan itu belum diukur terhadap bentuk
 // ini. Ukur sebelum percaya: lihat WALL_KAKI_CM di config.h.
-void Hexapod::profileNarrow() { bentukTanjak(3, SEMPIT_PITCH_DEG); }
+void Hexapod::profileNarrow() {
+    bentukTanjak(3, SEMPIT_PITCH_DEG, SEMPIT_RADIUS_KAKI, SEMPIT_TINGGI_BADAN);
+}
 
-void Hexapod::bentukTanjak(uint8_t slot, float pitchDeg) {
+void Hexapod::bentukTanjak(uint8_t slot, float pitchDeg, float radius, float tinggi) {
     pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH - 15.0f,
-                   GAIT_CYCLE_TIME + 500.0f, KAIL_TINGGI_BADAN, KAIL_RADIUS_KAKI }, slot);
+                   GAIT_CYCLE_TIME + 500.0f, tinggi, radius }, slot);
 
     // PITCH BADAN ikut profil ini, tidak diketik terpisah. Disetel di robot
     // dengan 'r0 5 0'; tanpanya robot cenderung jatuh di tanjakan R-9.
@@ -598,13 +602,13 @@ void Hexapod::bentukTanjak(uint8_t slot, float pitchDeg) {
     // Telapak belakang diputar ke -y pada radius yang SAMA, jadi jangkauan D
     // tidak berubah sedikit pun -- yang berubah cuma arahnya.
     const float aBlk = deg2rad(BODY_LEG_ANGLE[2]);
-    const float blkX = KAIL_RADIUS_KAKI * (0.0f - cosf(aBlk)) + KAIL_BELAKANG_LEBAR;
-    const float blkY = KAIL_RADIUS_KAKI * (-1.0f - sinf(aBlk)) - KAIL_BELAKANG_MUNDUR;
+    const float blkX = radius * (0.0f - cosf(aBlk)) + KAIL_BELAKANG_LEBAR;
+    const float blkY = radius * (-1.0f - sinf(aBlk)) - KAIL_BELAKANG_MUNDUR;
 
     // Kaki tengah: radius dan SUDUT, bukan geseran x. Memutar pada radius
     // tetap membuat jangkauan IK-nya juga tidak berubah.
-    const float rTgh = KAIL_RADIUS_KAKI + KAIL_TENGAH_KELUAR;
-    const float tghX = rTgh * cosf(deg2rad(KAIL_TENGAH_SUDUT)) - KAIL_RADIUS_KAKI;
+    const float rTgh = radius + KAIL_TENGAH_KELUAR;
+    const float tghX = rTgh * cosf(deg2rad(KAIL_TENGAH_SUDUT)) - radius;
     const float tghY = rTgh * sinf(deg2rad(KAIL_TENGAH_SUDUT));
 
     Vec3 off[6] = {};
