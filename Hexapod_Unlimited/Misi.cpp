@@ -586,7 +586,7 @@ const Ruas RUAS_BAKU[] = {
 // /*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
 /*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
-/*25*/   { "R-11 longsor (lebar 30)1/2",    BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+/*25*/   { "R-11 longsor (lebar 30)1/2",    BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_ODO,       25,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*26*/   { "R-11 longsor (lebar 30)2/2",    BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*27*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
