@@ -124,7 +124,7 @@
 // dikerjakan, dan menaikkan pagar diam-diam membuat perintah itu berbohong.
 // Sama persis alasannya dengan KORBAN_GRIP_BUKA yang terpisah dari
 // GRIP_PERSEN_MAKS di atas.
-#define KORBAN_GRIP_TUTUP  7.0f
+#define KORBAN_GRIP_TUTUP  5.0f
 
 // BADAN CONDONG KE DEPAN saat capit turun, mm. Hanya di ruas yang ditandai
 // `condong` di tabel (K-3 dan K-4).

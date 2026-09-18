@@ -551,20 +551,22 @@ extern Skor gSkor;
 const Ruas RUAS_BAKU[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
-/*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
-/*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
-/*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
-/*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
-/*6*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     23,              AKS_TIDAK_ADA, 0,         +20.0f },
-/*7*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
-/*8*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
-/*9*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
-/*10*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
-/*11*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
-/*12*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*13*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*14*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    10,              AKS_TIDAK_ADA, 0 },
+/*2*/    { "K-1 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
+/*3*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
+/*4*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
+/*5*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
+/*6*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
+/*7*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     23,              AKS_TIDAK_ADA, 0,         +20.0f },
+/*8*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
+/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,    10,              AKS_TIDAK_ADA, 0 },
+/*10*/   { "K-2 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f }, 
+/*11*/   { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
+/*12*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
+/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
+/*14*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*15*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*16*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
 // /*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
 // /*15*/   { "maju sedikit (CARI yang halus)",BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_ODO,        8,              AKS_TIDAK_ADA, 0 },
 // /*16*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true,  true,  35.0f, 20.0f },
@@ -574,18 +576,19 @@ const Ruas RUAS_BAKU[] = {
 // /*20*/   { "hadap BARAT (rotasi saja)",     BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
 // /*21*/   { "K-4: pendekatan milik CARI",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TIDAK_ADA, 0 },
 // /*22*/   { "K-4 angkat korban",             BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, true,  true,  35.0f, 20.0f },
-/*15*/   { "jalan sampai bebatuan",         BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
-/*16*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
-/*17*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*18*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
-/*19*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
-/*20*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       26,              AKS_TIDAK_ADA, 0 },
-/*21*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
+/*17*/   { "jalan sampai bebatuan",         BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
+/*18*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+/*19*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+/*20*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
+/*21*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+// /*21*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
+// /*22*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
 /*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
-/*25*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*26*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
+/*25*/   { "R-11 longsor (lebar 30)1/2",    BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
+/*26*/   { "R-11 longsor (lebar 30)2/2",    BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*27*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
 // <<< TABEL LINTASAN BAKU selesai
@@ -2065,6 +2068,21 @@ bool Misi::ruasJalan() {
     // menyalakannya. Mode arena TIDAK dinyalakan -- robot berjalan mundur,
     // dan kemudi dinding yang menghadap ke depan tidak punya arti di sana.
     if (x.henti == HNT_MUNDUR) {
+        // TIDAK ADA DINDING DI BELAKANG: ruas ini dilewati, bukan dijalankan.
+        // Sasaran mundur adalah BACAAN sensor belakang, jadi tanpa dinding di
+        // dalam jangkauan tidak ada yang bisa dituju -- robot akan mundur
+        // sampai batas waktu, menjauhi lintasan. Diminta R2C 18 Sep 2026 untuk
+        // baris "mundur jika bisa": ruas ini memang oportunistik.
+        //
+        // LIDAR_MATI TIDAK ikut ke sini. Sensor yang tidak menjawab bukan
+        // "tidak ada dinding", dan lewati() memang membatalkan misi untuk itu.
+        const int blk = _lidar.getDistance(LIDAR_BACK);
+        if (blk == LIDAR_JAUH || blk >= LIDAR_MAX_CM) {
+            Serial.print("  sensor belakang JAUH (");
+            Serial.print(blk); Serial.println(" cm) -- tidak ada dinding untuk dituju.");
+            lewati("mundur dilewati -- tidak ada dinding di belakang.");
+            return false;
+        }
         if (!_nav.setelBelakangMulai((int)_cm[_i])) {
             lewati("mundur ditolak -- sebabnya tercetak di atas.");
             return false;
