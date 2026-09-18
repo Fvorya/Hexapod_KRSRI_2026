@@ -194,6 +194,7 @@ private:
     // tombol yang bekerja tanpa mengumumkan diri tidak bisa dibedakan dari
     // tombol yang tidak terbaca sama sekali.
     void lapor(uint8_t i, bool tahanan, const char* fungsi);
+    uint16_t _gagalN = 0;        // percobaan OLED yang gagal berturut-turut
     void bacaTombol();
     void tekan(uint8_t i);
     void tahan(uint8_t i);

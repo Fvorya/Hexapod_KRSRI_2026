@@ -157,6 +157,19 @@ void Tampilan::update() {
     // dan sensor lebih penting daripada layar yang mungkin tidak ada.
     if (!_ada && millis() - _tCoba >= 3000) {
         _tCoba = millis();
+        // MELAPOR TIAP 30 DETIK SELAMA GAGAL. Dulu retry ini senyap total:
+        // yang tercetak hanya kegagalan PERTAMA di begin(), dan sesudah baris
+        // itu tergulung dari penyangga log tidak ada satu pun cara bertanya
+        // apakah layarnya ada. 18 Sep 2026 itu benar-benar membuat diagnosis
+        // buntu -- panel mati dan tombol jalan terlihat sama persis, entah
+        // layarnya rusak atau memang sedang beristirahat.
+        //
+        // Tiap 30 detik, bukan tiap 3: cukup untuk terlihat, jarang untuk
+        // tidak menenggelamkan log seperti PROF.
+        if (++_gagalN % 10 == 1) {
+            Serial.print("OLED masih TIDAK terdeteksi di 0x3C Wire2 (percobaan ");
+            Serial.print(_gagalN); Serial.println("). Tombol tetap jalan.");
+        }
         _ada = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ALAMAT,
                       false,   // reset: pin RST tidak dipakai (-1 di konstruktor)
                       false);  // periphBegin: Wire2 sudah di-begin() sendiri di begin()
@@ -164,7 +177,9 @@ void Tampilan::update() {
             oled.clearDisplay();
             oled.setTextColor(SSD1306_WHITE);
             _nyala = true;
-            Serial.println("OLED terdeteksi.");
+            Serial.print("OLED terdeteksi sesudah ");
+            Serial.print(_gagalN); Serial.println(" percobaan gagal.");
+            _gagalN = 0;
         }
     }
 
@@ -213,7 +228,21 @@ void Tampilan::update() {
         }
         return;
     }
-    if (_ada && !_nyala) {
+    // DISPLAYON DIKIRIM ULANG TIAP GAMBAR, tidak di-latch.
+    //
+    // Dulu: 'if (_ada && !_nyala) { DISPLAYON; _nyala = true; }'. Yang salah
+    // bukan logikanya melainkan anggapan bahwa perintahnya SAMPAI. OLED duduk
+    // di Wire2 (Tampilan.h), bus yang SAMA dengan SERVO_1_I2C_BUS -- dan
+    // driver servo itu ditulis tiap commit. Satu DISPLAYON yang tertelan
+    // tabrakan bus membuat panel tetap gelap SELAMANYA, karena _nyala sudah
+    // terlanjur true dan tidak ada yang mencoba lagi.
+    //
+    // Gejalanya persis yang dilaporkan 18 Sep 2026: OLED terdeteksi, tombol
+    // jalan, baris '#TOMBOL' tercetak, layar tetap mati walau dipencet.
+    //
+    // Harganya satu byte perintah tiap 125 ms, melawan 1024 byte framebuffer
+    // yang memang dikirim di baris berikutnya. Tidak ada artinya.
+    if (_ada) {
         oled.ssd1306_command(SSD1306_DISPLAYON);
         _nyala = true;
     }
