@@ -29,9 +29,9 @@ static const char* const TOMBOL_PIN[TOMBOL_N] = { "D6", "D5", "D4", "D3" };
 // akibatnya, bukan namanya. Muat 2 baris x 21 kolom = 42 karakter.
 static const char* const TOMBOL_FUNGSI[TOMBOL_N][2] = {
     { "JALAN misi (seketika)",       "belum dipakai"                 },
-    { "STOP di ruas kini",        "lanjut dari ruas tersimpan"    },
+    { "STOP di ruas kini",        "STOP + ruas & poin ke 0"      },
     { "catat 1 arah kompas",      "kalibrasi pivot"               },
-    { "siapkan: I lalu R lalu b", "reset ruas & poin ke 0"        },
+    { "arena cermin on/off",      "siapkan: I lalu R lalu b"      },
 };
 
 // Peta pin dibalik sekali (D2..D5 menjadi D6..D3) dan bisa dibalik lagi. Dua
@@ -484,20 +484,19 @@ void Tampilan::aksiTekan(uint8_t i) {
             }
             break;
 
-        case 3:   // D3 tekan -- siapkan robot. Diminta R2C 18 Sep 2026.
+        case 3:   // D3 tekan -- balik saklar arena cermin.
             //
-            // DI SINI, BUKAN DI TAHAN. R2C meminta slot tahan tombol ini,
-            // mengira ia kosong; tahan indeks 3 justru rem 'reset ruas & poin
-            // ke 0'. Yang benar-benar kosong slot TEKAN-nya -- ia cuma
-            // mencetak "Mirror Belum Ada", karena 'arena.mirror' bertanda
-            // P_BELUM_DIPAKAI dan tidak satu baris pun membacanya.
-            //
-            // Jadi 'siapkan' mengisi slot yang memang kosong, dan rem reset
-            // tidak perlu dibuang untuk itu.
-            kirimCmd("I");
-            kirimCmd("R");
-            kirimCmd("b");
-            pesan("init, capit nol, berdiri");
+            // BELUM BERPENGARUH KE ROBOT, dan itu harus terbaca di layar.
+            // 'arena.mirror' bertanda P_BELUM_DIPAKAI di Calib: slotnya ada,
+            // tidak satu baris pun membacanya. Jadi tombol ini menyimpan
+            // pilihan arena untuk dibaca kode yang belum ditulis -- pesannya
+            // mengatakan itu apa adanya, bukan berpura-pura robot berubah.
+            {
+                const bool ke = (gParam[K_ARENA_MIRROR] < 0.5f);
+                gParam[K_ARENA_MIRROR] = ke ? 1.0f : 0.0f;
+                pesan(ke ? "MIRROR on (belum dipakai)"
+                         : "MIRROR off (belum dipakai)");
+            }
             break;
     }
 }
@@ -550,16 +549,18 @@ void Tampilan::aksiTahan(uint8_t i) {
             pesan("tahan di sini belum dipakai");
             break;
 
-        case 1:   // D5 tahan -- lanjutkan dari ruas tempat berhenti
-            {
-                const uint8_t idx = _ruasSimpan;
-                char buf[16];
-                snprintf(buf, sizeof(buf), "m4 %u", (unsigned)idx);
-                kirimCmd(buf);
-                char p[22];
-                snprintf(p, sizeof(p), "lanjut ruas %u", (unsigned)idx);
-                pesan(p);
-            }
+        case 1:   // D5 tahan -- berhenti DAN nolkan penunjuk ruas serta poin.
+            //
+            // Pindah ke sini dari D3 tahan 18 Sep 2026. 'lanjut dari ruas
+            // tersimpan' yang tadinya menempati slot ini dibuang atas
+            // permintaan R2C -- fiturnya tidak dipakai, dan ia membuat D5
+            // punya rem di satu gerakan dan gas di gerakan lain.
+            _ruasSimpan = 0;
+            kirimCmd("m0");
+            // Poin ikut di-nol: lari berikutnya dari ruas 0 adalah percobaan
+            // BARU, dan membawa poin lari sebelumnya membuat angkanya menipu.
+            if (_skor) _skor->reset();
+            pesan("ruas & poin ke 0");
             break;
 
         case 2:   // D4 tahan -- kalibrasi pivot
@@ -568,17 +569,11 @@ void Tampilan::aksiTahan(uint8_t i) {
             pesan("kalibrasi pivot...");
             break;
 
-        case 3:   // D3 tahan -- kembalikan penunjuk ruas ke 0
-            //
-            // SLOT INI TADINYA KOSONG. Diisi reset ruas karena 'continue'
-            // pindah ke D5 tahan dan meninggalkan reset tanpa tombol. Katakan
-            // kalau ia lebih baik di tempat lain.
-            _ruasSimpan = 0;
-            kirimCmd("m0");
-            // Poin ikut di-nol: lari berikutnya dari ruas 0 adalah percobaan
-            // BARU, dan membawa poin lari sebelumnya membuat angkanya menipu.
-            if (_skor) _skor->reset();
-            pesan("ruas & poin ke 0");
+        case 3:   // D3 tahan -- siapkan robot. Diminta R2C 18 Sep 2026.
+            kirimCmd("I");
+            kirimCmd("R");
+            kirimCmd("b");
+            pesan("init, capit nol, berdiri");
             break;
     }
 }

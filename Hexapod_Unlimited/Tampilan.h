@@ -105,7 +105,14 @@ class Misi;
 // tersimpan') dan TOMBOL_RESET tekan (mirror). Yang pertama membuat robot
 // berjalan lagi -- itu gas, bukan rem.
 #define TOMBOL_STOP     1
-#define TOMBOL_RESET    3
+// RESET PINDAH KE D5 TAHAN, 18 Sep 2026, diminta R2C. 'lanjut dari ruas
+// tersimpan' yang tadinya di sana dibuang -- fitur itu tidak dipakai.
+//
+// Menaruhnya di tombol yang sama dengan STOP membuat D5 jadi tombol rem
+// seluruhnya: tekan berhenti, tahan berhenti dan menolkan. Sebelumnya D5 tahan
+// justru MENJALANKAN robot lagi, dan satu tombol yang remnya di satu gerakan
+// dan gasnya di gerakan lain adalah tombol yang salah ditekan saat panik.
+#define TOMBOL_RESET    1
 
 // MISI. Sejak 18 Sep 2026 ia diperlakukan SAMA seperti TOMBOL_STOP: sekali
 // tekan, seketika, dari layar mana pun termasuk panel mati, tanpa konfirmasi
@@ -219,7 +226,11 @@ private:
     uint32_t _tPesan  = 0;            // sampai kapan pesan sementara tampil
     char     _pesan[22] = { 0 };
     uint8_t  _arahBerikut = 0;        // 0..3 -- utara, timur, selatan, barat
-    uint8_t  _ruasSimpan  = 0;        // ruas saat 'stop', untuk 'continue'
+    // Ruas saat 'stop'. SEKARANG HANYA UNTUK PESAN DI LAYAR -- 'lanjut dari
+    // ruas tersimpan' dibuang 18 Sep 2026, jadi tidak ada lagi yang membacanya
+    // untuk melanjutkan. Dibiarkan karena "STOP di ruas 12" jauh lebih berguna
+    // daripada "STOP" saat mencoba ruas yang sama berulang kali.
+    uint8_t  _ruasSimpan  = 0;
 };
 
 #endif
