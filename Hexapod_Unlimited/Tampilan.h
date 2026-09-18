@@ -107,6 +107,23 @@ class Misi;
 #define TOMBOL_STOP     1
 #define TOMBOL_RESET    3
 
+// MISI. Sejak 18 Sep 2026 ia diperlakukan SAMA seperti TOMBOL_STOP: sekali
+// tekan, seketika, dari layar mana pun termasuk panel mati, tanpa konfirmasi
+// dan tanpa hitung mundur. Diminta R2C.
+//
+// Alasannya waktu lomba. Panel mati sesudah 5 detik, jadi start misi lewat
+// menu menuntut bangunkan layar, pilih, konfirmasi, lalu tunggu hitung mundur
+// -- empat langkah di detik yang paling sibuk. Yang dibayar: satu sentuhan
+// salah memberangkatkan robot. Itu diterima karena robot di garis start
+// memang sedang menunggu diberangkatkan, dan REM-nya satu sentuhan juga.
+#define TOMBOL_MISI     0
+
+// KONFIRMASI HANYA UNTUK INI. Tombol lain jalan seketika. Kompas dikecualikan
+// karena ia satu-satunya yang MENULIS kalibrasi: mencatat arah yang salah
+// merusak seluruh mode arena, dan salahnya baru terlihat beberapa ruas
+// kemudian saat robot berbelok ke arah yang tidak masuk akal.
+#define TOMBOL_PERLU_TANYA(i)  ((i) == TOMBOL_KOMPAS)
+
 // Debounce dan ambang tahan. 2 detik sesuai permintaan R2C; cukup lama
 // sehingga tidak ada yang tak sengaja memicu aksi tahan, cukup pendek
 // sehingga tidak terasa seperti robot tidak merespons.

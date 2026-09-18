@@ -28,10 +28,10 @@ static const char* const TOMBOL_PIN[TOMBOL_N] = { "D6", "D5", "D4", "D3" };
 // Teks ini juga yang dibaca operator di LAYAR_TANYA, jadi ia harus menjelaskan
 // akibatnya, bukan namanya. Muat 2 baris x 21 kolom = 42 karakter.
 static const char* const TOMBOL_FUNGSI[TOMBOL_N][2] = {
-    { "JALAN (hitung mundur 1 detik)", "siapkan: I lalu R lalu b" },
+    { "JALAN misi (seketika)",       "belum dipakai"                 },
     { "STOP di ruas kini",        "lanjut dari ruas tersimpan"    },
     { "catat 1 arah kompas",      "kalibrasi pivot"               },
-    { "mirror -- BELUM ADA",      "reset ruas & poin ke 0"        },
+    { "siapkan: I lalu R lalu b", "reset ruas & poin ke 0"        },
 };
 
 // Peta pin dibalik sekali (D2..D5 menjadi D6..D3) dan bisa dibalik lagi. Dua
@@ -340,6 +340,20 @@ void Tampilan::tekan(uint8_t i) {
         return;
     }
 
+    // MISI, PERLAKUAN SAMA DENGAN REM. Diminta R2C 18 Sep 2026: sekali tekan,
+    // seketika, juga dari panel mati. Panel mati sesudah 5 detik, jadi start
+    // lewat menu menuntut bangunkan layar, pilih, konfirmasi, lalu tunggu
+    // hitung mundur -- empat langkah di detik yang paling sibuk.
+    //
+    // Ia SENGAJA di bawah TOMBOL_STOP, bukan di atasnya: kalau suatu hari
+    // keduanya jatuh ke tombol yang sama, yang menang harus rem.
+    if (i == TOMBOL_MISI) {
+        lapor(i, false, TOMBOL_FUNGSI[i][0]);
+        _layar = LAYAR_MENU;
+        aksiTekan(i);
+        return;
+    }
+
     // DARI LAYAR MATI, tekan apa pun HANYA menyalakan layar. Perintahnya TIDAK
     // ikut jalan: robot yang berdiri di garis start tidak boleh bergerak
     // karena seseorang menyentuh tombol untuk melihat layarnya.
@@ -386,7 +400,16 @@ void Tampilan::tekan(uint8_t i) {
         return;
     }
 
-    minta(i, false);   // LAYAR_MENU: tanya dulu
+    // TANYA HANYA UNTUK KOMPAS. Tombol lain jalan seketika -- diminta R2C
+    // 18 Sep 2026. Konfirmasi untuk tiap tombol berarti tiap fungsi menuntut
+    // dua sentuhan, dan tiga dari empat tombol di sini tidak mengubah apa pun
+    // yang tidak bisa dibatalkan sedetik kemudian.
+    if (!TOMBOL_PERLU_TANYA(i)) {
+        lapor(i, false, TOMBOL_FUNGSI[i][0]);
+        aksiTekan(i);
+        return;
+    }
+    minta(i, false);   // kompas: tanya dulu
 }
 
 void Tampilan::minta(uint8_t i, bool tahanan) {
@@ -405,18 +428,14 @@ void Tampilan::minta(uint8_t i, bool tahanan) {
 
 void Tampilan::aksiTekan(uint8_t i) {
     switch (i) {
-        case 0:   // D6 tekan -- JALAN, sesudah hitung mundur pendek.
+        case 0:   // D6 tekan -- JALAN, SEKETIKA.
             //
-            // DITUKAR dengan aksi tahan pada 18 Sep 2026, diminta R2C: yang
-            // paling sering ditekan di arena adalah start misi, dan menahan
-            // tombol sambil robot menunggu itu detik yang terbuang tiap
-            // percobaan. Berdiri pindah ke tahan.
-            //
-            // Tetap aman: kedua aksi sama-sama lewat LAYAR_TANYA, jadi start
-            // misi masih menuntut DUA sentuhan, dan hitung mundur di bawah
-            // masih memberi jalan membatalkan sesudah sentuhan kedua.
-            _layar   = LAYAR_MUNDUR;
-            _tMundur = millis();
+            // Hitung mundur dibuang 18 Sep 2026, diminta R2C: kasusnya sama
+            // seperti STOP, tidak menunggu UI. LAYAR_MUNDUR tidak lagi
+            // dimasuki siapa pun -- kodenya dibiarkan supaya hitung mundur
+            // bisa dikembalikan dengan satu baris kalau ternyata dibutuhkan.
+            kirimCmd("m1");
+            pesan("MISI JALAN");
             break;
 
         case 1:   // D5 -- STOP di ruas saat ini
@@ -465,13 +484,20 @@ void Tampilan::aksiTekan(uint8_t i) {
             }
             break;
 
-        case 3:   // D3 -- lapangan cermin: BELUM ADA
-            // Tidak mengirim apa pun. 'arena.mirror' memang ada di tabel
-            // kalibrasi, tapi bertanda P_BELUM_DIPAKAI -- tidak satu baris pun
-            // membacanya. Menukarnya akan mengubah angka di layar tanpa
-            // mengubah robot, dan tombol yang berbohong lebih buruk daripada
-            // tombol yang berkata belum ada.
-            pesan("Mirror Belum Ada");
+        case 3:   // D3 tekan -- siapkan robot. Diminta R2C 18 Sep 2026.
+            //
+            // DI SINI, BUKAN DI TAHAN. R2C meminta slot tahan tombol ini,
+            // mengira ia kosong; tahan indeks 3 justru rem 'reset ruas & poin
+            // ke 0'. Yang benar-benar kosong slot TEKAN-nya -- ia cuma
+            // mencetak "Mirror Belum Ada", karena 'arena.mirror' bertanda
+            // P_BELUM_DIPAKAI dan tidak satu baris pun membacanya.
+            //
+            // Jadi 'siapkan' mengisi slot yang memang kosong, dan rem reset
+            // tidak perlu dibuang untuk itu.
+            kirimCmd("I");
+            kirimCmd("R");
+            kirimCmd("b");
+            pesan("init, capit nol, berdiri");
             break;
     }
 }
@@ -506,17 +532,22 @@ void Tampilan::tahan(uint8_t i) {
         return;
     }
 
-    minta(i, true);    // LAYAR_MENU: tanya dulu
+    if (!TOMBOL_PERLU_TANYA(i)) {
+        lapor(i, true, TOMBOL_FUNGSI[i][1]);
+        aksiTahan(i);
+        return;
+    }
+    minta(i, true);    // kompas: tanya dulu
 }
 
 void Tampilan::aksiTahan(uint8_t i) {
     switch (i) {
-        case 0:   // D6 tahan -- siapkan robot. Lihat aksiTekan() case 0:
-            //    keduanya ditukar 18 Sep 2026.
-            kirimCmd("I");
-            kirimCmd("R");
-            kirimCmd("b");
-            pesan("init, capit nol, berdiri");
+        case 0:   // D6 tahan -- KOSONG.
+            //
+            // 'siapkan' pindah ke tombol mirror (indeks 3 tekan) 18 Sep 2026.
+            // Slot ini dibiarkan kosong dan BERBICARA, bukan diam: tombol yang
+            // tidak menjawab apa pun tidak bisa dibedakan dari tombol rusak.
+            pesan("tahan di sini belum dipakai");
             break;
 
         case 1:   // D5 tahan -- lanjutkan dari ruas tempat berhenti
