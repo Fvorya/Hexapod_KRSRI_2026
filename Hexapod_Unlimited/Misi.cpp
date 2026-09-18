@@ -587,9 +587,9 @@ const Ruas RUAS_BAKU[] = {
 /*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*24*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 30.0f },
 /*25*/   { "maju sedikit",                  BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_BELAKANG,  18,              AKS_TIDAK_ADA, 0 },
-/*25*/   { "R-11 longsor (lebar 30)1/2",    BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_ODO,       45,              AKS_TIDAK_ADA, 0 },
-/*26*/   { "R-11 longsor (lebar 30)2/2",    BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*27*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
+/*26*/   { "R-11 geser KIRI, ukur KANAN",   BLK_LURUS, KMD_KANAN,  PRF_SEMPIT,   false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*27*/   { "R-11 geser, ukur KIRI",         BLK_LURUS, KMD_KIRI,   PRF_SEMPIT,   false, HNT_SISI,      20,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*28*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
 // <<< TABEL LINTASAN BAKU selesai
