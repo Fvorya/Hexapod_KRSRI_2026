@@ -552,12 +552,12 @@ const Ruas RUAS[] = {
 /*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
 /*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
 /*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
-/*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -30.0f },
-/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0,         +30.0f },
+/*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
+/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
 /*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
-/*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
-/*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +20.0f },
+/*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
+/*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +10.0f },
 /*11*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
 /*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     18,              AKS_TIDAK_ADA, 0 },
 /*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
@@ -573,14 +573,14 @@ const Ruas RUAS[] = {
 /*23*/   { "jalan ke depan tangga",         BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
 /*24*/   { "ratakan 13 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
 /*25*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
-/*26*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       32,              AKS_TIDAK_ADA, 0 },
-/*27*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
-/*28*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
-/*29*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
-/*30*/   { "jalan sedikit ke depan",        BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     25,              AKS_TIDAK_ADA, 0 },
+/*26*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
+/*27*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       26,              AKS_TIDAK_ADA, 0 },
+/*28*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      18,              AKS_TIDAK_ADA, 0 },
+/*29*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
+/*30*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
 /*31*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
 /*32*/   { "R-11 longsor (lebar jalan 30)", BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*33*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     40,              AKS_TARUH,     ARM_DEPAN },
+/*33*/   { "SZ-5 / FINISH",                 BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TARUH,     ARM_DEPAN },
 };
 
 const uint8_t RUAS_N = sizeof(RUAS) / sizeof(RUAS[0]);
@@ -1707,14 +1707,14 @@ void Misi::ruasMasuk() {
     // mode arena sempat mengunci mata angin yang salah.
     const float sasar = headingRuas(_i);
     if (isnan(sasar)) {
-        gagal("mata angin ruas ini belum dicatat kompas -- 'c0'..'c3' lalu 'e', atau 'E'.");
+        lewati("mata angin ruas ini belum dicatat kompas -- 'c0'..'c3' lalu 'e', atau 'E'.");
         return;
     }
     if (!_nav.diHeading(sasar)) {
         _pivotUlang = 0;            // jatah ulang, dihitung per RUAS bukan per pivot
         _nav.pivotKe(sasar);
         if (!_nav.pivotSedangJalan()) {
-            gagal("pivot masuk ruas tidak mau jalan -- sebabnya tercetak di atas ('b' bila servo lemas).");
+            lewati("pivot masuk ruas tidak mau jalan -- sebabnya tercetak di atas ('b' bila servo lemas).");
             return;
         }
         masuk(MISI_PIVOT);
@@ -1819,7 +1819,7 @@ bool Misi::ruasJalan() {
     // sendiri untuk membaca hasilnya.
     if (x.henti == HNT_SISI) {
         if (!_nav.ratakanMulai(kemudiRuas(_i) == KMD_KIRI, (int)_cm[_i], x.jagaBelakang)) {
-            gagal("perataan sisi ditolak -- sebabnya tercetak di atas.");
+            lewati("perataan sisi ditolak -- sebabnya tercetak di atas.");
             return false;
         }
         _ruasAwal = _robot.jarakCm();
@@ -1833,7 +1833,7 @@ bool Misi::ruasJalan() {
     // dan kemudi dinding yang menghadap ke depan tidak punya arti di sana.
     if (x.henti == HNT_MUNDUR) {
         if (!_nav.setelBelakangMulai((int)_cm[_i])) {
-            gagal("mundur ditolak -- sebabnya tercetak di atas.");
+            lewati("mundur ditolak -- sebabnya tercetak di atas.");
             return false;
         }
         _ruasAwal = _robot.jarakCm();
@@ -1844,7 +1844,7 @@ bool Misi::ruasJalan() {
     ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
     _nav.navMulai(m);
     if (_nav.navMode() != m) {
-        gagal("gagal memulai navigasi untuk ruas ini -- sebabnya tercetak di atas.");
+        lewati("gagal memulai navigasi untuk ruas ini -- sebabnya tercetak di atas.");
         return false;
     }
 
@@ -1893,7 +1893,7 @@ bool Misi::ruasJalan() {
     if (x.henti == HNT_BELAKANG) {
         int b0 = _lidar.getDistance(LIDAR_BACK);
         if (b0 == LIDAR_MATI || b0 == LIDAR_JAUH) {
-            gagal("dinding START tidak terbaca sensor belakang -- titik nol tak bisa dicatat.");
+            lewati("dinding START tidak terbaca sensor belakang -- titik nol tak bisa dicatat.");
             return false;
         }
         _blkAwal = (float)b0;
@@ -1915,7 +1915,7 @@ bool Misi::ruasSehat() {
     if (RUAS[_i].henti == HNT_SISI) {
         if (_nav.ratakanSedangJalan()) return true;
         if (!_nav.ratakanTercapai()) {
-            gagal("perataan sisi berhenti sebelum sasaran -- sebabnya tercetak di atas.");
+            lewati("perataan sisi berhenti sebelum sasaran -- sebabnya tercetak di atas.");
             return false;
         }
         return true;
@@ -1928,7 +1928,7 @@ bool Misi::ruasSehat() {
     if (RUAS[_i].henti == HNT_MUNDUR) {
         if (_nav.setelBelakangSedangJalan()) return true;
         if (!_nav.setelBelakangTercapai()) {
-            gagal("mundur berhenti sebelum sasaran -- sebabnya tercetak di atas.");
+            lewati("mundur berhenti sebelum sasaran -- sebabnya tercetak di atas.");
             return false;
         }
         return true;
@@ -1945,13 +1945,13 @@ bool Misi::ruasSehat() {
     // pada tiap ruas ikut-dinding dan membatalkan misi di langkah pertama.
     ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
     if (_nav.navMode() != m) {
-        gagal("navigasi berhenti atau diambil alih -- sebabnya tercetak di atas.");
+        lewati("navigasi berhenti atau diambil alih -- sebabnya tercetak di atas.");
         return false;
     }
 
     if (lewat() > MISI_RUAS_BATAS_MS) {
         _nav.navBerhenti("batas waktu ruas.");
-        gagal("ruas tidak selesai dalam batas waktunya.");
+        lewati("ruas tidak selesai dalam batas waktunya.");
         return false;
     }
 
@@ -1963,7 +1963,7 @@ bool Misi::ruasSehat() {
         Serial.print("  sudah menempuh "); Serial.print(tempuhRuas, 1);
         Serial.print(" cm, pagar "); Serial.print(MISI_RUAS_MAKS_CM, 0);
         Serial.println(" cm.");
-        gagal("ruas berjalan jauh melampaui ukuran arena -- syarat hentinya tidak tercapai.");
+        lewati("ruas berjalan jauh melampaui ukuran arena -- syarat hentinya tidak tercapai.");
         return false;
     }
 
@@ -1972,7 +1972,7 @@ bool Misi::ruasSehat() {
     //    Tidak ada gunanya menunggu.
     if (_nav.arahDituju() != (int8_t)_arah[_i]) {
         _nav.navBerhenti("navigasi berbelok ke mata angin lain di tengah ruas.");
-        gagal("navigasi berpindah arah -- sisa ruas akan diukur ke arah yang salah.");
+        lewati("navigasi berpindah arah -- sisa ruas akan diukur ke arah yang salah.");
         return false;
     }
 
@@ -1984,7 +1984,7 @@ bool Misi::ruasSehat() {
     float simpang = _nav.simpangHeading(headingRuas(_i));
     if (isnan(simpang)) {
         _nav.navBerhenti("IMU tidak memberi data di tengah ruas.");
-        gagal("acuan heading hilang -- jarak tempuh tidak bisa dipercaya.");
+        lewati("acuan heading hilang -- jarak tempuh tidak bisa dipercaya.");
         return false;
     }
     if (fabsf(simpang) <= MISI_SERONG_DEG) {
@@ -1998,7 +1998,7 @@ bool Misi::ruasSehat() {
             Serial.print("  serong "); Serial.print(simpang, 1);
             Serial.print(" der bertahan lebih dari "); Serial.print(batas);
             Serial.println(" ms.");
-            gagal("robot tidak lagi menghadap arah ruas -- jarak tempuh tidak bisa dipercaya.");
+            lewati("robot tidak lagi menghadap arah ruas -- jarak tempuh tidak bisa dipercaya.");
             return false;
         }
     }
@@ -2114,11 +2114,43 @@ bool Misi::ruasSelesai() {
 
 // ====================================================================
 
-void Misi::ruasBerikut() {
+bool Misi::lidarMati() {
+    // NUM_LIDAR, bukan cuma kanal yang dipakai ruas ini. Sensor yang berhenti
+    // menjawab hampir tidak pernah sendirian -- mux, catu, atau kabel bersama.
+    // Ruas berikutnya yang memakainya akan menemuinya juga, dan menemukannya
+    // di tengah tanjakan lebih mahal daripada berhenti sekarang.
+    return _lidar.jumlahHidup() < NUM_LIDAR;
+}
+
+void Misi::lewati(const char* sebab) {
+    // LiDAR MATI MENANG atas 'lewati'. Sebab lunak apa pun yang terjadi
+    // bersamaan dengan sensor yang berhenti menjawab bukan lagi sebab lunak:
+    // ruas berikutnya akan gagal dengan cara yang sama, dan meneruskan cuma
+    // memindahkan kegagalan ke tempat yang lebih sulit dibaca.
+    if (lidarMati()) {
+        gagal("LiDAR tidak merespons -- periksa 'l' lalu 'I'.");
+        return;
+    }
+    // Mode UKUR ('m7') dipakai operator untuk membaca satu ruas, bukan untuk
+    // menyelesaikan lintasan. Maju diam-diam ke ruas berikutnya di sana
+    // menghilangkan justru yang sedang diamati.
+    if (_stat == MISI_UKUR) { gagal(sebab); return; }
+    Serial.print("\n== RUAS "); Serial.print(_i);
+    Serial.print(" DILEWATI ("); Serial.print(RUAS[_i].nama); Serial.println(")");
+    Serial.print("   sebab: "); Serial.println(sebab);
+    Serial.println("   Misi DITERUSKAN ke ruas berikutnya. Ruas ini TIDAK berpoin.");
+
+    _nav.navBerhenti("ruas dilewati.");
+    _nav.abaikanDepan(false);
+    _nav.setTengah(false);
+    ruasBerikut(false);
+}
+
+void Misi::ruasBerikut(bool berpoin) {
     // POIN DICATAT DI SINI, dan cuma di sini. Ini satu-satunya tempat sebuah
-    // ruas dinyatakan SELESAI -- ruas yang gagal, dibatalkan, atau dilewati
-    // batas waktu tidak pernah lewat sini, jadi tidak pernah berpoin.
-    gSkor.ruasSelesai(_i);
+    // ruas dinyatakan SELESAI. Ruas yang gagal atau dibatalkan tidak pernah
+    // lewat sini; ruas yang DILEWATI lewat sini dengan berpoin=false.
+    if (berpoin) gSkor.ruasSelesai(_i);
 
     _i++;
     if (_i >= RUAS_N || _i > _iAkhir) {
@@ -2165,7 +2197,7 @@ void Misi::update() {
                 Serial.println(" der -- MENGULANG sekali.");
                 _nav.pivotKe(sasar);
                 if (!_nav.pivotSedangJalan()) {
-                    gagal("pivot ulangan tidak mau jalan -- sebabnya tercetak di atas.");
+                    lewati("pivot ulangan tidak mau jalan -- sebabnya tercetak di atas.");
                     return;
                 }
                 masuk(MISI_PIVOT);
@@ -2173,7 +2205,7 @@ void Misi::update() {
             }
             Serial.print("  ulangan pun meleset "); Serial.print(simpang, 1);
             Serial.println(" der.");
-            gagal("pivot tidak sampai walau sudah diulang -- periksa 'k' (kompas c0..c3) dan IMU.");
+            lewati("pivot tidak sampai walau sudah diulang -- periksa 'k' (kompas c0..c3) dan IMU.");
             return;
         }
         // Badan baru saja berputar. Sampel LiDAR yang ada sekarang lahir dari

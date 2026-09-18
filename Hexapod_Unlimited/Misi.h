@@ -523,7 +523,23 @@ private:
     bool ruasJalan();             // profil + kemudi + navMulai untuk RUAS[_i]
     bool ruasSehat();             // penjaga: nav masih milik kita & arah benar
     bool ruasSelesai();           // syarat henti RUAS[_i] terpenuhi?
-    void ruasBerikut();           // _i++ lalu ruasMasuk(), atau SELESAI
+    // berpoin=false: ruas DILEWATI, bukan diselesaikan. Poin hanya dicatat
+    // untuk ruas yang benar-benar dikerjakan.
+    void ruasBerikut(bool berpoin = true);
+
+    // LEWATI ruas ini dan teruskan misi. Diminta R2C 18 Sep 2026: di lomba,
+    // ruas yang gagal lebih baik ditinggalkan daripada menghentikan seluruh
+    // lari. Sebab 'lunak' -- pivot meleset, ruas kehabisan waktu, heading
+    // hilang, perataan ditolak -- semuanya lewat sini sekarang.
+    //
+    // Yang TETAP membatalkan misi cuma tiga: servo lemas, LiDAR mati, dan
+    // waktu kontes habis. Ketiganya berarti robot tidak bisa lagi dipercaya
+    // bergerak, bukan sekadar satu ruas yang meleset.
+    void lewati(const char* sebab);
+
+    // Ada LiDAR yang BENAR-BENAR tidak merespons? Bukan 'jauh', bukan bacaan
+    // buruk -- tidak menjawab sama sekali.
+    bool lidarMati();
     void cetakRuas(uint8_t idx);
 };
 
