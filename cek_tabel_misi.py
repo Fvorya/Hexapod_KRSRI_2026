@@ -136,9 +136,19 @@ def main():
             salah.append("ruas %d putar %s der -- pakai kolom belok untuk kelipatan 90"
                          % (i, putar))
 
-        if buta == "true" and henti != "HNT_ODO":
-            salah.append("ruas %d buta ke depan tapi henti=%s, bukan HNT_ODO" % (i, henti))
-        if henti == "HNT_DEPAN" and 0 <= cm <= front_stop:
+        # HNT_PUNCAK dikecualikan: 'buta ke depan' setelan Navigation, dan
+        # yang membaca sensor di PUNCAK adalah ruasSelesai() lewat
+        # getDistance() langsung. Buta untuk menyetir, melihat untuk berhenti.
+        if buta == "true" and henti not in ("HNT_ODO", "HNT_PUNCAK"):
+            salah.append("ruas %d buta ke depan tapi henti=%s, bukan HNT_ODO "
+                         "atau HNT_PUNCAK" % (i, henti))
+        # PUNCAK memakai sensor DEPAN, jadi ambangnya tunduk pada batas yang
+        # sama: di bawah FRONT_STOP_CM navigasi keburu berhenti sendiri.
+        if henti == "HNT_PUNCAK" and profil not in ("PRF_TANJAK", "PRF_KAIL"):
+            awas.append("ruas %d HNT_PUNCAK tapi profilnya %s -- PUNCAK menunggu "
+                        "badan MIRING dulu, dan di ruas datar itu tidak pernah "
+                        "terjadi" % (i, profil))
+        if henti in ("HNT_DEPAN", "HNT_PUNCAK") and 0 <= cm <= front_stop:
             salah.append("ruas %d ambang depan %d <= FRONT_STOP_CM %d" % (i, cm, front_stop))
         # Cermin tabelSiap(). Sekuens AMBIL memainkan sudut sendi TETAP dan
         # tidak pernah bertanya di mana korbannya, jadi sesuatu harus

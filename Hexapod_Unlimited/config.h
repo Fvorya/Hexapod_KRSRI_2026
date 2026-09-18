@@ -109,7 +109,7 @@
 // Angka yang SAMA ada di sisi Raspi (Kalib.capit_buka_persen di
 // mission_hud.py). Kalau yang ini diubah, ubah di sana juga -- keduanya
 // menggerakkan satu capit.
-#define KORBAN_GRIP_BUKA  20.0f
+#define KORBAN_GRIP_BUKA  30.0f
 
 // BADAN CONDONG KE DEPAN saat capit turun, mm. Hanya di ruas yang ditandai
 // `condong` di tabel (K-3 dan K-4).
@@ -224,8 +224,8 @@
 #define KORBAN_SIAP_PRG      -60.0f
                                       // positif apa pun membuatnya ter-clamp
 
-#define KORBAN_JEPIT_BAHU    -40.0f
-#define KORBAN_JEPIT_SIKU     10.0f
+#define KORBAN_JEPIT_BAHU    -50.0f
+#define KORBAN_JEPIT_SIKU     15.0f
 #define KORBAN_JEPIT_PRG     -10.0f
 
 // TARUH cuma satu pose: dari gendong langsung ke titik lepas.
@@ -521,6 +521,36 @@
 // sesudah menekannya. Ketik 'T5' sekali lagi, atau 'U' yang memasang seluruh
 // rangkaiannya.
 #define TANJAK_PITCH_DEG      5.0f
+
+// --- PUNCAK TANJAKAN, dibaca gyro (HNT_PUNCAK) ---------------------------
+//
+// Ruas R-9 berakhir saat badan sudah MENDAKI lalu DATAR lagi. Menggantikan
+// odometri gait, yang di tangga menghitung siklus gait dan bukan jarak: tiap
+// siklus di anak tangga memindahkan robot sejauh yang tidak diketahui.
+//
+// DIUKUR SEBAGAI SELISIH terhadap pitch di AWAL RUAS, bukan terhadap nol.
+// Dua sebab, dan keduanya wajib:
+//
+//   1. tare() tidak pernah dipanggil di seluruh program, jadi pitchDeg()
+//      membawa simpangan pemasangan papan IMU apa adanya. Di robot ini roll
+//      terbaca 176 der waktu robot berdiri tegak sempurna.
+//   2. profileTanjak() memiringkan badan TANJAK_PITCH_DEG, dan IMU menempel
+//      di badan -- ia ikut membaca kemiringan yang KITA perintahkan.
+//
+// Selisih terhadap awal ruas menghapus keduanya sekaligus: sudah ada di garis
+// dasar maupun di puncak.
+//
+// KETIGANYA BELUM DIUKUR. Cara mengukurnya, sekali jalan:
+//   1. Robot di kaki tangga, 'T5' (profil TANJAK terpasang). Catat 'pitch'
+//      dari aliran 'y' -- inilah garis dasarnya.
+//   2. 'y200', lalu 'U103'. Baca pitch di TENGAH tanjakan dan tepat saat
+//      keempat kaki sampai di atas.
+//   3. NAIK  = kira-kira separuh selisih tengah-tanjakan terhadap garis dasar.
+//      DATAR = sisa simpangan di atas, dilebihkan sedikit.
+//   4. Baca juga 'l' di atas untuk mengisi kolom `nilai` ruasnya.
+#define PUNCAK_NAIK_DEG     8.0f   // BELUM DIUKUR: |pitch-awal| di atas ini = MENDAKI
+#define PUNCAK_DATAR_DEG    3.0f   // BELUM DIUKUR: turun ke bawah ini = DI ATAS
+#define PUNCAK_DATAR_MS      400   // BELUM DIUKUR: harus bertahan selama ini
 
 #define KAIL_TINGGI_BADAN   100.0f  // BUKAN 115 milik TANGGA -- lihat tabel
 #define KAIL_DEPAN_MAJU      60.0f  // kaki depan membuka ke DEPAN
@@ -1375,7 +1405,7 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // Badan ditarik mundur sejauh ini SEBELUM lengan mulai melipat, lalu pulang ke
 // nol sesudah lipatannya selesai. Kaki tidak bergerak: ini geser badan, sama
 // seperti condong, jadi ia tidak mengganggu odometri ruas berikutnya.
-#define KORBAN_ANGKAT_MUNDUR_MM   20.0f
+#define KORBAN_ANGKAT_MUNDUR_MM   30.0f
 #define BODY_DEMO_ROT_DEG  10.0f  // amplitudo rotasi saat demo 'B'
 
 // --- DEMO OTOMATIS SAAT MENYALA -- SEMENTARA, UNTUK PAJANGAN --------------

@@ -548,30 +548,31 @@ extern Skor gSkor;
 const Ruas RUAS[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
 /*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  32,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 30.0f, 35.0f },
-/*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,      130,              AKS_TIDAK_ADA, 0 },
-/*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,      100,              AKS_TIDAK_ADA, 0 },
-/*4*/    { "kiri maju sedikit ",            BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_BELAKANG,  16,              AKS_TIDAK_ADA, 0 },
-/*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +30.0f },
-/*6*/    { "hadap kanan K-2",               BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       15,              AKS_TIDAK_ADA, 0,         -30.0f },
-/*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
-/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
+/*1*/    { "K-1 angkat korban",             BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 30.0f, 30.0f },
+/*2*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
+/*3*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       70,              AKS_TIDAK_ADA, 0 },
+/*4*/    { "Depan sampai 20 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     28,              AKS_TIDAK_ADA, 0 },
+/*5*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -30.0f },
+/*6*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       33,              AKS_TIDAK_ADA, 0,         +30.0f },
+/*7*/    { "K-2 angkat korban",             BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 20.0f },
+/*8*/    { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
 /*9*/    { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
 /*10*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0,         +20.0f },
 /*11*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
 /*12*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       38,              AKS_TIDAK_ADA, 0 },
 /*13*/   { "putar kiri lalu maju",          BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
-/*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      35,              AKS_TIDAK_ADA, 0 },
-/*16*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
-/*17*/   { "TIMUR sampai tembok",           BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*18*/   { "R-6 pecah: SELATAN ke SZ-3",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
-/*19*/   { "SZ-3 taruh korban",             BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
-/*20*/   { "K-4 angkat korban",             BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
+/*14*/   { "kiri ke depan K-3",             BLK_BALIK, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      45,              AKS_TIDAK_ADA, 0 },
+/*15*/   { "K-3 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
+/*16*/   { "TIMUR sampai tembok",           BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+/*17*/   { "R-6 pecah: SELATAN ke SZ-3",    BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     22,              AKS_TIDAK_ADA, 0 },
+/*18*/   { "SZ-3 taruh korban",             BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
+/*19*/   { "balik maju ke depan K-4",       BLK_BALIK, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       35,              AKS_TIDAK_ADA, 0 },
+/*20*/   { "K-4 angkat korban",             BLK_KIRI,  KMD_KIRI,   PRF_TANGGA,   false, HNT_DEPAN,     KORBAN_JARAK_CM, AKS_AMBIL,     ARM_DEPAN,   0.0f, true },
 /*21*/   { "jalan ke depan tangga",         BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_DEPAN,     20,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "ratakan 20 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*23*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,      200,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "ratakan 13 cm dinding KANAN",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+/*23*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,    40,              AKS_TIDAK_ADA, 0 },
 /*24*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       25,              AKS_TIDAK_ADA, 0 },
-/*25*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      20,              AKS_TIDAK_ADA, 0 },
+/*25*/   { "jalan ke kiri ke depan SZ-4",   BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      25,              AKS_TIDAK_ADA, 0 },
 /*26*/   { "SZ-4 taruh korban (dalam R-10)",BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, +20.0f },
 /*27*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,         -20.0f },
 /*28*/   { "K-5 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN, 0.0f, false, false, 30.0f, 20.0f },
@@ -1130,7 +1131,16 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         // 2) Ruas yang berjalan BUTA ke depan tapi tidak dibatasi odometri.
         //    Kombinasi ini tidak punya apa pun yang menghentikannya: sensor
         //    depan dimatikan, dan HNT_DEPAN justru membaca sensor itu.
-        if (RUAS[i].abaikanDepan && RUAS[i].henti != HNT_ODO) {
+        //
+        //    HNT_PUNCAK DIKECUALIKAN, 18 Sep 2026. 'buta ke depan' adalah
+        //    setelan NAVIGATION -- ia mematikan tiga aturan kemudi supaya
+        //    berkas yang menembak muka anak tangga tidak dibaca sebagai
+        //    halangan. Yang membaca sensor di HNT_PUNCAK bukan Navigation
+        //    melainkan ruasSelesai(), lewat _lidar.getDistance() langsung.
+        //    Jadi di sana sensornya memang masih hidup, dan kombinasi ini
+        //    justru yang dituju: buta untuk menyetir, melihat untuk berhenti.
+        if (RUAS[i].abaikanDepan && RUAS[i].henti != HNT_ODO &&
+            RUAS[i].henti != HNT_PUNCAK) {
             Serial.print("Gagal: ruas "); Serial.print(i);
             Serial.println(" berjalan buta ke depan tapi tidak dibatasi odometri.");
             Serial.println("  Perbaiki TABEL di Misi.cpp -- ini salah tulis, bukan salah setel.");
@@ -1142,7 +1152,8 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         //    ruasnya tidak pernah sampai ke aksi ujungnya. (Dulu ia berbelok
         //    90 der alih-alih berhenti; belok-otomatisnya dihapus 6 Sep 2026,
         //    tapi ambangnya tetap harus di atas FRONT_STOP_CM.)
-        if (RUAS[i].henti == HNT_DEPAN && _cm[i] <= (float)FRONT_STOP_CM) {
+        if ((RUAS[i].henti == HNT_DEPAN || RUAS[i].henti == HNT_PUNCAK) &&
+            _cm[i] <= (float)FRONT_STOP_CM) {
             Serial.print("Gagal: ruas "); Serial.print(i);
             Serial.print(" ambang depan "); Serial.print(_cm[i], 0);
             Serial.print(" cm <= FRONT_STOP_CM "); Serial.println(FRONT_STOP_CM);
@@ -1238,6 +1249,20 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
                 Serial.println("  Turunkan mundurMm/condong.mm, atau naikkan condong laju.");
                 ok = false;
             }
+        }
+
+        // 3e) PUNCAK di ruas DATAR hampir pasti salah ketik. Bukan kegagalan:
+        //    tanjakan bisa saja dilewati dengan profil lain suatu hari, dan
+        //    menolaknya berarti menebak arena. Tapi HNT_PUNCAK menunggu badan
+        //    MIRING dulu, dan di ruas datar itu tidak pernah terjadi -- ruasnya
+        //    berjalan sampai batas waktu, tanpa satu pun pesan yang menyebut
+        //    sebabnya.
+        if (RUAS[i].henti == HNT_PUNCAK &&
+            RUAS[i].profil != PRF_TANJAK && RUAS[i].profil != PRF_KAIL) {
+            Serial.print("Awas: ruas "); Serial.print(i);
+            Serial.println(" HNT_PUNCAK tapi profilnya bukan TANJAK/KAIL.");
+            Serial.println("  PUNCAK menunggu badan MIRING dulu. Di ruas datar itu");
+            Serial.println("  tidak pernah terjadi, dan ruasnya habis di batas waktu.");
         }
 
         // 4) Pemicu sensor belakang harus jatuh di dalam jangkauan sensor.
@@ -1668,7 +1693,8 @@ bool Misi::pasangProfil() {
     bool pakaiSensor = (x.henti == HNT_DEPAN ||
                         x.henti == HNT_BELAKANG ||
                         x.henti == HNT_SISI ||
-                        x.henti == HNT_MUNDUR);
+                        x.henti == HNT_MUNDUR ||
+                        x.henti == HNT_PUNCAK);
     if (!pakaiSensor) { _pivotBaru = false; return false; }
 
     // SESUDAH PIVOT, TUNGGU JUGA. Diminta R2C 17 Sep 2026.
@@ -1792,6 +1818,15 @@ bool Misi::ruasJalan() {
 
     _ruasAwal = _robot.jarakCm();
     _serongT0 = 0;
+
+    // ACUAN PITCH HNT_PUNCAK, dicatat di sini bersama titik nol yang lain.
+    // Badan sudah menghadap arah ruas dan profil gaitnya sudah terpasang, jadi
+    // kemiringan yang diperintahkan TANJAK_PITCH_DEG sudah ikut terbaca --
+    // itulah yang membuat selisih terhadap angka ini bersih dari kemiringan
+    // yang kita sendiri minta.
+    _pitchAwal    = _nav.imuBicara() ? _nav.pitchKini() : NAN;
+    _naikTerlihat = false;
+    _datarT0      = 0;
 
     // Titik nol jarak tempuh, dicatat SEKARANG: badan sudah lurus menghadap
     // arah ruas, jadi berkas sensor belakang tegak lurus dinding START dan
@@ -1921,6 +1956,58 @@ bool Misi::ruasSelesai() {
     // berhenti karena GAGAL, ruasSehat() sudah membatalkan misi lebih dulu.
     if (x.henti == HNT_SISI)     return !_nav.ratakanSedangJalan();
     if (x.henti == HNT_MUNDUR)   return !_nav.setelBelakangSedangJalan();
+
+    if (x.henti == HNT_PUNCAK) {
+        const int dP = _lidar.getDistance(LIDAR_FRONT);
+        // Dinding seberang. MATI dan JAUH bukan "sudah sampai" -- yang satu
+        // sensor putus, yang lain lorong masih terbuka.
+        const bool dindingDekat = (dP != LIDAR_MATI && dP != LIDAR_JAUH &&
+                                   (float)dP <= _cm[_i]);
+
+        // IMU BISU: gerbang mendaki tidak bisa dipakai, jadi tinggal dinding.
+        // Menunggu gyro yang tidak pernah datang berarti berjalan sampai batas
+        // waktu ruas, di tangga.
+        if (isnan(_pitchAwal) || !_nav.imuBicara()) {
+            if (dindingDekat) {
+                Serial.print("  PUNCAK: IMU bisu, berhenti dari dinding depan ");
+                Serial.print(dP); Serial.println(" cm.");
+            }
+            return dindingDekat;
+        }
+
+        const float simpang = fabsf(_nav.pitchKini() - _pitchAwal);
+
+        // GERBANG MENDAKI. Selama robot belum pernah benar-benar miring, ruas
+        // ini TIDAK BOLEH berakhir -- di kaki tangga badan memang datar, dan
+        // berkas depan yang menyentuh muka anak tangga pertama akan
+        // mengakhirinya juga.
+        if (!_naikTerlihat) {
+            if (simpang >= PUNCAK_NAIK_DEG) {
+                _naikTerlihat = true;
+                Serial.print("  PUNCAK: mendaki terlihat, simpang ");
+                Serial.print(simpang, 1); Serial.println(" der.");
+            }
+            return false;
+        }
+
+        if (dindingDekat) {
+            Serial.print("  PUNCAK: dinding depan "); Serial.print(dP);
+            Serial.print(" cm <= "); Serial.print(_cm[_i], 0);
+            Serial.println(" cm -- ruas selesai.");
+            return true;
+        }
+
+        // DATAR LAGI, dan harus BERTAHAN. Satu sampel datar muncul juga di
+        // tengah tanjakan tiap kali kaki depan menapak anak tangga berikutnya.
+        if (simpang > PUNCAK_DATAR_DEG) { _datarT0 = 0; return false; }
+        if (_datarT0 == 0) { _datarT0 = millis(); return false; }
+        if (millis() - _datarT0 < PUNCAK_DATAR_MS) return false;
+
+        Serial.print("  PUNCAK: datar lagi ("); Serial.print(simpang, 1);
+        Serial.print(" der) selama "); Serial.print(PUNCAK_DATAR_MS);
+        Serial.println(" ms -- ruas selesai.");
+        return true;
+    }
 
     uint8_t kanal = (x.henti == HNT_DEPAN) ? LIDAR_FRONT : LIDAR_BACK;
     int     d     = _lidar.getDistance(kanal);
@@ -2305,6 +2392,8 @@ void Misi::setRuasCm(uint8_t idx, float cm) {
     // panjang odometri.
     float lo = 5.0f, hi = 400.0f;
     if (RUAS[idx].henti == HNT_DEPAN)    { lo = (float)FRONT_STOP_CM + 1.0f; hi = 200.0f; }
+    // PUNCAK memakai sensor DEPAN, jadi batasnya sama persis dengan HNT_DEPAN.
+    if (RUAS[idx].henti == HNT_PUNCAK)   { lo = (float)FRONT_STOP_CM + 1.0f; hi = 200.0f; }
     if (RUAS[idx].henti == HNT_BELAKANG) { hi = (float)LIDAR_MAX_CM - 15.0f; }
     if (RUAS[idx].henti == HNT_SISI)     { lo = WALL_MIN_CM + 1.0f; hi = (float)LIDAR_MAX_CM; }
     // MUNDUR: batas bawahnya sama dengan yang dipakai setelBelakangMulai()
@@ -2364,6 +2453,7 @@ void Misi::cetakRuas(uint8_t idx) {
         case HNT_BELAKANG:  Serial.print("blk  "); break;
         case HNT_SISI:      Serial.print("sisi "); break;
         case HNT_MUNDUR:    Serial.print("mdr  "); break;
+        case HNT_PUNCAK:    Serial.print("pck  "); break;
         default:            Serial.print("--   "); break;
     }
     if (x.henti == HNT_LANGSUNG)   Serial.print("     ");

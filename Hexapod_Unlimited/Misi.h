@@ -107,8 +107,34 @@ enum Henti : uint8_t {
     HNT_BELAKANG,    // LiDAR belakang >= titik nol + `nilai` cm (jarak tempuh)
     HNT_LANGSUNG,    // tidak berjalan sama sekali -- ruas ini hanya aksi
     HNT_SISI,        // GESER menyamping sampai dinding sisi = `nilai` cm
-    HNT_MUNDUR       // BERJALAN MUNDUR sampai LiDAR belakang = `nilai` cm
+    HNT_MUNDUR,      // BERJALAN MUNDUR sampai LiDAR belakang = `nilai` cm
+    HNT_PUNCAK       // NAIK lalu DATAR lagi (gyro), atau depan <= `nilai` cm
 };
+
+// HNT_PUNCAK vs HNT_DEPAN -- keduanya membaca LiDAR DEPAN, dan yang satu
+// menambahkan syarat yang tidak dimiliki yang lain:
+//
+//   HNT_DEPAN   berhenti begitu depan <= `nilai`. Titik.
+//   HNT_PUNCAK  berhenti kalau badan sudah MENDAKI lalu DATAR lagi, ATAU
+//               depan <= `nilai`. Keduanya baru berlaku sesudah mendaki
+//               terlihat.
+//
+// Ada karena odometri gait di tangga itu tebakan: ia menghitung siklus gait,
+// bukan jarak tempuh, dan tiap siklus di anak tangga memindahkan robot sejauh
+// yang tidak diketahui. Percobaan 6 Sep 2026 berhenti di 62 dari ~103 cm.
+//
+// GERBANG MENDAKI bukan hiasan. Tanpanya ruas berakhir SEKETIKA di kaki
+// tangga, karena di sana badan memang datar; dan berkas LiDAR depan yang
+// menyentuh muka anak tangga pertama akan mengakhirinya juga.
+//
+// `nilai` satuannya sama dengan HNT_DEPAN: cm ke dinding di depan. Di R-9 yang
+// dibaca dinding seberang, yang baru terlihat sesudah robot sampai di atas.
+// Ambang gyro TIDAK di tabel melainkan di config.h (PUNCAK_*): ia milik robot
+// dan pemasangan IMU-nya, bukan milik satu ruas.
+//
+// IMU BISU -> gerbang mendaki dilewati dan hanya LiDAR depan yang berlaku.
+// Menunggu gyro yang tidak pernah datang berarti robot berjalan sampai batas
+// waktu ruas, di tangga.
 
 // HNT_MUNDUR vs HNT_BELAKANG -- keduanya membaca sensor yang SAMA dan
 // artinya berlawanan. Salah pilih berarti robot berjalan ke arah yang salah,
@@ -385,6 +411,15 @@ private:
     uint8_t  _n        = 0;      // sampel berturut-turut yang memenuhi syarat
     uint32_t _stempel  = 0;      // stempel sampel yang terakhir dihitung
     uint32_t _serongT0 = 0;      // sejak kapan heading keluar toleransi (0 = tidak)
+
+    // HNT_PUNCAK. Ketiganya dinolkan tiap ruas mulai, di ruasJalan().
+    //
+    // _pitchAwal ACUAN ruas ini, bukan nol: pitchDeg() mentah dan badan sudah
+    // dimiringkan profil TANJAK. NAN = ruas ini tidak memakainya, atau IMU
+    // bisu waktu ruas mulai.
+    float    _pitchAwal    = NAN;
+    bool     _naikTerlihat = false;   // sudah pernah melewati PUNCAK_NAIK_DEG
+    uint32_t _datarT0      = 0;       // sejak kapan datar lagi (0 = belum)
     uint32_t _tenangT0 = 0;      // sejak kapan ramp profil selesai (0 = belum)
     uint8_t  _pivotUlang = 0;    // berapa kali pivot masuk ruas ini diulang
     // Pivot masuk ruas ini BARU SAJA selesai, dan LiDAR belum dibaca sejak

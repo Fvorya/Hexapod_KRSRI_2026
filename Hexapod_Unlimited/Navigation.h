@@ -181,6 +181,18 @@ public:
     // mencetaknya. Bukan untuk kemudi: yang menyetir tetap Navigation.
     float yawKini() { return _imu.yawDeg(); }
 
+    // PITCH IMU MENTAH, derajat, plus penanda apakah IMU sudah bicara.
+    // Dibuka untuk HNT_PUNCAK: ruas tangga berakhir saat badan kembali datar,
+    // dan yang tahu itu cuma IMU.
+    //
+    // MENTAH, dan itu disengaja. tare() tidak pernah dipanggil di seluruh
+    // program, jadi pitchDeg() membawa simpangan pemasangan papan IMU apa
+    // adanya -- di robot ini roll saja terbaca 176 der waktu robot berdiri
+    // tegak. Pemakainya WAJIB membandingkan terhadap acuannya sendiri, bukan
+    // terhadap nol.
+    float pitchKini()  { return _imu.pitchDeg(); }
+    bool  imuBicara()  { return _imu.hasData(); }
+
     int8_t arahTerdekat(float yawDeg, float& selisihDeg) const;
 
     // Apakah robot SEDANG menghadap arah arena ini (dalam HEADING_TOLERANCE_DEG)?
