@@ -32,7 +32,7 @@ REM yang dipakai SRC di upload_teensy.bat.
 if "%AKAR%"=="" set "AKAR=%~dp0..\.."
 
 REM Sketch BAKU di bawah akar itu. Versi lain: set SUMBER=<jalur> lalu ulangi.
-if "%SUMBER%"=="" set "SUMBER=%AKAR%\Hexapod_Unlimited_v1.18\Hexapod_Unlimited"
+if "%SUMBER%"=="" set "SUMBER=%AKAR%\Hexapod_Unlimited"
 if "%NAMA%"==""   set "NAMA=Hexapod_Unlimited_v1.18"
 
 echo == kirim_teensy ==
