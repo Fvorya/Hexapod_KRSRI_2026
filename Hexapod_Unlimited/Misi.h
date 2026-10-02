@@ -93,11 +93,11 @@ enum Kemudi : uint8_t {
 // --- Profil gait yang dipakai sepanjang ruas ---
 enum Profil : uint8_t {
     PRF_DATAR = 0,
-    PRF_TANGGA,      // kaki +35 mm, badan +15 mm, siklus +400 ms
-    PRF_MERUNDUK,    // langkah -15 mm, badan -20 mm, siklus +200 ms
-    PRF_SEMPIT,      // radius berdiri -25 mm: lorong yang lebih sempit dari badan
+    PRF_TANGGA,      // langkah +40, panjang +10, siklus +200, badan +15
+    PRF_MERUNDUK,    // langkah +10, panjang -15, siklus +200, badan -20
+    PRF_SEMPIT,      // R-11: langkah +20, siklus -200, radius & badan baku
     PRF_KAIL,        // R-9: kaki depan mengait ke depan-atas, belakang naik
-    PRF_TANJAK       // R-9 lambat: langkah 75 mm, siklus 1300 ms, depan maju 60
+    PRF_TANJAK       // R-9: langkah +40, panjang -15, siklus +500, pitch badan
 };
 
 // --- Apa yang mengakhiri ruas ini ---
@@ -205,7 +205,7 @@ enum Henti : uint8_t {
 // tersendiri di antara tiap pasang potongan, dan itulah separuh isi FSM-nya.
 enum Aksi : uint8_t {
     AKS_TIDAK_ADA = 0,  // langsung sambung ke ruas berikutnya (tanpa berhenti)
-    AKS_AMBIL,          // angkat korban dengan lengan `aksiA`
+    AKS_AMBIL,          // angkat korban dengan lengan di kolom `lengan`
                         //   henti WAJIB HNT_DEPAN: gerbang jaraknyalah yang
                         //   menaruh korban di dalam amplop jangkauan lengan
     AKS_TARUH,          // taruh korban di safe zone
@@ -221,7 +221,7 @@ struct Ruas {
     Henti       henti;
     float       nilai;         // arti tergantung `henti`; <0 = BELUM DIUKUR
     Aksi        aksi;
-    uint8_t     aksiA;         // lengan: ARM_DEPAN / ARM_BELAKANG
+    uint8_t     lengan;        // ARM_DEPAN / ARM_BELAKANG
 
     // BELOK PECAHAN, derajat, DI ATAS `belok` yang seperempat-seperempat.
     // Sama dengan yang dilakukan 'O<derajat>' dari serial, tapi ia MUTLAK,
@@ -416,7 +416,7 @@ public:
     //
     // Urutan `v` sama dengan urutan anggota struct Ruas, sama dengan urutan
     // kolom yang dicetak tabelDump(), dan sama dengan urutan byte CRC:
-    // belok, kemudi, profil, abaikanDepan, henti, nilai, aksi, aksiA, putar,
+    // belok, kemudi, profil, abaikanDepan, henti, nilai, aksi, lengan, putar,
     // condong, jagaBelakang, mundurMm, condongMm.
     bool setBaris(uint8_t idx, const float* v, const char* nama);
     bool sisipBaris(uint8_t idx);     // 'm5+ <idx>' -- baris kosong di idx

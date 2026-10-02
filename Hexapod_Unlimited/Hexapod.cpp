@@ -391,8 +391,8 @@ void Hexapod::profileFlat() {
 }
 
 void Hexapod::profileStairs() {
-    // 1 TANGGA: { 75, 70, 1100, 115, 70 }
-    // Perubahan: Tinggi(+35), Langkah(+10), Siklus(+200), Tinggi Badan(+15)
+    // 1 TANGGA, terhadap gait.* baku: langkah +40, panjang +10, siklus +200,
+    // badan +15.
     //
     // Badan +10 -> +25 sesudah trial di lantai pecah (sasis mengandas), lalu
     // DITURUNKAN ke +15 di robot: 125 mm terlalu tinggi untuk dipakai.
@@ -414,8 +414,8 @@ void Hexapod::profileStairs() {
 }
 
 void Hexapod::profileCrouch() {
-    // 2 MERUNDUK / TURUNAN: { 40, 45, 1100, 80, 70 }
-    // Perubahan: Langkah(-15), Siklus(+200), Tinggi Badan(-20)
+    // 2 MERUNDUK / TURUNAN, terhadap gait.* baku: langkah +10, panjang -15,
+    // siklus +200, badan -20.
     //
     // Langkah 45 mm dipilih untuk turunan 1:4 (14,04 der) di arena. Tiap
     // langkah, tanah di bawah kaki yang MENAPAK turun sebesar
@@ -535,14 +535,8 @@ void Hexapod::profileTanjak() {
     bentukTanjak(5, TANJAK_PITCH_DEG, KAIL_RADIUS_KAKI, KAIL_TINGGI_BADAN);
 }
 
-// R-11 memakai bentuk yang SAMA dengan R-9. Diminta R2C 18 Sep 2026: pitch
-// badannya ikut menahan robot supaya tidak jatuh ke kiri atau ke kanan di
-// jalan sempit.
-//
-// PERHATIAN, lebarnya bertambah: SEMPIT yang lama berdiri di radius 45 mm
-// (STAND_RADIUS 70 - 25), bentuk ini di 60 mm dengan kaki tengah 30 mm lagi
-// ke luar. Lorong R-11 selebar 30 cm, dan itu belum diukur terhadap bentuk
-// ini. Ukur sebelum percaya: lihat WALL_KAKI_CM di config.h.
+// R-11: langkah lebih tinggi dan siklus lebih cepat, radius dan tinggi badan
+// baku. Disetel di arena; bentuk TANJAK yang dicoba sebelumnya terlalu lebar.
 void Hexapod::profileNarrow() {
     pasangProfil({ GAIT_STEP_HEIGHT + 20.0f, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME - 200.0f, STAND_HEIGHT, STAND_RADIUS }, 3);
 }

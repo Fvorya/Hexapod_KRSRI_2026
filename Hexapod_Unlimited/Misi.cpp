@@ -1076,7 +1076,7 @@ bool Misi::tabelSamaBaku() const {
         const Ruas& b = RUAS_BAKU[i];
         if (a.belok != b.belok || a.kemudi != b.kemudi || a.profil != b.profil
             || a.abaikanDepan != b.abaikanDepan || a.henti != b.henti
-            || a.nilai != b.nilai || a.aksi != b.aksi || a.aksiA != b.aksiA
+            || a.nilai != b.nilai || a.aksi != b.aksi || a.lengan != b.lengan
             || a.putar != b.putar || a.condong != b.condong
             || a.jagaBelakang != b.jagaBelakang || a.mundurMm != b.mundurMm
             || a.condongMm != b.condongMm) return false;
@@ -1094,7 +1094,7 @@ bool Misi::sisipBaris(uint8_t idx) {
     }
     if (idx > RUAS_N) idx = RUAS_N;
     for (uint8_t i = RUAS_N; i > idx; i--) salinBaris(i, RUAS[i - 1]);
-    // Kurung kosong WAJIB: anggota awal struct Ruas (nama..aksiA) tidak punya
+    // Kurung kosong WAJIB: anggota awal struct Ruas (nama..lengan) tidak punya
     // nilai baku di deklarasinya, jadi `Ruas kosong;` berisi sampah stack --
     // dan sampah di kolom `henti` adalah ruas yang berjalan tanpa syarat henti.
     Ruas kosong{};
@@ -1165,7 +1165,7 @@ bool Misi::setBaris(uint8_t idx, const float* v, const char* nama) {
     r.henti        = (Henti)  (uint8_t)v[4];
     r.nilai        = v[5];
     r.aksi         = (Aksi)   (uint8_t)v[6];
-    r.aksiA        = (uint8_t)v[7];
+    r.lengan        = (uint8_t)v[7];
     r.putar        = v[8];
     r.condong      = v[9]  > 0.5f;
     r.jagaBelakang = v[10] > 0.5f;
@@ -1202,7 +1202,7 @@ uint16_t Misi::tabelCrc() const {
         buf[k++] = (uint8_t)r.henti;
         memcpy(buf + k, &r.nilai, 4);     k += 4;
         buf[k++] = (uint8_t)r.aksi;
-        buf[k++] = r.aksiA;
+        buf[k++] = r.lengan;
         memcpy(buf + k, &r.putar, 4);     k += 4;
         buf[k++] = r.condong ? 1 : 0;
         buf[k++] = r.jagaBelakang ? 1 : 0;
@@ -1243,7 +1243,7 @@ void Misi::tabelDump() {
         Serial.print(' '); Serial.print((uint8_t)r.henti);
         Serial.print(' '); Serial.print(r.nilai, 2);
         Serial.print(' '); Serial.print((uint8_t)r.aksi);
-        Serial.print(' '); Serial.print(r.aksiA);
+        Serial.print(' '); Serial.print(r.lengan);
         Serial.print(' '); Serial.print(r.putar, 2);
         Serial.print(' '); Serial.print(r.condong ? 1 : 0);
         Serial.print(' '); Serial.print(r.jagaBelakang ? 1 : 0);
@@ -1592,7 +1592,7 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
     bool isi[2] = { false, false };
     for (uint8_t i = dari; i <= sampai; i++) {
         if (RUAS[i].aksi == AKS_TIDAK_ADA) continue;
-        const uint8_t a = RUAS[i].aksiA & 1;
+        const uint8_t a = RUAS[i].lengan & 1;
         const char* nama = a == ARM_DEPAN ? "DEPAN" : "BELAKANG";
         if (RUAS[i].aksi == AKS_AMBIL) {
             // SESUATU harus menaruh korban di dalam amplop jangkauan lengan
@@ -2728,10 +2728,10 @@ void Misi::update() {
         // ikut diperiksa saat kompilasi.
         const bool usai = !LENGAN_KORBAN_AKTIF ||
                           ((x.aksi == AKS_AMBIL)
-                               ? sekuensAmbil(_robot, x.aksiA, _langkah, _t0,
+                               ? sekuensAmbil(_robot, x.lengan, _langkah, _t0,
                                               x.condong, koreksiYawRuas(),
                                               x.mundurMm, x.condongMm)
-                               : sekuensTaruh(_robot, x.aksiA, _langkah, _t0));
+                               : sekuensTaruh(_robot, x.lengan, _langkah, _t0));
         if (!usai) return;
 
         // Tidak diperbarui saat dilewati: capit benar-benar kosong, dan
@@ -2742,7 +2742,7 @@ void Misi::update() {
             _yawUjung = NAN;
         }
 
-        if (LENGAN_KORBAN_AKTIF) _korban[x.aksiA & 1] = (x.aksi == AKS_AMBIL);
+        if (LENGAN_KORBAN_AKTIF) _korban[x.lengan & 1] = (x.aksi == AKS_AMBIL);
 
         // SERAH-TERIMA BALIK. Capit selesai, tapi Raspi bisa MASIH memegang
         // kaki: ia menahan pose badan yang dipakai menengahkan tadi.
