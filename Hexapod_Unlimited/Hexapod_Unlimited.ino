@@ -616,7 +616,7 @@ static void handleCmd(char* s) {
                             Serial.print("m5s butuh indeks + 13 kolom = 14 angka, dapat ");
                             Serial.println(n);
                             Serial.println("Format: m5s <idx> <belok kemudi profil buta henti nilai "
-                                           "aksi aksiA putar condong jagaBlk mundurMm condongMm> | <nama>");
+                                           "aksi lengan putar condong jagaBlk mundurMm condongMm> | <nama>");
                             break;
                         }
                         // Nama di belakang '|', boleh kosong. Pemisah ini
