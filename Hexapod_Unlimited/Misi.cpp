@@ -7,543 +7,39 @@ extern Skor gSkor;
 // ====================================================================
 // TABEL LINTASAN -- Guidebook SAR UNLIMITED 2026, halaman 21-30.
 //
-// Urutan ruas mengikuti gambar "jalur misi robot" (hal. 21 & 34):
-//   HOME -> K-1 -> R-1 -> R-2 -> R-3 -> R-4/SZ-1 -> K-2 -> R-5/SZ-2
-//        -> R-6 -> K-3 -> K-4 -> R-7/R-8/SZ-3 -> R-9(tangga) -> R-10
-//        -> SZ-4 -> K-5 -> R-11 -> SZ-5/FINISH
+// Urutan (hal. 21 & 34):
+//   HOME -> K-1 -> R-1 -> R-2/R-3 -> R-4/SZ-1 -> K-2 -> R-5/SZ-2 -> R-6
+//        -> (K-3, K-4 dimatikan) -> R-9 tangga -> R-10 -> K-5 -> R-11
+//        -> SZ-5/FINISH
 //
-// ATURAN URUTAN (hal. 21): robot harus MENCOBA mengangkat K-1 sebelum
-// melewati batas R1-R2. Kalau R1 sudah dilewati lalu robot kembali mengambil
-// K-1, pengangkatannya TIDAK SAH. Karena itu ruas korban duduk di tempatnya
-// di tabel ini, bukan dilompati -- walau capitnya belum ada.
+// ATURAN (hal. 21): K-1 harus DICOBA sebelum melewati batas R1-R2; kembali
+// mengambilnya sesudah itu tidak sah.
 //
-// ARAH ditulis sebagai BELOK RELATIF dari ruas sebelumnya, bukan mata angin
-// mutlak; mutlaknya dihitung hitungArah() dan bisa dilihat di 'm4'. Alasannya
-// ada di Misi.h. Jangkarnya MISI_ARAH_BERANGKAT = 0, sama dengan
-// MISI_ARAH_AWAL milik adik tingkat, jadi tiga ruas pertama menghasilkan
-// UTARA / BARAT / UTARA -- persis angka yang sudah pernah dia jalankan.
+// Tabel yang BERLAKU selalu 'm4' (sudah termasuk arah mutlak dan cermin).
+// Ruas HNT_ODO diukur dengan 'm6 <idx>' lalu ditulis dengan 'm7 <idx> <cm>'.
+// HNT_SISI/HNT_MUNDUR adalah jarak ke dinding, bukan tempuh -- coba 'V<cm>' /
+// 'J<cm>' langsung lalu tulis angkanya.
 //
-// Lintasannya satu putaran U: lurus sepanjang baris bawah, belok kanan dua
-// kali di ujung kanan (menyeberang lalu kembali), lurus sepanjang baris atas,
-// belok kanan sekali lagi turun ke FINISH.
+// PELAJARAN YANG BERLAKU UNTUK SELURUH TABEL:
+//   - MENGGANTI PROFIL MEMBATALKAN PANJANG RUASNYA. Langkah dan selip tiap
+//     gait berbeda; angka yang diukur dengan profil lain tidak berlaku.
+//   - abaikanDepan HANYA di ruas yang dibatasi ODOMETRI (tabelSiap()
+//     menolak selainnya). Di turunan berkas depan menembak lantai; di
+//     medan kasar halangan depan membuat mode arena pindah mata angin.
+//   - Sensor depan pernah melihat hantu ~8,6 cm yang HILANG saat robot
+//     berputar di titik yang sama -- ruas HNT_DEPAN bisa berhenti di tempat
+//     yang salah tanpa gejala lain. Penyebabnya belum terjawab.
+//   - Arah berangkat dari HOME ditentukan JURI, sedangkan
+//     MISI_ARAH_BERANGKAT dipaku 0. Arah lain menggeser seluruh kolom arah;
+//     kalibrasi kompas c0 = arah lorong pertama dari HOME.
 //
-// TIKUNGANNYA WAJIB DICOCOKKAN DENGAN ARENA SAAT MAPPING -- ini turunan dari
-// gambar guidebook, bukan dari pengukuran. Untungnya salah tikungan cuma
-// perlu satu baris diubah: sisa lintasan menyesuaikan sendiri.
+// Ukuran arena: alas 3,6 x 2,4 m, lorong 45 cm, dinding 2 cm tebal / 10 cm
+// tinggi (pagar akal sehat MISI_RUAS_MAKS_CM). R-11: jalan yang bisa
+// dilalui kaki selebar 30 cm. R-9 tangga 90 horizontal / 50 vertikal
+// (miring 103), anak tangga 3,6 cm. M1 80 horizontal / 20 vertikal (14 der).
 //
-// NILAI: -1 = BELUM DIUKUR, misi menolak berangkat. Yang sudah terisi datang
-// dari angka yang benar-benar tertulis di guidebook:
-//   R-4  45x60      hal. 25      R-5  45x45 (lumpur)  hal. 25
-//   R-6  45x55      hal. 26      R-9  M2 tangga 90 horizontal / 50 vertikal,
-//   R-10 50 horizontal (50,2 miring)  hal. 29         anak tangga 2 x 3,6 cm
-//   M1   80 horizontal / 20 vertikal = 14,0 der       hal. 22
-// LINTASAN DIROMBAK 6 September 2026 (malam), dari ruas 4 ke bawah, atas
-// arahan operator yang berdiri di arena. Yang lama dibaca dari gambar
-// guidebook; yang ini dari mata. Bentuknya sekarang:
-//
-//   R-4 -> pivot BARAT (lewat K-2, TEMBUS R-5) -> pivot SELATAN saat sudah di
-//   posisi mau keluar R-5 -> maju sedikit -> GESER KANAN -> SELATAN sampai
-//   tembok K-3 -> pivot TIMUR sampai tembok -> pivot SELATAN lewat R-6 ->
-//   pivot BARAT lalu SELATAN (sepasang pivot pelurus) -> R-8 ke kaki tangga
-//   -> ratakan 20 cm ke dinding kanan -> TANGGA.
-//
-// PEMERIKSAAN YANG MEYAKINKAN, sama seperti perombakan sebelumnya: rantai
-// belok yang baru tetap mendaratkan TANGGA di SELATAN, arah yang sudah
-// diverifikasi di arena. Ada tujuh belokan di antara R-4 dan tangga; kalau
-// satu saja keliru, tangganya tidak akan lagi jatuh di SELATAN. Jadi ada yang
-// memeriksa pekerjaan ini selain penalaran.
-//
-// APA YANG HILANG BERSAMA PEROMBAKAN INI, dan ini kerugian nyata:
-//   Ruas 8 lama -- "R-5 SELATAN ikut dinding kanan, 65 cm" -- adalah SATU-
-//   SATUNYA ruas yang pernah lolos utuh di robot ('m4 8 8', odometri 85,5 ->
-//   151,1 = 65,6 cm). R-5 sekarang ditembus ke BARAT, jadi 65,6 cm tidak
-//   berlaku lagi: ia diukur sepanjang sumbu yang lain. Panjang tembusan BARAT
-//   itu BELUM PERNAH DIUKUR.
-//   Ruas 9 lama -- "geser TIMUR keluar R-5", yang gagal dua kali dengan
-//   "halangan di depan" -- ikut hilang. Jog ke TIMUR sekarang duduk SESUDAH
-//   K-3, bukan sesudah R-5.
-//   K-4 tidak lagi punya baris sendiri; 10 cm-nya terserap ke ruas sekitarnya.
-//   Alasan MELEWATINYA tidak berubah -- lihat blok KAPASITAS CAPIT di bawah.
-//
-// ANGKA YANG SUDAH DIUKUR:
-//   ruas 0 (32), 2 (84), 3 (66), 4 (15), 6 (7), 7 (53), 9 (11), 11 (31),
-//   12 (13), 14 (20), 15 (27), 18 (66), 20 (20), 21 (20), 24 (20),
-//   26 (25), 27 (50), 29 (20), 25 (103, geometri).
-//   Ketiga yang pertama DIUKUR ULANG 7 September 2026 dengan "m6" pada
-//   jalur dan profil yang berlaku sekarang -- lihat catatan per ruas.
-//
-// DUA ANGKA MASIH -1 dan HARUS DIUKUR sebelum 'm1' penuh bisa berangkat:
-//   ruas 23 (jalan ke depan tangga) dan 31 (R-11 longsor).
-//   TABEL DIROMBAK OPERATOR 8 Sep 2026 (malam): 28 -> 34 baris. Pasangan
-//   pivot pelurus dan ruas R-8 DIBUANG; SZ-3, K-4, dan empat ruas geser/
-//   maju pendek ditambahkan. Nomor 19 ke atas semuanya bergeser -- catatan
-//   di bawah sudah mengikuti tabel yang SEKARANG.
-//   PENOMORAN BERGESER SEKALI LAGI 8 Sep 2026: DUA baris disisipkan sesudah
-//   ruas 13 (geser KIRI, lalu maju ke samping K-3), jadi tiap nomor 14 ke
-//   atas NAIK dua. Keduanya BLK_LURUS.
-//   PENOMORAN BERGESER LAGI 7 Sep 2026 (malam): baris "SZ-2 taruh korban"
-//   DISISIPKAN sesudah ruas 9, jadi tiap nomor 10 ke atas NAIK satu.
-//   Beloknya BLK_LURUS, jadi tidak satu pun mata angin bergeser.
-//   PENOMORAN BERGESER 15 Sep 2026: ruas "putar KIRI 30 der lalu maju"
-//   DISISIPKAN sesudah ruas 6, jadi tiap nomor 7 ke atas NAIK satu. Label
-//   /*N*/ di tabel sudah digeser; catatan per-ruas DI BAWAH INI masih memakai
-//   nomor LAMA, dan sebagiannya memang sudah tidak sinkron sejak sebelum ini.
-//   Tabel yang benar selalu 'm4'.
-//
-//   Ruas itu MENYERONG, dan serong menumpuk: ia menulis -30 dan ruas 8
-//   menulis +30 supaya sisa lintasan kembali ke mata angin murni. Kedua
-//   angka itu sepasang -- mengubah salah satunya sendirian memiringkan
-//   seluruh sisa tabel.
-//
-//   KEMUDI-nya KMD_KANAN mengikuti tetangganya, dan itu BELUM DIUJI pada
-//   badan yang miring 30 der: berkas LiDAR samping menempuh 1/cos(30) = 1,15
-//   kali jarak tegak lurusnya, jadi ikut-dinding membaca lebih jauh daripada
-//   yang sebenarnya. Kalau robot merapat ke dinding di ruas ini, KMD_TENGAH
-//   tersangka penggantinya.
-//
-//   PENOMORAN BERGESER 7 Sep 2026: ruas 5 lama ("R-4: dekati dinding utara")
-//   DIHAPUS, jadi tiap nomor 6 ke atas turun satu. Beloknya BLK_LURUS,
-//   sehingga penghapusannya TIDAK menggeser satu pun mata angin.
-//   Yang HNT_ODO diukur dengan 'm6 <idx>' lalu ditulis dengan 'm7 <idx> <cm>'.
-//   Ruas 12 HNT_SISI TIDAK bisa diukur begitu -- ia jarak ke dinding samping,
-//   bukan jarak tempuh; cobalah 'V<cm>' langsung lalu tulis angkanya.
-//
-// ====================================================================
-// CATATAN PER RUAS. Nomor di sini nomor TABEL DI BAWAH, dan hanya sah selama
-// tabelnya tidak dipecah lagi -- perombakan sebelumnya sempat meninggalkan
-// seluruh blok ini tertinggal satu nomor dari tabelnya sendiri.
-//
-//   ruas 0  32 cm  DIKOREKSI dari 40 pada uji misi 6 Sep 2026 (sore): dengan
-//                  40 robot berhenti 5-10 cm MELEWATI K-1, jadi ceruk korban
-//                  sudah di belakangnya saat ia berhenti. Diambil 8 cm, tengah
-//                  rentang yang dilaporkan operator.
-//                  Angka 40 sebelumnya datang dari mapping manual, dan di situ
-//                  yang dicocokkan adalah letak BUKAAN sisi kiri -- bukan titik
-//                  berhenti yang benar untuk mengangkat korban. Bukaan mulai
-//                  terbaca lebih awal daripada tempat robot harus berdiri.
-//                  Catatan: nilai HNT_BELAKANG adalah JARAK TEMPUH yang diukur
-//                  sensor belakang, bukan ambang bacaan. Log misi mencetaknya
-//                  apa adanya: "titik nol 41,0 cm -> berhenti di bacaan 81,0".
-//                  32 -> 34 pada pengukuran ulang 7 Sep 2026 (siang), lalu
-//                  DIKEMBALIKAN ke 32 oleh operator pada trial 7 Sep (malam).
-//                  PERHATIAN: "m6" mengembalikan ODOMETRI, sedangkan baris ini
-//                  dijalankan dengan SENSOR BELAKANG. Keduanya mengukur jarak
-//                  tempuh yang sama tapi tidak pernah sepakat persis -- 6 Sep
-//                  odometri 41,5 lawan sensor belakang 39. Jadi 32 boleh meleset
-//                  satu-dua cm dari apa yang sensor belakang lihat; kalau robot
-//                  masih berhenti melewati K-1, itu sebabnya, bukan salah ukur.
-//   ruas 2  84 cm  R-1. DIUKUR ULANG 7 Sep 2026 dengan "m6 2", profil TANGGA
-//                  yang sama dengan yang dipakai menjalankannya. 83 yang lama
-//                  datang dari mapping manual dengan rem jarak, dan pada uji
-//                  "m4 0 3" robot kebablasan di ujung jalan pecah. Selisihnya
-//                  cuma 1 cm, jadi ruas ini bukan sebab utama kebablasan itu;
-//                  ruas 3 yang menyumbang hampir seluruhnya.
-//                  Empat lompatan berpagar rem jarak. Dinding KANAN
-//                  HILANG sepanjang bagian tengahnya, KIRI selalu ada ->
-//                  kemudinya KIRI, bukan TENGAH.
-//   ruas 3  66 cm  M1. DIUKUR ULANG 7 Sep 2026 dengan "m6 3": operator
-//                  menghentikan robot begitu badan keluar dari bidang miring
-//                  dan lantai kembali datar. 88 -> 60, selisih 28 cm, dan itu
-//                  yang membawa robot hampir sampai ujung R-4 pada uji
-//                  "m4 0 3" -- di ruas BUTA, tempat tidak ada apa pun yang
-//                  menghentikannya.
-//                  40 sempat dipertimbangkan (berhenti sebelum lantai datar)
-//                  lalu DIBATALKAN: 60 menaruh robot di lantai datar, dan
-//                  ruas berikutnya menyeberangi koral, dan gait TANGGA-nya
-//                  menuntut badan sudah datar sebelum kaki mulai diangkat.
-//                  DIPASTIKAN 7 Sep 2026: BATU R-4 MULAI PERSIS DI 60. Robot
-//                  menuruni bidang miring lalu langsung masuk R-4 dengan badan
-//                  sudah datar. Jadi batas ruas 3/4 jatuh tepat di tepi koral,
-//                  dan pembagian profilnya benar dengan sendirinya: DATAR untuk
-//                  seluruh turunan, TANGGA untuk seluruh hamparan batu. Tidak
-//                  ada ruas yang menyeberangi batu dengan gait lantai rata.
-//                  SEBABNYA TERLACAK: 88 diukur saat baris ini masih
-//                  PRF_MERUNDUK (commit b9c425c). Profilnya kemudian diganti ke
-//                  PRF_DATAR karena MERUNDUK berhenti di tengah turunan, TAPI
-//                  angkanya ikut terbawa. Langkah DATAR lebih panjang dan
-//                  selipnya di bidang 14 der berbeda, jadi 88 itu angka milik
-//                  gait yang lain. Pelajarannya berlaku untuk seluruh tabel:
-//                  MENGGANTI PROFIL MEMBATALKAN PANJANG RUASNYA.
-//                  60 -> 66 pada trial 7 Sep 2026 (malam), dari operator.
-//                  BELUM DICOCOKKAN dengan "BATU R-4 MULAI PERSIS DI 60" di
-//                  atas: kalau 66 benar, batas ruas 3/4 jatuh 6 cm DI DALAM
-//                  hamparan batu.
-//                  Angka lama: jejak pitch IMU -15,1 -> +0,7 der, titik datar
-//                  di ~88 menurut MERUNDUK.
-//                  R-2 dan R-3 TERNYATA BERADA DI TURUNAN YANG SAMA, bukan
-//                  lorong terpisah sesudahnya -- dua baris tabel dihapus.
-//                  Guidebook 80 cm horizontal (miring 82,5); odometri membaca
-//                  ~6 cm lebih panjang menuruni bidang miring.
-//                  PROFIL MERUNDUK -> DATAR, 6 Sep 2026 (sore), atas
-//                  pengamatan operator: dengan MERUNDUK robot BERHENTI DI
-//                  TENGAH TURUNAN dan tidak pernah sampai lantai datar.
-//                  MERUNDUK dipilih dulu dari penalaran, bukan percobaan:
-//                  badan turun 20 mm menurunkan titik berat, dan langkah
-//                  dipendekkan 60 -> 45 mm supaya kaki tidak menggantung jauh
-//                  di bibir turunan. Penalarannya masih masuk akal, tapi ARENA
-//                  MENOLAKNYA. Kalau nanti ada yang mau mencoba MERUNDUK lagi,
-//                  naikkan dulu panjang langkahnya, jangan tinggi badannya.
-//                  Ruas 26 (R-10) sejak 8 Sep PRF_DATAR, bukan MERUNDUK --
-//                  ia bidang miring juga, jadi curigai hal yang sama di sana.
-// NOMOR RUAS DI CATATAN DI BAWAH INI SUDAH TIDAK SINKRON dengan tabelnya.
-// Tabel dirombak dari arena beberapa kali (34 -> 32 -> 33 baris) dan catatan
-// per-ruas tidak ikut dinomori ulang. Isinya masih benar; yang basi cuma
-// nomornya. Cari berdasarkan NAMA ruas, bukan angkanya.
-//
-//   ruas 4  15 cm  SESUDAH TURUNAN, MAJU KE TEMBOK. DITAMBAHKAN 9 Sep 2026
-//                  atas permintaan operator. Gunanya satu: menyerap hanyutan
-//                  odometri ruas 3, yang menempuh 88 cm BUTA melewati turunan
-//                  M1. Berapa pun melesetnya lompatan itu, ruas ini berakhir
-//                  di jarak yang SAMA dari tembok, jadi pivot kiri ruas 5
-//                  berangkat dari titik yang tetap.
-//                  Ambangnya 15, bukan 21: FRONT_STOP_CM turun 20 -> 12 pada
-//                  hari yang sama, dan itulah yang membuat baris seperti ini
-//                  mungkin sama sekali. Kalau robot berhenti terlalu jauh,
-//                  turunkan ke 13 ("m7 4 13") -- 13 adalah batas bawahnya,
-//                  satu di atas FRONT_STOP_CM.
-//                  TIDAK BUTA, dan tidak boleh: seluruh gunanya sensor depan.
-//                  BELOKNYA BLK_LURUS, jadi menyisipkannya tidak menggeser
-//                  satu pun mata angin sesudahnya -- hanya nomornya.
-//   ruas 4  16 cm  R-4 SELURUHNYA, dari tepi batu sampai SZ-1. DIUKUR 7 Sep
-//                  2026: "m6 4" mencetak 16,2 cm saat operator berhenti tepat
-//                  sebelum SZ-1, dengan LiDAR depan membaca 21-22 cm. Jadi sisa
-//                  R-4 dari tepi batu ke dinding utara hanya ~37,7 cm, dan SZ-1
-//                  (20x20) memenuhi hampir seluruh 21,5 cm terakhirnya.
-//
-//                  R-4 DULU DIPECAH DUA, dan pemecahan itu DIBATALKAN 7 Sep 2026
-//                  atas pengamatan operator. Baris keduanya ("R-4: dekati dinding
-//                  utara", HNT_DEPAN 25) tidak sanggup dipertahankan:
-//                  1. Ia cuma menempuh ~3 cm. Satu baris tabel untuk tiga
-//                     sentimeter.
-//                  2. Ambang 25 memberhentikan robot ~3,5 cm DI BELAKANG titik
-//                     yang dinilai benar operator, dan dari situ kaki belakang
-//                     menyerempet dinding BARAT saat ruas 6 menyeberang ke K-2.
-//                  3. Ia salah satu baris HNT_DEPAN yang dicurigai kena hantu
-//                     sensor depan, dan 25 cm cuma 5 cm di atas FRONT_STOP_CM saat itu (20) --
-//                     navigasi bisa mengerem sendiri sebelum misi sempat.
-//                  Alasan pemecahannya dulu ada dua, dan keduanya gugur: "ruas 5
-//                  menyalakan sensor depan di lantai yang sudah tenang" KELIRU
-//                  (seluruh R-4 tertutup koral, tidak ada lantai bersih), dan
-//                  "menyerap hanyutan odometri" tidak sebanding untuk lintasan
-//                  sependek 16 cm.
-//                  YANG HILANG BERSAMANYA: tidak ada lagi sensor yang menghentikan
-//                  robot sebelum dinding utara kalau odometri meleset ke depan.
-//                  Pagarnya sekarang cuma panjang ruas ini. Kalau robot berhenti
-//                  terlalu jauh atau kurang, setel dengan "m7 4 <cm>" -- satu angka,
-//                  tanpa ambang sensor yang melawannya.
-//                  UTANG: begitu capit terpasang, 16 cm menaruh robot tepat di
-//                  tepi SZ-1 dan jangkauan lengan ~12 cm dari pusat badan mungkin
-//                  masih kurang. Jalan keluarnya ruas geser atau ruas odometri
-//                  pendek TAMBAHAN, bukan menghidupkan lagi ambang sensor depan
-//                  di dekat FRONT_STOP_CM.
-//   ruas 6   7 cm  MAJU SEDIKIT sebelum pivot BARAT. DITAMBAHKAN 7 Sep 2026
-//                  dari arena: robot berhenti di depan SZ-1 pada posisi yang
-//                  BENAR untuk menaruh korban, tapi begitu memutar ke BARAT dan
-//                  berjalan, ia MENABRAK dinding di dekat K-2. Titik yang benar
-//                  untuk menaruh korban bukan titik yang benar untuk berangkat
-//                  menyeberang, dan satu ruas tidak bisa jadi keduanya.
-//                  Pola yang sama sudah ada di ruas 11 ("keluar R-5, maju
-//                  dikit"): ruas pembebas pendek antara aksi di tempat dan
-//                  tikungan berikutnya.
-//                  BUTA WAJIB, dan ini bukan pilihan gaya: dinding utara tinggal
-//                  ~21,5 cm di depan sesudah ruas 4, jadi maju beberapa cm saja
-//                  menjatuhkan bacaan depan di bawah FRONT_STOP_CM (dulu 20, kini 12) dan
-//                  navigasi mengerem "halangan di depan" sebelum ruas ini sempat
-//                  menempuh apa pun. Buta menuntut HNT_ODO -- terpenuhi.
-//                  PROFIL TANGGA: masih di atas koral R-4.
-//                  BELOKNYA BLK_LURUS, jadi menyisipkannya TIDAK menggeser satu
-//                  pun mata angin ruas sesudahnya -- hanya nomornya.
-//                  7 cm dari operator, trial 7 Sep 2026 (malam). Ruas ini BUTA
-//                  dan pendek: yang menghentikannya cuma odometri, sedangkan
-//                  dinding utara tinggal ~21,5 cm di depan. Kalau kaki
-//                  menyentuh dinding, ukur ulang dengan "m6 6".
-//   ruas 7  53 cm  menyeberang ke K-2, tiga lompatan berpagar rem lintasan.
-//                  44 -> 53 pada trial 7 Sep 2026 (malam), dari operator.
-//                  BELOKNYA KIRI, bukan KANAN: K-2 ada di sisi BARAT, dan
-//                  ceruknya terbaca jelas -- kedua sensor kiri terbuka
-//                  bersamaan (9 -> 29 cm) lalu menutup lagi sesudah dilewati.
-//   ruas 9         R-5 BUKAN cabang: robot sampai di K-2 lalu mendapati
-//                  dirinya SUDAH di dalam R-5 tanpa pernah berbelok, jadi
-//                  beloknya LURUS. Diamati 6 Sep 2026. Yang berubah malam itu
-//                  hanya SUMBUNYA: ditembus ke BARAT sampai ujung, bukan
-//                  dibelokkan ke SELATAN di K-2.
-//                  Kelerengnya terasa di odometri saat ditempuh ke selatan:
-//                  satu lompatan butuh 7,2 detik untuk jarak yang tadi 4,3
-//                  detik, dan sensor depan cuma turun 10 cm untuk 15 cm tempuh
-//                  (selip). Profil TANGGA dipertahankan karena itu.
-//   ruas 10        SZ-2 taruh korban K-2. DISISIPKAN 7 Sep 2026 (malam) atas
-//                  permintaan operator. HNT_LANGSUNG: ruas aksi di tempat,
-//                  tidak menempuh jarak, jadi tidak ada yang perlu diukur.
-//                  BLK_LURUS supaya penyisipannya tidak menggeser mata angin.
-//                  TINGGI LEPAS BEDA: SZ-2 duduk 4 cm DI ATAS lantai (hal. 25,
-//                  28), tidak sejajar lantai seperti SZ-1/SZ-3. Baru berarti
-//                  begitu capit terpasang; sekarang ia berhenti kosong.
-//                  SELESAI 8 Sep: K-2 lepas di sini sempat membuat SZ-4
-//                  kehilangan korbannya, dan tabelSiap() menolak berangkat.
-//                  Ditutup dengan menambahkan K-4 (ruas 22). Rantai capit
-//                  kini berselang rapi: 1-5, 8-10, 16-19, 22-28, 30-33.
-//   ruas 11        "maju sedikit" sesudah pivot SELATAN. Sengaja tidak
-//                  ditebak: menebak panjang ruas berarti mengganti profil gait
-//                  di tempat yang salah, dan di sini tempat yang salah itu
-//                  bibir R-5.
-//   ruas 12        GESER KANAN, ruas HNT_SISI pertama di tabel ini. Sumbu
-//                  geser tidak bisa diminta dari luar -- perpindahannya
-//                  terkuantisasi satu langkah gait penuh, dan dua perintah
-//                  IDENTIK pernah berbeda tiga kali lipat (+3 lalu +9 cm).
-//                  Yang membuatnya bisa dipakai adalah syarat henti yang
-//                  dibaca TIAP TICK di dalam firmware; lihat
-//                  Navigation::ratakanMulai(). Sasarannya masih -1: operator
-//                  belum menyebut mau berapa cm dari dinding kanan.
-//   ruas 13 25 cm  SELATAN sampai tembok K-3. HNT_DEPAN -- baca PERINGATAN
-//                  SENSOR DEPAN di bawah sebelum menjalankannya.
-//   ruas 14,15     MENDEKATI K-3, DITAMBAHKAN 8 Sep 2026 dari arena: geser
-//                  KIRI sedikit, lalu maju sampai badan berada DI SAMPING
-//                  korban. Dua baris, bukan satu: HNT_SISI hanya menggeser
-//                  menyamping dan tidak bisa sekaligus maju.
-//                  Ruas 14 HNT_SISI -> nilainya JARAK KE DINDING KIRI, bukan
-//                  jarak tempuh, jadi "m6" tidak berlaku; coba "V<cm>" lalu
-//                  tulis angkanya. Sasarannya WAJIB di atas wall.min (12) --
-//                  kalau tidak, ratakanMulai() menolaknya sebelum berangkat.
-//                  Ruas 15 HNT_ODO biasa -> "m6 15" lalu "m7 15 <cm>".
-//                  KEMUDI KIRI di kedua baris: sesudah sengaja menggeser ke
-//                  kiri, mengikuti dinding KANAN akan menyeret robot kembali
-//                  ke kanan dan membatalkan gesernya. Kalau di arena dinding
-//                  kiri ternyata hilang di sini, tukar ke KMD_KANAN.
-//   ruas 16        K-3 angkat korban. BELOKNYA BLK_KANAN sejak 8 Sep 2026:
-//                  badan pivot ke BARAT dulu, baru mengangkat. Sebelumnya
-//                  baris ini BLK_LURUS (tetap SELATAN).
-//                  Lengan BELAKANG cuma grip -- tidak ada sendi yang bisa
-//                  mengoreksi, jadi ruas 14 dan 15 yang harus menaruh badan
-//                  tepat. Korban ini nantinya ditaruh di SZ-3 (ruas 20).
-//   ruas 17 25 cm  jog ke TIMUR sampai tembok. BELOKNYA BLK_BALIK, bukan
-//                  BLK_KIRI: ruas 16 berakhir menghadap BARAT, jadi perlu
-//                  SETENGAH putaran untuk sampai ke TIMUR. Satu-satunya
-//                  BLK_BALIK di tabel. Kalau pivot 180 der terbukti mahal di
-//                  arena, yang diubah cara mengangkat K-3, bukan baris ini.
-//                  HNT_DEPAN, dan ini yang PALING
-//                  DICURIGAI dari ketiganya: hantu sensor depan yang tercatat
-//                  6 Sep muncul saat robot menghadap BARAT, dan ruas 9 lama
-//                  yang gagal berulang menghadap TIMUR. Kalau ruas ini
-//                  berhenti seketika tanpa ada tembok, itu hantunya, bukan
-//                  temboknya -- ganti ke HNT_ODO dengan abaikanDepan.
-//   ruas 18        R-6, "maju hingga di tengah lantai pecah". Panjang PENUH
-//                  R-6 pernah terukur 62 cm dari ujung ke ujung (BUKAN 55
-//                  seperti guidebook; saksi keduanya sensor BELAKANG yang
-//                  membaca 63 cm saat odometri menunjuk 62,2 -- dua alat yang
-//                  tak berhubungan sepakat dalam 1 cm). Tapi ruas ini berhenti
-//                  DI TENGAHNYA dan berangkat dari titik yang lain, jadi 62
-//                  tidak bisa dipakai apa adanya. Sejak 8 Sep ruas ini
-//                  berjalan sampai SZ-3, bukan "ke tengah", dan diisi 66.
-//                  R-6 TERNYATA BERDINDING, bertentangan dengan catatan lama
-//                  "tidak ada dinding yang bisa diikuti". Yang benar: dinding
-//                  baru muncul sesudah ~11 cm pertama; di titik berangkat
-//                  memang lima dari enam sensor gagal. Sesudah masuk, keenam
-//                  sensor sah. Dinding KANAN duduk di 11-13 cm sepanjang ruas,
-//                  yaitu DI DALAM pita wall.min, sehingga aturan "terlalu
-//                  dekat" memicu putaran menjauh terus-menerus dan MENGALAHKAN
-//                  kunci kompas: yaw berayun 348 -> 337 -> 0 -> 3, simpang
-//                  sampai 15 der. KMD_TENGAH di baris ini WAJIB, bukan pilihan
-//                  -- diuji dengan kemudi dinding KANAN dulu, dan itu justru
-//                  yang menyeret robot 14 der ke kiri dalam dua lompatan.
-//                  Zigzagnya tidak merusak jarak (cos 15 der = 3%) dan roll
-//                  tetap -178 +/- 0,3 der: tidak ada ancaman terguling.
-//                  Sensor DEPAN sekali membaca "dinding 34 cm" lalu kehilangan
-//                  ia sama sekali sesudah robot berputar 23 der -- pantulan
-//                  serong, bukan ujung ruas. Jangan pakai sensor depan di ruas
-//                  ini; itu sebabnya ia HNT_ODO dan buta.
-//   ruas 19        SZ-3 taruh korban K-3. DITAMBAHKAN 8 Sep 2026.
-//   ruas 20,21,22  MENDEKATI K-4, ketiganya DITAMBAHKAN 8 Sep 2026: geser ke
-//                  dinding kanan (20 cm), maju 20 cm, lalu angkat. Pola yang
-//                  sama dengan pendekatan K-3 di ruas 14/15 -- ruas geser dan
-//                  ruas maju dipisah karena HNT_SISI tidak bisa sekaligus
-//                  maju.
-//   ruas 23        JALAN KE DEPAN TANGGA, menggantikan ruas R-8 yang dibuang.
-//                  Panjangnya -1: ukur dengan "m6 23".
-//                  abaikanDepan WAJIB menyala di sini, dan ini pelajaran yang
-//                  dibayar mahal di ruas R-8 yang lama: dengan sensor depan
-//                  aktif, mode arena membaca TANGGA sebagai halangan lalu
-//                  mencetak "halangan depan -> belok ke TIMUR" dan memutar
-//                  robot 90 der di tengah lompatan. Terjadi sungguhan
-//                  6 Sep 2026, persis seperti yang diperingatkan catatan
-//                  abaikanDepan di bawah.
-//                  DIBUANG 8 Sep 2026, dicatat supaya tidak dihidupkan lagi
-//                  tanpa sebab: sepasang PIVOT PELURUS (BARAT lalu SELATAN,
-//                  net nol) yang dulu duduk sebelum R-8. Manuvernya sendiri
-//                  terbukti -- 'o3' lalu 'o2' menurunkan simpang dari 15 der
-//                  jadi 2-4 der di R-6, 6 Sep 2026 -- jadi kalau simpang arah
-//                  sesudah R-6 kembali jadi masalah, itu obatnya.
-//   ruas 24 20 cm  RATAKAN ke dinding KANAN sebelum naik tangga. Satu-satunya
-//                  angka HNT_SISI yang sudah punya nilai, dan ia datang
-//                  langsung dari operator. 20 cm aman di atas wall.min (12),
-//                  jadi penjaga arah geser tidak akan menolaknya tepat sebelum
-//                  sasaran -- tabelSiap() memeriksa itu supaya kegagalannya
-//                  muncul di meja, bukan di tengah arena.
-//   ruas 25        R-9 TANGGA -- DICOBA 6 Sep 2026, GAGAL di 62 dari ~103 cm.
-//                  Panjang bidangnya BUKAN 90: 90 cm itu proyeksi mendatar,
-//                  dan odometri mengukur sepanjang badan yang menanjak, jadi
-//                  yang terbaca ~90/cos(27 der) = ~103 cm.
-//                  Pitch terukur naik bertahap 5,9 -> 13,0 -> 24,9 -> 27,3.
-//                  TIGA cara dicoba, ketiganya punya cacatnya sendiri:
-//                  (1) 'P' (kemudi dinding + kompas): roll memburuk ke -169,6
-//                      (miring 10,4 der) dan yaw terseret -10 der TIAP
-//                      lompatan. Kemudi samping TIDAK BERGUNA di tangga.
-//                  (2) pivot 'o2' + 'w' manual: roll PULIH ke -179,1 (datar)
-//                      -- cara terbaik sejauh ini. Tapi pivotnya melampaui
-//                      sasaran ~9 der dua kali berturut-turut. SEBABNYA
-//                      PENTING: tabel kompas dicatat di lantai DATAR, dan pada
-//                      pitch 27 der sumbu yaw ikut miring, jadi "SELATAN
-//                      351,7" tidak lagi menunjuk arah fisik yang sama.
-//                      Kompas arena TIDAK SAH di atas bidang securam ini.
-//                  (3) 'w' tanpa pivot dan tanpa kemudi: satu lompatan 12,6 cm
-//                      membuat roll melompat ke -159,9 dan yaw berputar 30 der
-//                      sekaligus. Robot harus DIANGKAT TANGAN keluar dari
-//                      tangga -- tidak ada perintah mundur yang aman di sana.
-//                  YANG BELUM DICOBA: kompensasi pose badan ('r0 <-pitch> 0')
-//                  supaya badan tetap datar terhadap gravitasi sementara kaki
-//                  bekerja di bidang miring. BODY_MAX_ROT_DEG = 20 der,
-//                  tangganya 27 der, jadi kompensasinya tidak bisa penuh. Pose
-//                  badan diterapkan SESUDAH gait dan bertahan selama berjalan,
-//                  tapi 'b' dan '0' meresetnya.
-//
-// ====================================================================
-// PERINGATAN SENSOR DEPAN -- berlaku untuk ruas 13, 17, 32, dan 33.
-//
-// Sensor depan MEMBERI ANGKA YANG BERBEDA TERGANTUNG ARAH HADAP, dan itu
-// sudah terukur. Di SATU titik yang sama di ujung R-6, tanpa robot berpindah
-// sedikit pun: menghadap SELATAN, 'j5' memberi 340 sampel 100% signal fail
-// (bacaan yang BENAR untuk ruang kosong); menghadap BARAT, 'j5' memberi 340
-// sampel 100% sah, 83-91 mm, sebaran 8 mm -- benda padat yang sangat mantap
-// 8,6 cm di depan, di tempat yang operator pastikan kosong.
-//
-// Karena hantunya HILANG saat robot berputar, ia bukan kaca sensor dan bukan
-// bagian robot -- keduanya ikut berputar. Apa yang dipantulkannya BELUM
-// TERJAWAB, dan selama itu tiap ruas HNT_DEPAN adalah ruas yang bisa berhenti
-// seketika di tempat yang salah tanpa gejala lain.
-//
-// Sensor sisi dan sensor depan juga pernah berselisih 27 cm di titik yang
-// sama: sensor depan membaca 13 cm ke barat sementara kedua sensor kiri
-// membaca 40 cm. Salah satunya buta terhadap sesuatu; belum diketahui mana.
-//
-// ====================================================================
-// KAPASITAS CAPIT -- sebab K-4 dilewati, dan ini aritmetika, bukan selera.
-//
-// Robot punya DUA capit. Di sepanjang HOME..kaki tangga ada empat korban
-// dengan hanya dua safe zone yang bisa dijangkau sebelum tangga: SZ-1 (di
-// dalam R-4, dipakai untuk K-1) dan SZ-3 (di dalam R-8, dipakai untuk K-3).
-// Jadi saat robot melewati K-4, capit depan masih memegang K-2 dan capit
-// belakang memegang K-3. K-4 tidak punya tangan kosong yang menunggunya.
-//
-// K-3 memakai ARM_BELAKANG -- dan lengan itu HANYA punya grip (4 servo depan,
-// 1 belakang, dikonfirmasi 7 Sep 2026). Sekuens untuk ARM_BELAKANG karena itu
-// tidak boleh memanggil moveArmTarget(): ia menolak. Yang mengatur tinggi dan
-// jangkauan capit belakang adalah letak BADAN, jadi ruas yang memakainya harus
-// berhenti tepat di posisi angkat -- tidak ada sendi yang bisa mengoreksi. Tabel yang lebih lama menulis SEMUANYA ARM_DEPAN,
-// yang membuat robot seolah punya satu capit saja -- tabelSiap() sekarang
-// mensimulasikan isi kedua capit sepanjang tabel dan menolak yang begitu.
-// ====================================================================
-// AUDIT SELURUH TABEL, 6 Sep 2026 -- tiga baris lagi rusak dengan pola yang
-// sama, ditemukan dengan membaca bab PENILAIAN, bukan bab ARENA:
-//
-//   "Untuk rintangan R4, R5, R8, R10, walaupun robot belum sepenuhnya keluar
-//    rintangan namun berhasil menempatkan korban pada Safety-Zonenya..."
-//
-// Kalimat itu menyatakan KEEMPAT safe zone berada DI DALAM rintangannya:
-// SZ-1 di R-4, SZ-2 di R-5, SZ-3 di R-8, SZ-4 di R-10. Tidak satu pun dari
-// mereka ruas berjalan tersendiri.
-//
-// - SZ-4 (dulu HNT_DEPAN 40) punya cacat yang PERSIS sama dengan SZ-1 yang
-//   menerbangkan robot keluar arena. Sekarang HNT_LANGSUNG di dalam R-10.
-// - SZ-3 DIKEMBALIKAN sebagai tempat menaruh K-3, dari capit BELAKANG. Ia
-//   dicabut lebih dulu karena mapping tidak melihatnya -- tapi ia memang tak
-//   terlihat: petak 20x20 SEJAJAR LANTAI yang tertutup koral putih tidak
-//   menghasilkan apa pun di LiDAR. Tanpa baris ini, K-3 diangkat lalu dibawa
-//   sampai finish tanpa pernah ditaruh, dan poinnya hangus.
-// - R-9 TANGGA 90 -> 103 cm. 90 itu proyeksi MENDATAR (guidebook: "M2
-//   horizontal 90cm, vertical 50cm"), sedangkan odometri menghitung langkah
-//   kaki SEPANJANG BIDANG MIRING: sqrt(90^2 + 50^2) = 103,0 cm. Dengan 90,
-//   HNT_ODO berhenti 13 cm sebelum puncak -- yaitu DI ATAS TANGGA, tempat
-//   paling buruk untuk berhenti. Ini geometri dari dua angka guidebook, bukan
-//   pengukuran; percobaan 6 Sep berhenti di 62 cm jadi puncaknya belum pernah
-//   disentuh.
-//
-// MASIH TERSISA, sengaja tidak diubah karena butuh mata di arena:
-// - ruas 33 (SZ-5/FINISH) masih HNT_DEPAN 40, dan ia yang PALING JAUH dari
-//   pemeriksaan: SZ-5 ada di BIDANG MIRING dengan dinding 10 cm di sisi dan
-//   belakang, jadi berhenti pada dinding depan masuk akal -- tapi angka 40-nya
-//   belum pernah diperiksa, dan berkas sensor depan di bidang miring menembak
-//   lantai.
-// - BENTROK LAMA YANG IKUT HILANG: ruas "13 cm dari R-5 ke R-6" bertentangan
-//   dengan guidebook ("Jarak antara sisi luar tanggul R6 dan sisi luar tanggul
-//   R5 sejauh 52cm") dan selisih 13 lawan 52 tidak pernah terjelaskan.
-//   Lintasan 6 Sep (malam) tidak lagi melewati potongan itu, jadi bentroknya
-//   gugur dengan sendirinya -- tapi kalau suatu saat jalur lama dipakai lagi,
-//   pertanyaannya belum terjawab.
-// ====================================================================
-// DIBACA ULANG DARI GUIDEBOOK 6 Sep 2026 -- dan ia membantah tabel ini di
-// empat tempat. Sumber: "Guidebook SAR.pdf", bab ARENA, JALUR MISI, PENILAIAN.
-//
-// 1. R-7 BUKAN LORONG. Ia tugas MEMBERSIHKAN batu koral dari SZ-3:
-//    "Pembersihan ini sebagai Rintangan 7 (R7)". Bab PENILAIAN menegaskannya
-//    dari sisi lain: "Melewati rintangan (R1-R11 SELAIN R7, R9)" -- R-7 tidak
-//    masuk hitungan "dilewati" karena memang bukan sesuatu yang dilewati.
-//    Ruas yang menuju tangga karena itu bernama R-8, bukan R-7.
-// 2. SZ-1 ADA DI DALAM RUANG R-4: "Ruang R4: 45 x 60cm. SZ area 20 x 20cm."
-//    Ia bukan ruas berjalan sesudah R-4. Ini yang membuat robot keluar arena
-//    6 Sep 2026 -- barisnya menyuruh berjalan mencari dinding 40 cm di depan.
-// 3. SZ-3 ADA DI DALAM R-8: "Ruang R8 sebesar 73x51cm namun tidak meliputi
-//    SZ-3", tingginya SEJAJAR LANTAI dan tertutup koral putih. Karena itu
-//    mapping 6 Sep tidak melihatnya: petak 20x20 setinggi nol tidak
-//    menghasilkan apa pun di LiDAR. SZ-3 ADA, hanya tak terlihat sensor.
-// 4. K-3 DAN K-4 DI SAMPING R-6: "R6 bersebelahan dengan K-3 dan K-4",
-//    tertimpa dua papan 14x17x2 cm, titik tengah korban 9 cm dari sisi R-6.
-//    Mereka bukan titik di sepanjang lintasan sesudah R-6.
-//
-// YANG PALING BERBAHAYA, dan belum ditangani sama sekali:
-//    "Arah robot di Home sesuai permintaan juri." -- ARAH BERANGKAT DIPILIH
-//    JURI, sedangkan MISI_ARAH_BERANGKAT di Misi.h dipaku ke 0 (UTARA).
-//    Kalau juri meminta arah lain, SELURUH kolom arah mutlak bergeser dan
-//    robot berjalan ke arah yang salah sejak ruas pertama.
-//
-// Ukuran arena: alas 3,6 x 2,4 m, lebar lorong 45 cm, tebal dinding 2 cm,
-// tinggi dinding 10 cm. Dipakai sebagai pagar akal sehat: tidak ada ruas yang
-// masuk akal lebih panjang dari itu (lihat MISI_RUAS_MAKS_CM).
-//
-// R-11: "Lebar jalan pada R11 yang bisa dilalui kaki robot sebesar 50-10-10
-// atau 30cm" -- 30 itu LEBAR, bukan panjang. Panjang ruas 31 tetap belum ada.
-//
-// Skor yang perlu diingat saat memutuskan risiko: R-9 (tangga) bernilai 150
-// tanpa korban dan 300 dengan korban -- rintangan termahal di seluruh arena.
-// Membersihkan SZ-3 (R-7) 100 bila korban K-3 ditempatkan di sana, 200 bila
-// seluruh areanya bersih.
-// ====================================================================
-// Sisanya (panjang lorong, jarak antar-ruang) tidak ada di guidebook.
-//
-// PROFIL KAIL, ruas 24 (R-9), dipasang 9 Sep 2026. Satu-satunya profil yang
-// bentuknya TIDAK seragam: dua kaki depan naik ke tapak di atas sambil
-// membuka ke depan untuk mengait, dua kaki belakang MEMANJANG KE BAWAH
-// karena masih di tapak yang lebih rendah, kaki tengah menanggung badan.
-// Selisih depan-belakang itulah yang membuat badan tetap DATAR di tanjakan
-// (25,7 der terkompensasi dari bidang 27,3 der). Angkanya KAIL_* di config.h, dan yang sudah dibuktikan baru bahwa IK
-// sanggup mencapainya sepanjang satu siklus gait penuh (cek_kail.cpp) --
-// BELUM ada satu pun percobaan di tangga.
-//
-// PANJANG 103 CM SEKARANG MERAGUKAN, dan ini konsekuensi aturan di bawah:
-// mengganti profil membatalkan panjang ruasnya. 103 datang dari geometri
-// (sqrt(90^2+50^2)), bukan dari odometri, tapi ruas ini BUTA dan HNT_ODO --
-// yang menghentikannya cuma odometri, dan odometri di bidang 27 der dengan
-// panjang langkah yang berbeda tidak membaca sama. Ukur ulang dengan "m6 24"
-// begitu profil ini pernah benar-benar menaiki tangganya.
-//
-// PROFIL: TANGGA dipakai untuk semua permukaan yang butuh kaki diangkat lebih
-// tinggi -- jalan pecah, berpuing, berlumpur, dan anak tangga. MERUNDUK untuk
-// bidang miring: badan turun 20 mm menurunkan titik berat DAN melipat kaki,
-// sehingga sisa jangkauan ke bawah bertambah di bibir turunan.
-//
-// abaikanDepan: SENGAJA hanya di ruas yang dibatasi ODOMETRI. Di ruas kasar,
-// halangan depan membuat mode arena PINDAH MATA ANGIN dan sisa jaraknya akan
-// diukur ke arah yang salah; di turunan, berkas sensor depan menembak lantai.
-// Robot berjalan buta ke depan sepanjang ruas itu, jadi harus ada yang lain
-// yang menghentikannya -- tabelSiap() menolak tabel yang melanggar ini.
+// Skor untuk menimbang risiko: R-9 bernilai 150 tanpa korban, 300 dengan
+// korban -- rintangan termahal di arena.
 // ====================================================================
 // >>> TABEL LINTASAN BAKU: acuan di FLASH, bukan yang dijalankan.
 // Yang dijalankan misi adalah salinannya di RAM (RUAS[] di bawah), yang boleh
@@ -580,16 +76,10 @@ const Ruas RUAS_BAKU[] = {
 
 // <<< TABEL LINTASAN BAKU selesai
 
-// --- TABEL YANG BENAR-BENAR DIJALANKAN, di RAM ----------------------------
-//
-// Salinan RUAS_BAKU[] yang boleh diubah dari HUD lewat 'm5s', jadi menyetel
-// lintasan tidak lagi menuntut satu putaran compile + flash per percobaan.
-// Isinya diisi tabelBaku() saat konstruktor Misi jalan; sebelum itu nol.
-//
-// Nama tidak boleh tetap menunjuk ke flash: begitu operator menggantinya, ia
-// harus menunjuk ke RAM. Kolam nama ini yang dipakai SEJAK AWAL -- termasuk
-// untuk nama yang belum diubah -- supaya cuma ada satu jenis pointer di tabel
-// dan tidak ada yang perlu mengingat mana yang boleh ditulisi.
+// --- TABEL YANG DIJALANKAN, di RAM ---
+// Salinan RUAS_BAKU[], diisi tabelBaku() di konstruktor, boleh diubah HUD.
+// Semua nama menunjuk ke kolam nama RAM sejak awal, supaya cuma ada satu
+// jenis pointer di tabel.
 Ruas RUAS[RUAS_MAKS];
 static char NAMA_RAM[RUAS_MAKS][RUAS_NAMA_MAKS];
 
@@ -600,15 +90,9 @@ const uint8_t RUAS_BAKU_N = sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]);
 static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= RUAS_MAKS,
               "Tabel lintasan lebih panjang dari _cm[] -- naikkan RUAS_MAKS di Misi.h");
 
-// Plafon kedua, dan ia BUKAN soal RAM. RUAS_N, _i dan _iAkhir semuanya
-// uint8_t, dan _iAkhir memakai 255 sebagai penanda "sampai ruas terakhir".
-// Pada 256 baris, RUAS_N di atas terpotong jadi 0 DIAM-DIAM: misi langsung
-// selesai tanpa satu ruas pun dijalankan, dan penjaga di atas tidak
-// menangkapnya karena ia membandingkan sizeof, bukan RUAS_N yang terpotong.
-//
-// Menaikkan RUAS_MAKS sendiri murah -- 9 byte per slot (_arah 1 + _serong 4
-// + _cm 4), 36 slot cuma 324 byte, dan EEPROM tidak ikut tersentuh. Batas
-// inilah yang tidak bisa dibeli dengan RAM.
+// Plafon kedua, bukan soal RAM: RUAS_N, _i, _iAkhir semuanya uint8_t, dan
+// _iAkhir memakai 255 sebagai penanda. Pada 256 baris RUAS_N terpotong jadi
+// 0 diam-diam dan misi selesai tanpa menjalankan satu ruas pun.
 static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= 254,
               "Tabel > 254 baris: RUAS_N/_i/_iAkhir uint8_t, dan 255 dipakai "
               "_iAkhir sebagai penanda. Lebarkan ketiganya ke uint16_t dulu.");
@@ -622,19 +106,11 @@ static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= 254,
 // LIDAR_MIN_CM, jadi ini cuma lapis terakhir terhadap satu pantulan nyasar.
 static const uint8_t MISI_SAMPEL_N = 3;
 
-// JEDA SESUDAH GANTI PROFIL, sebelum LiDAR ruas itu dipercaya. Mengganti
-// profil menggerakkan BADAN: standHeight beda 35 mm antara DATAR dan TANGGA,
-// standRadius 25 mm ke SEMPIT. Selama badan turun/naik, seluruh berkas sensor
-// ikut berayun -- yang depan menyapu naik-turun di dinding, yang samping
-// menjauh/mendekat tanpa robot berpindah sesenti pun. Pemicu yang dibaca di
-// tengah ayunan itu memberhentikan ruas di tempat yang salah.
-//
-// DUA tunggu yang berurutan, bukan satu:
-//   1. ramp profil selesai -- ditanyakan ke gait (profilTenang()), bukan
-//      ditebak dari jam, supaya ia ikut kalau 'gait.profile_tau' disetel.
-//   2. sesudah itu BARU histori median LiDAR diisi ulang. Nilainya 3 sampel
-//      penuh: getDistance() menahan diri sampai _histN >= 3, dan tiap kanal
-//      kebagian giliran tiap NUM_LIDAR x LIDAR_PERIOD_MS.
+// Jeda sesudah ganti profil, sebelum LiDAR ruas itu dipercaya. Badan yang
+// naik-turun mengayunkan seluruh berkas sensor tanpa robot berpindah, dan
+// pemicu yang dibaca di tengah ayunan menghentikan ruas di tempat salah.
+// Dua tunggu berurutan: ramp profil selesai (ditanya ke gait), lalu histori
+// median LiDAR diisi ulang -- 3 sampel per kanal.
 static const uint32_t MISI_LIDAR_SEGAR_MS = 3UL * NUM_LIDAR * LIDAR_PERIOD_MS;
 
 // Pagar kalau ramp profil tidak kunjung selesai -- gait tidak di-update,
@@ -645,19 +121,10 @@ static const uint32_t MISI_SETEL_BATAS_MS = 5000;
 // lambat: TANGGA menaikkan cycleTime +400 ms, MERUNDUK +200 ms.
 static const uint32_t MISI_RUAS_BATAS_MS = 90000;
 
-// PAGAR JARAK satu ruas. Batas waktu saja TIDAK CUKUP: pada ~10 cm/detik,
-// 90 detik berarti 9 METER, sedangkan seluruh arena cuma 3,6 x 2,4 m
-// (guidebook, bab ARENA). Jadi ruas yang syarat hentinya tidak pernah
-// terpenuhi bukan berhenti -- ia berjalan keluar arena.
-//
-// Itu bukan dugaan. 6 September 2026, ruas SZ-1 berhenti pada HNT_DEPAN 40 cm;
-// robot terlanjur berada di tempat yang tak ada dindingnya, sensor depan tidak
-// pernah membaca 40, dan robot berjalan terus keluar arena sampai operator
-// mematikannya.
-//
-// 200 cm dipilih karena ruas terpanjang yang pernah terukur 120 cm, jadi pagar
-// ini tidak akan pernah menyala pada ruas yang sehat, tapi menghentikan yang
-// kabur dalam dua meter -- masih di dalam arena.
+// Pagar jarak satu ruas. Batas waktu saja tidak cukup: 90 detik pada
+// ~10 cm/detik = 9 meter, sedangkan arena 3,6 x 2,4 m. Pernah terjadi: ruas
+// HNT_DEPAN yang dindingnya tidak pernah terbaca berjalan keluar arena.
+// 200 cm jauh di atas ruas terpanjang yang pernah terukur (120 cm).
 static const float MISI_RUAS_MAKS_CM = 200.0f;
 
 // Batas waktu SELURUH misi. Kontes memberi 5 menit (300 detik) dan waktu itu
@@ -683,37 +150,15 @@ static const uint8_t  MISI_SERONG_SIKLUS = 3;
 static const uint32_t MISI_SERONG_MIN_MS = 3000;
 
 // ====================================================================
-// SEKUENS LENGAN -- TAHAP 1: GERBANG JARAK + POSE TETAP
+// SEKUENS LENGAN: pose sendi TETAP dari config.h (KORBAN_SIAP_*, JEPIT_*,
+// LEPAS_*, ANGKAT_*), tanpa IK dan tanpa umpan balik posisi -- tiap fase
+// diberi waktu tetap LENGAN_JEDA_MS.
 //
-// Robot sudah BERHENTI di sini, dan kamera sudah meluruskan kiri-kanan
-// sebelum ruas ini. Yang tersisa buat lengan cuma memainkan pose
-// yang sudah disetel. TIDAK ADA IK dari sensor, dan tidak ada umpan balik
-// posisi dari servo mana pun -- karena itu tiap langkah diberi waktu tetap.
+// Harganya: memindahkan tempat robot berhenti menuntut sudut disetel ulang
+// dengan tangan. Seluruh baris AMBIL memakai HNT_LANGSUNG, jadi jarak ke
+// korban diatur ruas SEBELUMNYA -- kalau capit meleset, setel ruas itu.
 //
-// Pose dinyatakan sebagai SUDUT SENDI, hard-coded di config.h
-// (KORBAN_SIAP_*, KORBAN_JEPIT_*, KORBAN_LEPAS_*). Bukan IK: yang dibidik
-// dengan tangan di robot adalah sudutnya, dan sudut itu tidak boleh ikut
-// bergeser saat KORBAN_CAPIT_MM atau tinggi profil disetel. Dulu pose ini
-// titik capit lewat moveArmGrip(), dan tinggi badan profil ikut menentukan --
-// benar untuk satu profil, meleset 15 mm untuk yang lain, DIAM-DIAM.
-//
-// Harganya: jangkauan capit tidak lagi mengikuti jarak berhenti. Memindahkan
-// tempat robot berhenti sekarang MENUNTUT sudut sendi disetel ulang dengan
-// tangan -- tidak ada lagi yang menghitungnya sendiri.
-//
-// DAN SEJAK 18 Sep 2026 TEMPAT ITU TIDAK LAGI DI TABEL. Seluruh baris AMBIL
-// memakai HNT_LANGSUNG: ruas AMBIL tidak berjalan sama sekali, dan yang
-// menaruh robot pada jarak yang benar adalah ruas-ruas SEBELUMNYA. Jadi kalau
-// capit meleset, yang disetel panjang ruas sebelumnya -- bukan baris AMBIL,
-// yang tidak lagi punya angka jarak untuk disetel.
-//
-// KORBAN_JARAK_CM karena itu tidak lagi dipakai satu baris tabel pun. Ia masih
-// menurunkan KORBAN_CAPIT_MM, yang hanya dibaca cek_korban.cpp -- pemeriksa
-// amplop di PC, bukan firmware.
-//
-// setSudutLengan() menandai sudut yang keluar 0..180 servo, tapi TETAP
-// mengirimkannya; amplop IK-nya sendiri masih disapu cek_korban.cpp.
-// ====================================================================
+// setSudutLengan() menandai sudut di luar 0..180 servo tapi tetap mengirimnya.
 
 // Fase dari waktu. Sekuens ini buta, jadi "sudah sampai?" tidak bisa ditanya
 // ke siapa pun -- yang bisa dilakukan cuma memberi tiap langkah jatahnya.
@@ -745,18 +190,9 @@ static bool poseSendi(Hexapod& robot, uint8_t lengan,
 }
 
 // return true bila sekuens ini sudah selesai.
-// `condong` = ruas ini menggeser BADAN maju dan meluruskannya sebelum lengan
-// turun. `koreksiYaw` = berapa derajat badan harus diputar supaya menghadap
-// heading ruas ini; dihitung pemanggil, karena di sinilah satu-satunya tempat
-// yang TIDAK punya akses ke Navigation.
-//
-// TRANSLASI MAJU BERLAKU UNTUK SEMUA AMBIL sejak 16 Sep 2026, termasuk uji
-// 'aa': keluhan "robot kurang maju saat capit turun" sama di tiap korban,
-// bukan cuma di K-3/K-4 yang tertutup reruntuhan. `condong` sekarang cuma
-// menyalakan DUA tambahan sesudahnya -- jeda konfirmasi mata dan pelurusan
-// yaw -- karena keduanya memang hanya perlu di ruas yang korbannya tertutup.
-//
-// Harganya satu fase, yaitu satu LENGAN_JEDA_MS (2100 ms), per ruas AMBIL.
+// `condong` = dua fase tambahan (jeda konfirmasi mata, pelurusan yaw) untuk
+// korban tertutup reruntuhan. Translasi maju sendiri berlaku di SEMUA AMBIL.
+// `koreksiYaw` dihitung pemanggil -- di sini tidak ada akses ke Navigation.
 static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
                          uint32_t sejak, bool condong, float koreksiYaw,
                          float mundurMm, float condongMm) {
@@ -766,38 +202,22 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
     uint8_t fase;
     if (!faseBaru(langkah, sejak, fase)) return false;
 
-    // FASE 2 SELALU MENGGESER BADAN MAJU, dan sisanya bergeser nomornya.
-    // Dinyatakan sebagai pergeseran nomor, bukan dua salinan switch: dua
-    // salinan berarti dua tempat untuk lupa saat posenya disetel.
-    //
-    // DITUKAR DENGAN POSE JEPIT pada 16 Sep 2026, diminta R2C. Dulu badan maju
-    // lebih dulu lalu lengan turun; sekarang lengan turun ke ketinggian jepit
-    // DULU, baru badan mendorongnya masuk ke korban. Bedanya jalur yang
-    // ditempuh capit: turun di tempat lalu maju mendatar, bukan turun sambil
-    // sudah berada di atas korban.
+    // Fase 2 selalu menggeser badan maju; fase sesudahnya bergeser nomornya
+    // (satu switch, bukan dua salinan). Lengan turun ke ketinggian jepit DULU,
+    // lalu badan mendorongnya masuk -- capit maju mendatar ke korban.
     //
     //   fase 0  pose SIAP
     //   fase 1  pose JEPIT
-    //   fase 2  BADAN MAJU        <- dulu di sini pose JEPIT
+    //   fase 2  BADAN MAJU
     //   fase 3  capit MENUTUP
-    //   fase 4  ANGKAT + badan pulang  <- ditambah 17 Sep 2026
+    //   fase 4  ANGKAT + badan mundur
     //   fase 5  lipat ke REHAT
     if (fase >= 2) {
         if (fase == 2) {
-            // BADAN MAJU, KAKI DIAM. Lihat condong.mm -- memajukan kaki
-            // membuat lengan menabrak reruntuhan dalam perjalanan turunnya.
-            //
-            // SUMBU X DAN Z DIPERTAHANKAN, dan ini bukan kerapian: Raspi
-            // menengahkan korban dengan menggeser BADAN menyamping
-            // ('t<x> 0 0'), jadi X memegang seluruh koreksi vision yang baru
-            // saja dibayar. Menulis setBodyTranslation(0, y, 0) menolkannya --
-            // dan dari luar itu terlihat persis seperti "Raspi kehilangan
-            // kendali dan badan kembali ke default sebelum mencapit",
-            // laporan R2C 15 Sep 2026.
-            //
-            // PELAN, dan itu bukan kehalusan: badan yang menggeser cepat
-            // sambil kaki diam menggoyang seluruh robot, tepat di atas korban
-            // yang akan dicapit. Lajunya dikembalikan di fase terakhir.
+            // Badan maju, kaki diam -- memajukan kaki membuat lengan menabrak
+            // reruntuhan. Sumbu X dan Z DIPERTAHANKAN: X memegang penengahan vision
+            // Raspi ('t<x> 0 0'), dan menolkannya membuang koreksi yang baru dibayar.
+            // Pelan, supaya badan tidak goyang tepat di atas korban.
             robot.setBodySlewMm(KORBAN_CONDONG_LAJU_MM_S);
             const Vec3 t0 = robot.bodyTransTarget();
             robot.setBodyTranslation(t0.x, majuMm, t0.z);
@@ -813,42 +233,21 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
         // translasi di atas, lalu langsung lanjut ke pose lengan.
         uint8_t nGeser = 1;
         if (condong) {
-            // TIGA FASE, dan yang di tengah sengaja KOSONG.
-            //
-            // Diminta R2C 15 Sep 2026: beri jeda 2-3 detik antara translasi
-            // maju dan rotasi badan, untuk konfirmasi mata sebelum lengan
-            // turun. Jeda itu dinyatakan sebagai fase kosong dengan jatahnya
-            // sendiri, bukan sebagai delay: sekuens ini tidak boleh memblokir
-            // -- 'm0' dan 's' harus tetap bisa menghentikannya di detik mana
-            // pun.
-            //
-            // Lebarnya terkunci ke LENGAN_JEDA_MS karena faseBaru() memakai
-            // satu jatah untuk semua fase, jadi condong.jeda dibulatkan NAIK
-            // ke jatah terdekat. Dibulatkan naik, bukan turun: jeda yang
-            // diminta operator adalah jeda MINIMUM untuk memeriksa dengan mata.
+            // Tiga fase, yang tengah sengaja kosong: jeda konfirmasi mata antara
+            // translasi dan rotasi. Fase, bukan delay -- 'm0'/'s' harus tetap bisa
+            // menghentikannya. condong.jeda dibulatkan NAIK ke jatah LENGAN_JEDA_MS
+            // terdekat (jeda minimum untuk memeriksa).
             const uint8_t nJeda = (uint8_t)((KORBAN_CONDONG_JEDA_MS + LENGAN_JEDA_MS - 1)
                                             / LENGAN_JEDA_MS);
-            // PELURUSAN YAW MEMBAYAR FASENYA SENDIRI, dan hanya kalau ia
-            // benar-benar dikerjakan. Dulu fase ini tetap dipakai saat
-            // condong.yaw 0: ia mencetak "DILEWATI" lalu return false, yang
-            // artinya 2100 ms berlalu tanpa satu servo pun bergerak.
-            //
-            // Itu baru terasa sejak 17 Sep 2026, waktu Raspi mulai mengirim
-            // 'Qcondong.jeda 0' dan 'Qcondong.yaw 0' tiap kali menyambung.
-            // Dengan keduanya nol, ruas condong seharusnya tidak berbeda dari
-            // ruas AMBIL biasa -- tapi ia masih membayar satu fase kosong.
+            // Pelurusan yaw hanya memakai fase kalau benar-benar dikerjakan; dengan
+            // condong.yaw 0 ruas condong tidak boleh membayar 2100 ms kosong.
             const uint8_t nYaw = KORBAN_CONDONG_YAW ? 1 : 0;
             if (fase >= 3 && fase < (uint8_t)(3 + nJeda)) return false;
             if (nYaw && fase == (uint8_t)(3 + nJeda)) {
-                // DILURUSKAN. Lantai pecah membuat gait tidak pernah
-                // benar-benar berhenti di mata angin ruasnya; sisa simpangan
-                // itu yang dihabiskan di sini, di atas kaki yang diam.
-                // Nilainya di-clamp setBodyRotation() ke BODY_MAX_ROT_DEG,
-                // jadi simpangan yang terlalu besar diperbaiki SEBAGIAN --
-                // bukan ditolak diam-diam.
-                // ROLL DAN PITCH DIPERTAHANKAN. Stabilisasi IMU menulis
-                // keduanya, dan menolkannya di sini menjatuhkan badan kembali
-                // ke datar di atas lantai yang miring.
+                // Sisa simpangan dari mata angin ruas dihabiskan di atas kaki yang diam.
+                // Di-clamp ke BODY_MAX_ROT_DEG (diperbaiki sebagian, bukan ditolak). Roll
+                // dan pitch dipertahankan -- menolkannya menjatuhkan badan ke datar di
+                // atas lantai yang miring.
                 const Vec3 r0 = robot.bodyRotTargetDeg();
                 robot.setBodyRotation(r0.x, r0.y, koreksiYaw);
                 Serial.printf("  badan diluruskan %+.1f der ke heading ruas.\n",
@@ -872,15 +271,8 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
             robot.setGrip(lengan, KORBAN_GRIP_BUKA);
             poseSendi(robot, lengan, KORBAN_SIAP_BAHU, KORBAN_SIAP_SIKU,
                       KORBAN_SIAP_PRG, "siap");
-            // BADAN MUNDUR, MENUMPANG DI FASE INI. Bukan fase sendiri:
-            // lengan dan badan itu aktuator yang berbeda dan bisa bergerak
-            // bersamaan, jadi menumpang di sini memberi jalur turun yang
-            // bebas dengan biaya nol detik. Fase sendiri akan menambah satu
-            // LENGAN_JEDA_MS penuh ke SETIAP pengambilan.
-            //
-            // X DIPERTAHANKAN, alasannya sama dengan di fase BADAN MAJU:
-            // X memegang koreksi vision dari Raspi, dan menolkannya di sini
-            // membuang penengahan yang baru saja dibayar.
+            // Badan mundur menumpang di fase ini -- lengan dan badan aktuator berbeda,
+            // jadi jalur turun yang bebas tidak menambah waktu. X dipertahankan (vision).
             if (mundurMm > 0.0f) {
                 robot.setBodySlewMm(KORBAN_CONDONG_LAJU_MM_S);
                 const Vec3 t0 = robot.bodyTransTarget();
@@ -897,41 +289,17 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
         case 2:
             robot.setGrip(lengan, KORBAN_GRIP_TUTUP);
             break;
-        case 3:   // ANGKAT keluar dari kantong, DAN badan pulang. Diminta
-            //    R2C 17 Sep 2026.
+        case 3:   // ANGKAT keluar dari kantong, badan pulang.
+            // Jalur keluar dari kantong reruntuhan lewat pose ANGKAT, bukan langsung
+            // melipat dari JEPIT ke REHAT (jalur yang belum pernah diuji, membawa
+            // boneka yang jauh lebih gemuk daripada capit kosong).
             //
-            // JEPIT ada di dalam kantong reruntuhan, dan lengan turun ke sana
-            // lewat jalur yang sudah terbukti bersih (fase 0 ke fase 1).
-            // Melipat LANGSUNG dari JEPIT ke REHAT menempuh jalur yang belum
-            // pernah diuji kosong, sambil membawa boneka yang membuat
-            // penampangnya jauh lebih besar daripada capit kosong.
-            //
-            // Posenya KORBAN_ANGKAT_*, bukan SIAP. SIAP dibentuk untuk
-            // mendekat dengan capit kosong dan menganga; menempuhnya balik
-            // sambil menggenggam mengayunkan pergelangan tanpa keperluan.
-            //
-            // BADAN PULANG DI FASE INI, satu fase sesudah capit menutup.
-            // Bukan bersamaan dengan penutupan capit: badan yang mundur
-            // selagi rahang masih menutup menarik boneka keluar dari capit
-            // yang belum menggenggam. Bukan pula ditunda ke lipatan: selama
-            // badan masih condong, ruas berikutnya berjalan dengan badan
-            // miring ke depan di atas lantai pecah.
-            //
-            // X DAN ROTASI dinolkan di sini, termasuk X milik Raspi: ruas
-            // berikutnya berjalan ke arah KAKI, dan badan yang masih menyerong
-            // membuat langkah pertamanya miring.
-            //
-            // Y TIDAK pulang ke nol, ia justru MUNDUR ke
-            // -KORBAN_ANGKAT_MUNDUR_MM. Diminta R2C 17 Sep 2026: boneka yang
-            // terangkat sering menabrak dinding yang dihadapi robot, karena
-            // busur lipatan ke REHAT jauh lebih gemuk daripada capit kosong
-            // yang dipakai menyetel posenya. Mundurnya dilepas di fase 5,
-            // sesudah lipatan selesai -- lihat di sana.
-            //
-            // Laju lengan diperlambat MULAI DI SINI -- genggamannya sudah
-            // terjadi di fase 2, jadi gerakan pertama sambil membawa boneka
-            // adalah yang ini. Tapi TIDAK selambat lipatan: lihat
-            // LENGAN_SLEW_ANGKAT_DEG_S.
+            // Badan pulang SATU fase sesudah capit menutup: tidak bersamaan (menarik
+            // boneka dari rahang yang belum menggenggam), tidak ditunda ke lipatan
+            // (ruas berikutnya akan berjalan dengan badan condong). X dan rotasi
+            // dinolkan; Y justru MUNDUR ke -KORBAN_ANGKAT_MUNDUR_MM supaya busur
+            // lipatan tidak membentur dinding yang dihadapi -- dilepas di fase 5.
+            // Laju lengan diturunkan mulai di sini (LENGAN_SLEW_ANGKAT_DEG_S).
             robot.setSlewLengan(lengan, LENGAN_SLEW_ANGKAT_DEG_S);
             poseSendi(robot, lengan, KORBAN_ANGKAT_BAHU, KORBAN_ANGKAT_SIKU,
                       KORBAN_ANGKAT_PRG, "angkat");
@@ -947,20 +315,10 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
             poseSendi(robot, lengan, REHAT_BAHU, REHAT_SIKU,
                       REHAT_PERGELANGAN, "rehat");
             break;
-        case 5:   // Jatah KEDUA lipatan ANGKAT ke REHAT: bahu sendirian
-            //    menempuh 90 der pada laju separuh, dan itu tidak muat dalam
-            //    satu jatah. Angkanya diperiksa cek_lengan_laju.py --
-            //    jalankan lagi kalau pose atau laju lengan disetel.
-            //
-            // BADAN PULANG DI SINI, melepas mundur fase 3. Ditunda sampai
-            // sekarang karena dinding yang dihindari itu baru lewat setelah
-            // boneka naik: melepasnya di fase 4 mengembalikan badan ke depan
-            // tepat selagi busur lipatan masih di ketinggian dinding.
-            //
-            // Fase ini punya jatah penuh LENGAN_JEDA_MS dan tidak menyuruh
-            // lengan apa-apa, jadi 20 mm pada laju condong (500 ms) lewat
-            // dengan longgar. Laju badan dikembalikan ke BODY_SLEW_MM_S di
-            // fase berikutnya, sesudah perjalanan pulang ini selesai.
+        case 5:   // Jatah KEDUA lipatan: bahu 90 der pada laju separuh.
+            // Badan pulang di sini, melepas mundur fase 4 -- sesudah busur lipatan
+            // melewati ketinggian dinding. 20 mm pada laju condong muat dengan longgar.
+            // cek_lengan_laju.py memeriksa jatahnya.
             robot.setBodyTranslation(0.0f, 0.0f, 0.0f);
             break;
         default:
@@ -974,26 +332,11 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
     return false;
 }
 
-// MENARUH, dicerminkan dari sekuensAmbil(). Diminta R2C 17 Sep 2026.
-//
-// Dua hal yang SENGAJA tidak ikut dicerminkan:
-//
-//   BADAN TIDAK PERNAH CONDONG. Fase translasi di AMBIL ada untuk satu
-//   sebab: korban tertimbun reruntuhan, dan kaki tidak boleh maju ke sana.
-//   Safe zone kosong dan datar -- tidak ada yang perlu dihindari, jadi
-//   memajukan badan cuma menambah satu jatah waktu dan satu cara gagal.
-//
-//   TIDAK ADA VISION. Titik lepasnya ditentukan tabel, bukan kamera, dan
-//   parkir vision di ruasMasuk() memang sudah dipagari `x.aksi == AKS_AMBIL`.
-//
-// Yang DICERMINKAN: turun lewat SIAP, bukan langsung ke titik lepas, lalu
-// NAIK lagi sebelum melipat. Naik itu yang paling berharga di sini, dan
-// sebabnya sudah tertulis di versi lama fungsi ini: capit lewat tepat di
-// atas korban yang baru berdiri. Melipat dari titik lepas menyeret capit
-// mendatar melintasi boneka; naik dulu membuatnya lewat di atasnya.
-//
-// Laju mengikuti BEBAN, bukan nomor fase: pelan selama masih menggenggam
-// (fase 0 dan 1), penuh begitu capit terbuka (fase 3 dan 4).
+// MENARUH, dicerminkan dari sekuensAmbil(), kecuali: badan tidak condong
+// (safe zone kosong dan datar) dan tanpa vision (titik lepas dari tabel).
+// Turun lewat SIAP, lalu NAIK lagi sebelum melipat supaya capit lewat di
+// atas boneka yang baru berdiri, bukan menyeretnya. Laju mengikuti beban:
+// pelan selama menggenggam (fase 0-1), penuh sesudah capit terbuka.
 static bool sekuensTaruh(Hexapod& robot, uint8_t lengan, uint8_t& langkah, uint32_t sejak) {
     uint8_t fase;
     if (!faseBaru(langkah, sejak, fase)) return false;
@@ -1269,22 +612,12 @@ float Misi::selisihYaw() const {
     return d;
 }
 
-// --- ARENA CERMIN ---------------------------------------------------------
-//
-// Dibaca dari gParam, bukan disalin ke anggota: saklarnya boleh dibalik tombol
-// D3 kapan saja, dan salinan yang lupa diperbarui berarti misi separuh
-// tercermin. Harganya satu pembacaan float per pemakaian, dan itu tidak ada
-// artinya dibanding sekali salah arah.
-//
-// _arah[] dan _serong[] TIDAK ikut dibaca hidup-hidup: keduanya cache, diisi
-// hitungArah(), dan sampai 19 Sep 2026 tidak ada yang menghitungnya ulang saat
-// saklar dibalik. Akibatnya persis yang dilaporkan R2C: kolom kemudi ikut
-// tercermin -- ia dibaca hidup -- tapi ruas 1 tetap berbelok KIRI, karena
-// sasaran pivotnya datang dari cache yang lahir sebelum saklar dibalik.
-//
-// Komentar lama di sini menulis bahwa hitungArah() dipanggil ulang tiap 'm1'
-// dan 'm4'. Itu TIDAK pernah benar, dan justru komentar itu yang membuat
-// cacatnya tidak terlihat. Sekarang segarkanArah() yang menegakkannya.
+// --- ARENA CERMIN ---
+// Saklar dibaca dari gParam tiap pemakaian, bukan disalin: tombol boleh
+// membaliknya kapan saja (selama misi tidak berjalan).
+// _arah[] dan _serong[] adalah CACHE -- segarkanArah() menghitungnya ulang
+// saat saklar berubah. Tanpa itu kolom kemudi tercermin tapi sasaran pivot
+// tidak, dan robot tetap berbelok ke arah tabel asli.
 bool Misi::arenaCermin() { return gParam[K_ARENA_MIRROR] >= 0.5f; }
 
 Belok Misi::belokRuas(uint8_t i) const {
@@ -1405,17 +738,10 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
             ok = false;
         }
 
-        // 2) Ruas yang berjalan BUTA ke depan tapi tidak dibatasi odometri.
-        //    Kombinasi ini tidak punya apa pun yang menghentikannya: sensor
-        //    depan dimatikan, dan HNT_DEPAN justru membaca sensor itu.
-        //
-        //    HNT_PUNCAK DIKECUALIKAN, 18 Sep 2026. 'buta ke depan' adalah
-        //    setelan NAVIGATION -- ia mematikan tiga aturan kemudi supaya
-        //    berkas yang menembak muka anak tangga tidak dibaca sebagai
-        //    halangan. Yang membaca sensor di HNT_PUNCAK bukan Navigation
-        //    melainkan ruasSelesai(), lewat _lidar.getDistance() langsung.
-        //    Jadi di sana sensornya memang masih hidup, dan kombinasi ini
-        //    justru yang dituju: buta untuk menyetir, melihat untuk berhenti.
+        // 2) Ruas buta ke depan yang tidak dibatasi odometri: tidak ada yang
+        //    menghentikannya. HNT_PUNCAK dikecualikan -- 'buta' hanya mematikan
+        //    aturan kemudi Navigation; ruasSelesai() tetap membaca sensor depan
+        //    langsung. Buta untuk menyetir, melihat untuk berhenti.
         if (RUAS[i].abaikanDepan && RUAS[i].henti != HNT_ODO &&
             RUAS[i].henti != HNT_PUNCAK) {
             Serial.print("Gagal: ruas "); Serial.print(i);
@@ -1485,22 +811,11 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
             ok = false;
         }
 
-        // 3d) Ruas AMBIL dengan mundurMm: dua batas, dan keduanya diam-diam
-        //    kalau tidak diperiksa di sini.
-        //
-        //    setBodyTranslation() meng-clamp ke BODY_MAX_TRANS_MM tanpa
-        //    penanda apa pun, jadi mundur yang kejauhan berkurang sendiri dan
-        //    busur turunnya tidak sebebas yang dikira.
-        //
-        //    Lalu fase BADAN MAJU menempuh mundurMm + KORBAN_CONDONG_MM dalam
-        //    SATU jatah LENGAN_JEDA_MS. Lewat dari itu, fase berikutnya
-        //    menimpanya di tengah jalan dan capit menutup sebelum badan
-        //    sampai -- menggenggam udara di depan korban.
-        //    SETIAP baris AMBIL diperiksa, bukan cuma yang mengisi kolomnya:
-        //    translasi maju berlaku di semua AMBIL sejak 16 Sep 2026, dan
-        //    mundur-saat-mengangkat sejak 17 Sep. Baris yang kolomnya kosong
-        //    tetap menempuh KORBAN_CONDONG_MM, dan itu bisa melewati jatah
-        //    sendirian kalau condong.mm disetel tinggi dari arena.
+        // 3d) Ruas AMBIL: mundurMm tidak boleh lewat BODY_MAX_TRANS_MM (di-clamp
+        //    diam-diam), dan mundurMm + condong harus muat dalam SATU jatah
+        //    LENGAN_JEDA_MS -- kalau tidak, capit menutup sebelum badan sampai.
+        //    Semua baris AMBIL diperiksa: yang kolomnya kosong tetap menempuh
+        //    KORBAN_CONDONG_MM.
         if (RUAS[i].aksi == AKS_AMBIL) {
             // Kolom ruas menang atas param global, sama seperti di
             // sekuensAmbil(). Memeriksa yang global di sini sedangkan sekuens
@@ -1578,45 +893,21 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
         }
     }
 
-    // 5) Setiap capit hanya muat SATU korban. Disimulasikan sepanjang tabel
-    //    dari ruas 0, karena inilah satu-satunya cacat di sini yang tidak
-    //    kelihatan dari satu baris saja -- ia lahir dari URUTAN.
-    //
-    //    Tabel 6 Sep 2026 melanggarnya: K-2 diambil di ruas 8 dan baru ditaruh
-    //    jauh sesudahnya, sementara K-3 dan K-4 diambil di antaranya. Tiga
-    //    korban sekaligus di dua lengan, dan semuanya ditulis ARM_DEPAN.
-    //    Tanpa pemeriksaan ini, misi berjalan dan capitnya diam-diam menimpa
-    //    korban yang sedang dipegang.
-    // Disimulasikan dari `dari`, bukan dari 0, dengan kedua capit KOSONG --
-    // itu memang keadaan robot saat mulaiDari() menolkan _korban.
+    // 5) Tiap capit muat SATU korban. Disimulasikan sepanjang ruas yang akan
+    //    dijalani, dari capit kosong -- cacat ini lahir dari URUTAN, tidak
+    //    kelihatan dari satu baris.
     bool isi[2] = { false, false };
     for (uint8_t i = dari; i <= sampai; i++) {
         if (RUAS[i].aksi == AKS_TIDAK_ADA) continue;
         const uint8_t a = RUAS[i].lengan & 1;
         const char* nama = a == ARM_DEPAN ? "DEPAN" : "BELAKANG";
         if (RUAS[i].aksi == AKS_AMBIL) {
-            // SESUATU harus menaruh korban di dalam amplop jangkauan lengan
-            // (lihat cek_korban.cpp), karena sekuensnya sendiri buta: ia
-            // memainkan sudut sendi TETAP dan tidak pernah bertanya di mana
-            // korbannya. Baris AMBIL yang berhenti di jarak sembarang
-            // membuat lengan meraih udara tanpa satu pun pesan.
-            //
-            // Ada DUA cara yang sah, dan sejak 17 Sep 2026 keduanya dipakai:
-            //
-            //   HNT_DEPAN     ruas ini sendiri yang berjalan sampai LiDAR
-            //                 depan membaca `nilai`.
-            //   HNT_LANGSUNG  ruas ini tidak berjalan; ruas SEBELUMNYA yang
-            //                 sudah menempatkan robot. Dipakai K-1 dan K-2,
-            //                 yang didahului ruas HNT_MUNDUR ke tembok
-            //                 belakang -- penggaris yang lebih jujur daripada
-            //                 LiDAR depan di ceruk sempit, yang sering
-            //                 membaca dinding seberang, bukan boneka.
-            //
-            // Yang TIDAK sah: HNT_LANGSUNG tanpa ruas pendekat di depannya.
-            // K-3, K-4 dan K-5 didahului HNT_SISI (menyamping) atau baris
-            // TARUH (tidak bergerak), jadi di sana jalan maju itulah satu-
-            // satunya pendekatan. Mengubahnya jadi HNT_LANGSUNG membuat
-            // capit menutup di udara, dan itu tidak kelihatan dari tabel.
+            // Sekuensnya buta (sudut tetap), jadi sesuatu harus menaruh korban di
+            // jangkauan lengan. Dua cara sah:
+            //   HNT_DEPAN     ruas ini berjalan sampai LiDAR depan membaca `nilai`.
+            //   HNT_LANGSUNG  ruas SEBELUMNYA yang menempatkan robot (mis. HNT_MUNDUR
+            //                 ke tembok belakang -- lebih jujur daripada LiDAR depan
+            //                 di ceruk sempit).
             if (RUAS[i].henti != HNT_DEPAN && RUAS[i].henti != HNT_LANGSUNG) {
                 Serial.print("Gagal: ruas "); Serial.print(i);
                 Serial.println(" mengambil korban tapi hentinya bukan HNT_DEPAN atau HNT_LANGSUNG.");
@@ -1624,17 +915,9 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
                 Serial.println("  HNT_LANGSUNG   = ruas sebelumnya yang sudah menempatkan robot.");
                 ok = false;
             }
-            // PERINGATAN, BUKAN PENOLAKAN. Diputuskan R2C 17 Sep 2026.
-            //
-            // Yang benar tidak bisa dibaca dari tabel: jarak boleh saja sudah
-            // diatur ruas yang lebih jauh ke belakang, atau oleh operator yang
-            // menempatkan robot dengan tangan sebelum start. Menolak baris
-            // seperti itu memaksa menulis ruas palsu supaya lolos, dan ruas
-            // palsu lebih berbahaya daripada peringatan yang dibaca.
-            //
-            // Tetap dicetak karena akibatnya diam: kalau tebakannya meleset,
-            // capit menutup di udara tanpa satu pun pesan. Baris ini yang
-            // mengingatkan ke mana harus melihat waktu itu terjadi.
+            // Peringatan, bukan penolakan: jarak boleh saja diatur ruas yang lebih
+            // jauh atau oleh penempatan tangan sebelum start. Tetap dicetak karena
+            // akibatnya diam -- capit menutup di udara.
             if (RUAS[i].henti == HNT_LANGSUNG) {
                 const bool adaPendekat = (i > 0)
                     && (RUAS[i - 1].henti == HNT_MUNDUR
@@ -1702,18 +985,10 @@ bool Misi::siapJalan(uint8_t idx, uint8_t sampai) {
         return false;
     }
 
-    // Sensor BELAKANG adalah satu-satunya yang bisa melihat K-1 dilewati:
-    // korbannya duduk di ceruk DI SAMPING lintasan (guidebook hal. 25, ruang
-    // lebar 40 cm kedalaman 15 cm), jadi sensor depan tidak akan pernah
-    // melihatnya. navMulai() tidak memeriksa sensor ini karena navigasi
-    // memang tidak memakainya.
-    // Sensor SISI yang jadi penggaris ruas geser. Sama alasannya: kalau ia
-    // mati, ratakanMulai() menolak -- tapi menolaknya di tengah arena, sesudah
-    // robot terlanjur menempuh belasan ruas.
-    // SAMPAI `sampai`, bukan sampai akhir tabel. Lari sebagian ('m4 17 17'
-    // untuk latihan di K-3) tidak boleh menuntut sensor yang cuma dipakai
-    // ruas yang memang tidak akan dijalankan -- itu membuat latihan satu ruas
-    // ditolak karena kanal LiDAR yang tidak ada hubungannya.
+    // Sensor yang dipakai ruas tapi tidak diperiksa navMulai(): belakang
+    // (HNT_BELAKANG/HNT_MUNDUR) dan sisi penggaris ruas geser. Ditolak di sini,
+    // bukan di tengah arena. Hanya sampai `sampai` -- latihan satu ruas tidak
+    // boleh ditolak karena sensor ruas lain.
     for (uint8_t i = idx; i <= sampai && i < RUAS_N; i++) {
         if (RUAS[i].henti != HNT_SISI) continue;
         const uint8_t ch = (kemudiRuas(i) == KMD_KIRI) ? LIDAR_KIRI_D : LIDAR_KANAN_D;
@@ -1786,18 +1061,9 @@ void Misi::mulaiDari(uint8_t idx, uint8_t sampai) {
 }
 
 // ====================================================================
-// MODE UKUR -- yang menghasilkan angka untuk tabel.
-//
-// Robot sudah punya odometer; mengetik ulang angkanya dari meteran cuma
-// menambah satu tempat untuk salah. Mode ini menjalankan SATU ruas dengan
-// profil, kemudi, dan arah miliknya sendiri, lalu berjalan terus sampai
-// operator menghentikannya di ujung ruas. Saat berhenti, robot mencetak
-// sendiri berapa cm yang ditempuhnya.
-//
-// Profil gait ikut dipakai dengan sengaja: langkah TANGGA dan MERUNDUK
-// panjangnya berbeda dari DATAR, jadi mengukur ruas lantai pecah dengan
-// profil datar menghasilkan angka yang tidak berlaku saat ruas itu benar-
-// benar dijalani.
+// MODE UKUR: satu ruas dengan profil, kemudi, dan arahnya sendiri, berjalan
+// sampai operator menghentikannya, lalu mencetak jarak tempuh odometri.
+// Profilnya ikut dipakai -- panjang langkah tiap gait berbeda.
 // ====================================================================
 void Misi::ukur(uint8_t idx) {
     if (!siapJalan(idx, idx)) return;
@@ -1972,18 +1238,10 @@ void Misi::ruasMasuk() {
     ruasBerangkat();
 }
 
-// Profil gait ruas ini, plus jawaban atas satu pertanyaan: boleh langsung
-// berangkat, atau badan harus tenang dulu?
-//
-// HANYA ruas yang berhenti pada SENSOR yang menunggu. Ruas HNT_ODO tidak,
-// dan itu disengaja: aturan "ruas beruntun disambung tanpa berhenti" ada
-// untuk menjaga robot tidak tersendat di bibir rintangan, dan odometri tidak
-// peduli berkas sensor sedang berayun. Yang tidak bisa ditawar cuma pemicu
-// jarak -- ia membaca satu angka lalu mengakhiri ruas di situ.
-//
-// Kemudi dinding samping juga membaca LiDAR selama tunggu ini, tapi ia
-// MENGOREKSI terus-menerus: satu sampel miring diperbaiki sampel berikutnya.
-// Pemicu tidak punya kesempatan kedua.
+// Pasang profil gait ruas ini. true = badan harus tenang dulu sebelum
+// berangkat. Hanya ruas yang berhenti pada SENSOR yang menunggu: pemicu
+// jarak membaca satu angka lalu mengakhiri ruas, tanpa kesempatan kedua.
+// Ruas HNT_ODO disambung tanpa berhenti.
 bool Misi::pasangProfil() {
     const Ruas& x = RUAS[_i];
 
@@ -1996,15 +1254,11 @@ bool Misi::pasangProfil() {
         default:           _robot.profileFlat();   break;
     }
 
-    // KELUAR DARI TANJAK: lengan dipulangkan ke pose REHAT, sama dengan 'R'.
-    // Bentuk TANJAK melipat lengan ke atas supaya tidak menyapu anak tangga;
-    // di ruas datar lipatan itu tidak ada gunanya, dan boneka yang digendong
-    // duduk di REHAT. Diminta R2C 18 Sep 2026, DI MISI SAJA -- 'T0'..'T4'
-    // manual tidak menyentuh lengan, supaya penyetelan lengan dengan tangan
-    // tidak terhapus tiap ganti profil.
-    //
-    // PRF_SEMPIT ikut dikecualikan: ia memakai bentuk TANJAK, jadi ia sudah
-    // memasang pose lengannya sendiri dan REHAT di sini akan menimpanya.
+    // Keluar dari TANJAK di misi: lengan ke pose REHAT ('R'). Manual 'T0'..'T4'
+    // tidak menyentuh lengan, supaya penyetelan tangan tidak terhapus.
+    // PRF_SEMPIT dikecualikan -- sisa dari saat SEMPIT memakai bentuk TANJAK.
+    // Sekarang SEMPIT tidak melipat lengan, jadi TANJAK -> SEMPIT langsung akan
+    // meninggalkan lengan terlipat. Tabel sekarang tidak punya urutan itu.
     if (_i > 0 && RUAS[_i - 1].profil == PRF_TANJAK &&
         x.profil != PRF_TANJAK && x.profil != PRF_SEMPIT &&
         _robot.isArmed()) {
@@ -2021,21 +1275,9 @@ bool Misi::pasangProfil() {
                         x.henti == HNT_PUNCAK);
     if (!pakaiSensor) { _pivotBaru = false; return false; }
 
-    // SESUDAH PIVOT, TUNGGU JUGA. Diminta R2C 17 Sep 2026.
-    //
-    // Urutan pivot-lalu-baca memang sudah benar: ruasMasuk() memutar badan
-    // dan baru memanggil ruasBerangkat() sesudah MISI_PIVOT selesai. Yang
-    // kurang bukan urutannya, melainkan UMUR SAMPELNYA.
-    //
-    // LiDAR berputar terus selama pivot, dan sampel yang tersimpan saat pivot
-    // berakhir lahir waktu badan masih menghadap ke arah lain. Pemicu jarak
-    // membaca satu angka lalu mengakhiri ruas di situ -- ia tidak punya
-    // kesempatan kedua, tidak seperti kemudi dinding yang mengoreksi terus.
-    // Satu sampel basah dari heading lama sudah cukup mengakhiri ruas di
-    // tempat yang salah.
-    //
-    // Yang ditunggu MISI_LIDAR_SEGAR_MS, sama seperti tunggu profil: cukup
-    // untuk seluruh berkas sensor berganti isi tiga kali.
+    // Sesudah pivot, tunggu juga: sampel LiDAR yang tersimpan lahir saat badan
+    // masih menghadap arah lain, dan satu sampel basi cukup untuk mengakhiri
+    // ruas di tempat salah. Tunggu MISI_LIDAR_SEGAR_MS, sama dengan profil.
     if (_pivotBaru) {
         _pivotBaru = false;
         _nav.navBerhenti("menunggu sampel LiDAR yang lahir SESUDAH pivot.");
@@ -2161,22 +1403,12 @@ bool Misi::ruasJalan() {
         return false;
     }
 
-    // DIPASANG LAGI SESUDAH navMulai(), dan ini bukan kehati-hatian berlebih.
-    // Ruas beruntun tanpa aksi disambung TANPA menghentikan navigasi, jadi saat
-    // ruas berikutnya masuk, navMulai() menemukan mode masih hidup dan
-    // memanggil navBerhenti("diambil alih perintah navigasi") -- yang
-    // MEMULIHKAN abaikanDepan(false). Bendera buta yang dipasang belasan baris
-    // di atas terhapus dua baris kemudian, dan ruas turunan berjalan dengan
-    // sensor depan HIDUP: berkasnya menembak lantai miring, terbaca sebagai
-    // halangan mendekat, lalu "halangan di depan -- arah arena TIDAK diubah
-    // sendiri" menghentikan misi di tengah ruas 3.
-    //
-    // Gejalanya BERSELANG-SELING, dan itu yang membuatnya lama tak terlihat:
-    // kalau badan keluar dari ruas sebelumnya cukup menyerong, ruasMasuk()
-    // memilih pivot dulu, navigasi mampir ke NAV_DIAM, navMulai() tidak perlu
-    // mengambil alih, dan bendera butanya selamat -- ruas yang sama lolos.
-    // Yang di atas TIDAK dihapus: ia yang MEMBERSIHKAN bendera untuk ruas
-    // HNT_LANGSUNG/HNT_SISI yang keluar lebih dulu lewat return di atas.
+    // Dipasang LAGI sesudah navMulai(): ruas beruntun disambung tanpa
+    // menghentikan navigasi, jadi navMulai() memanggil navBerhenti() yang
+    // mengembalikan abaikanDepan(false). Tanpa baris ini ruas turunan berjalan
+    // dengan sensor depan hidup -- berselang-seling, tergantung apakah pivot
+    // sempat membuat navigasi mampir ke NAV_DIAM. Yang di atas tetap perlu:
+    // ia membersihkan bendera untuk ruas yang keluar lebih dulu.
     _nav.abaikanDepan(x.abaikanDepan);
 
     // Sasaran kemudi fase jalan. Tanpa ini mode arena mengunci ke mata angin
@@ -2263,15 +1495,9 @@ bool Misi::ruasSehat() {
         return true;
     }
 
-    // 1) Navigasi masih milik kita? Satu pemeriksaan ini menangkap SEMUANYA:
-    //    navigasi yang berhenti sendiri (sensor depan mati, terjebak, dinding
-    //    hilang terlalu lama) DAN navigasi yang diambil alih dari serial
-    //    ('f', 'F', 'p', 'o', 'C', ...). Alternatifnya menaruh sebelas kait
-    //    di parser, dan yang kedua belas pasti terlupa.
-    // kemudiRuas(), BUKAN RUAS[_i].kemudi. Di mode cermin keduanya berbeda,
-    // dan ruasJalan() menyalakan navigasi memakai yang tercermin -- kalau
-    // pemeriksa ini memakai kolom mentah, ia mengira navigasi 'diambil alih'
-    // pada tiap ruas ikut-dinding dan membatalkan misi di langkah pertama.
+    // 1) Navigasi masih milik kita? Menangkap navigasi yang berhenti sendiri
+    //    DAN yang diambil alih dari serial, tanpa kait di parser. Wajib
+    //    kemudiRuas(), bukan kolom mentah -- di mode cermin keduanya berbeda.
     ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
     if (_nav.navMode() != m) {
         lewati("navigasi berhenti atau diambil alih -- sebabnya tercetak di atas.");
@@ -2350,18 +1576,9 @@ bool Misi::ruasSelesai() {
     if (x.henti == HNT_MUNDUR)   return !_nav.setelBelakangSedangJalan();
 
     if (x.henti == HNT_PUNCAK) {
-        // DINDING DEPAN CUMA BERLAKU KALAU `nilai` > 0. Nol = dimatikan,
-        // gyro sendirian.
-        //
-        // Dimatikan di R-9 pada 18 Sep 2026 sesudah dicoba: di tanjakan berkas
-        // depan sering mengenai MUKA ANAK TANGGA, bukan dinding seberang, dan
-        // ruasnya berakhir di tengah pendakian. Gerbang mendaki tidak
-        // menolongnya -- begitu robot benar-benar mendaki, gerbang terbuka dan
-        // anak tangga berikutnya langsung memicu.
-        //
-        // Dibiarkan sebagai pilihan, bukan dibuang: di tanjakan yang lebih
-        // landai berkasnya tidak mengenai anak tangga, dan di sana dinding
-        // seberang penjaring yang berguna kalau gyro meleset.
+        // Dinding depan hanya berlaku kalau `nilai` > 0. Di R-9 dimatikan (berkas
+        // mengenai muka anak tangga); dibiarkan sebagai pilihan untuk tanjakan
+        // landai, sebagai penjaring kalau gyro meleset.
         const int dP = _lidar.getDistance(LIDAR_FRONT);
         // MATI dan JAUH bukan "sudah sampai" -- yang satu sensor putus, yang
         // lain lorong masih terbuka.
@@ -2417,15 +1634,10 @@ bool Misi::ruasSelesai() {
     uint8_t kanal = (x.henti == HNT_DEPAN) ? LIDAR_FRONT : LIDAR_BACK;
     int     d     = _lidar.getDistance(kanal);
 
-    // Tiga keadaan, tiga perlakuan. Inilah yang tidak bisa dilakukan FSM
-    // generasi lama: di sana ketiganya sama-sama -1.
-    //   MATI  : jangan hitung apa pun. Sensor putus tidak boleh terhitung
-    //           sebagai "sudah sampai". Navigasi yang berhak menghentikan,
-    //           dan ruasSehat() menangkapnya iterasi berikutnya.
-    //   JAUH  : untuk sensor DEPAN berarti lorong masih terbuka -- bukan
-    //           "sangat dekat". Untuk sensor BELAKANG berarti dinding START
-    //           hilang dari pandangan; memicu dari situ berarti berhenti di
-    //           tempat acak, jadi biar batas waktu yang menghentikannya.
+    // Tiga keadaan, tiga perlakuan:
+    //   MATI  jangan hitung apa pun; ruasSehat() yang menangkapnya.
+    //   JAUH  depan: lorong masih terbuka. Belakang: dinding START hilang --
+    //         memicu dari situ berarti berhenti di tempat acak.
     if (d == LIDAR_MATI || d == LIDAR_JAUH) { _n = 0; return false; }
 
     // Hitung HANYA saat ada sampel BARU. update() dipanggil ribuan kali per
@@ -2638,18 +1850,10 @@ void Misi::update() {
         KORBAN_SERIAL.print("#KORBAN ");
         KORBAN_SERIAL.print(x.aksi == AKS_AMBIL ? "AMBIL " : "TARUH ");
         KORBAN_SERIAL.print(_i);
-        // ARAH MATA ANGIN RUAS INI (0..3) DAN SAKLAR CERMIN, dua kolom
-        // tambahan sejak 18 Sep 2026.
-        //
-        // Fase CARI di Raspi memakai keduanya: 'o<arah>' untuk meluruskan
-        // badan ke kompas sebelum menengahkan, dan cermin untuk memilih ke
-        // mana ia menggeser mencari korban. Dikirim dari sini, bukan dihitung
-        // ulang di Raspi, karena _arah[] SUDAH hasil pencerminan -- aturan
-        // cermin yang disalin ke sisi lain adalah aturan yang akan menyimpang
-        // diam-diam begitu salah satunya disentuh.
-        //
-        // Kolom TAMBAHAN di belakang, bukan format baru: pembaca lama yang
-        // hanya mengambil dua kolom pertama tetap bekerja apa adanya.
+        // Arah mata angin ruas (0..3) dan saklar cermin, kolom tambahan untuk fase
+        // CARI di Raspi. _arah[] sudah hasil pencerminan, jadi aturan cermin tidak
+        // perlu disalin ke sisi lain. Pembaca lama yang cuma mengambil dua kolom
+        // pertama tetap bekerja.
         KORBAN_SERIAL.print(' '); KORBAN_SERIAL.print(_arah[_i]);
         KORBAN_SERIAL.print(' '); KORBAN_SERIAL.println(arenaCermin() ? 1 : 0);
         _visiJalan = true;      // ditutup '#LEPAS', termasuk lewat lepasVisi()
