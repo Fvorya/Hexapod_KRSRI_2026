@@ -9,8 +9,6 @@
 #define PCA9685_0_ADDR 0x41
 #define PCA9685_1_ADDR 0x40
 
-#define SERVO_FREQ SERVO_PWM_FREQ   // Dari config.h (50 Hz)
-
 // Jeda antar servo saat pengaktifan pertama (posisi awal belum diketahui).
 // Sama dengan staggerKe() di TES_GERAK: menyebar lonjakan arus 18 servo
 // supaya BEC tidak drop dan Teensy tidak brownout.

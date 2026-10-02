@@ -176,22 +176,6 @@ int8_t Navigation::arahTerdekat(float yawDeg, float& selisihDeg) const {
     return terbaik;
 }
 
-float Navigation::simpangArah(uint8_t arah) const {
-    if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return NAN;
-    return wrap180(_headArah[arah] - _imu.yawDeg());
-}
-
-float Navigation::headingAntara(uint8_t a, uint8_t b, float bagian) const {
-    if (a > 3 || b > 3) return NAN;
-    if (_headArah[a] < 0.0f || _headArah[b] < 0.0f) return NAN;
-    // Lewat wrap180 supaya jalan terpendeknya yang diambil: dari SELATAN 180
-    // ke BARAT 270 itu +90, bukan -270.
-    float t = _headArah[a] + wrap180(_headArah[b] - _headArah[a]) * bagian;
-    while (t >= 360.0f) t -= 360.0f;
-    while (t < 0.0f)    t += 360.0f;
-    return t;
-}
-
 bool Navigation::diHeading(float target) const {
     if (isnan(target) || !_imu.hasData()) return false;
     return fabsf(wrap180(target - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
@@ -219,11 +203,6 @@ void Navigation::kunciHeading(float der) {
 float Navigation::headingTerkunci() const {
     if (!isnan(_headKunci)) return _headKunci;
     return (_arahKini >= 0) ? _headArah[_arahKini] : NAN;
-}
-
-bool Navigation::diArah(uint8_t arah) const {
-    if (arah > 3 || _headArah[arah] < 0.0f || !_imu.hasData()) return false;
-    return fabsf(wrap180(_headArah[arah] - _imu.yawDeg())) <= HEADING_TOLERANCE_DEG;
 }
 
 bool Navigation::kompasLengkap() const {

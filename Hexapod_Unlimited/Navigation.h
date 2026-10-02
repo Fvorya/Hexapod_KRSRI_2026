@@ -204,12 +204,6 @@ public:
 
     int8_t arahTerdekat(float yawDeg, float& selisihDeg) const;
 
-    // Apakah robot SEDANG menghadap arah arena ini (dalam HEADING_TOLERANCE_DEG)?
-    // Dipakai misi untuk memeriksa hasil pivot awalnya: pivot yang SELESAI dan
-    // pivot yang GAGAL sama-sama berakhir di NAV_DIAM, jadi satu-satunya yang
-    // membedakan keduanya dari luar adalah heading akhirnya.
-    bool diArah(uint8_t arah) const;
-
     // Heading tercatat satu mata angin, der. NAN bila belum dicatat. Dipakai
     // misi untuk membangun heading yang BUKAN mata angin (mata angin + serong).
     float headingArah(uint8_t arah) const;
@@ -226,22 +220,10 @@ public:
     float headingKunci() const { return _headKunci; }
     float headingTerkunci() const;
 
-    // Heading di ANTARA dua mata angin arena, dari kompas yang TERCATAT --
-    // bukan dari asumsi bahwa keempatnya berjarak 90 der sempurna di IMU.
-    // bagian 0 = tepat di a, 1 = tepat di b, 0,5 = separuh jalan.
-    // NAN bila salah satu arah belum dicatat.
-    float headingAntara(uint8_t a, uint8_t b, float bagian) const;
     bool  diHeading(float target) const;
 
-    // Simpangan heading sekarang terhadap satu arah arena, -180..180.
-    // NAN bila arah itu belum dicatat atau IMU belum punya data. Dipakai misi
-    // untuk menilai odometri: simpang theta memendekkan jarak sesungguhnya
-    // dengan faktor cos(theta), jadi yang penting besarnya, bukan lulus/tidak
-    // terhadap satu ambang sempit milik pivot.
-    float simpangArah(uint8_t arah) const;
-
-    // Sama, tapi terhadap heading MUTLAK apa pun -- termasuk yang menyerong
-    // dari mata angin. NAN bila target NAN atau IMU belum punya data.
+    // Simpangan heading sekarang terhadap heading MUTLAK, -180..180.
+    // NAN bila target NAN atau IMU belum punya data.
     float simpangHeading(float target) const;
 
     // Arah arena yang SEDANG dituju mode arena (0..3), -1 bila tidak ada.

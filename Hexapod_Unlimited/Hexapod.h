@@ -130,37 +130,6 @@ public:
     // HANYA ARM_DEPAN; ARM_BELAKANG cuma punya grip dan selalu return false.
     bool moveArmTarget(uint8_t arm, float jangkauan, float tinggi);
 
-    // Sama, tapi (jangkauan, tinggi) menunjuk TITIK CAPIT, bukan pergelangan,
-    // dan pergelangan ikut disetel supaya TAPAK MENDATAR. Karena tapaknya
-    // mendatar, capit selalu HAND_LENGTH mm lurus di depan pergelangan --
-    // itulah yang membuat satu pasang angka bisa berarti "di mana capitnya".
-    //
-    // Inilah yang dipakai sekuens korban. moveArmTarget() menaruh PERGELANGAN
-    // di titik yang diminta, dan memakainya untuk membidik korban berarti tiap
-    // pemanggil harus mengurangkan HAND_LENGTH sendiri -- 120 mm yang cuma
-    // perlu lupa sekali.
-    //
-    // Lebih ketat daripada moveArmTarget(): ia juga MENOLAK pose yang sudut
-    // servonya keluar 0..180 atau yang pergelangannya tak sampai. Untuk lengan
-    // itu penting -- angleToPulse() meng-clamp DIAM-DIAM, tanpa penanda
-    // seperti _servoClamped milik kaki, jadi tanpa pemeriksaan ini sekuens
-    // akan "berhasil" sambil menaruh capit di tempat yang salah.
-    // tapakDeg = sudut TAPAK terhadap mendatar, derajat; + = menengadah,
-    // - = menunduk. 0 (baku) = mendatar ke depan.
-    //
-    // Dengan pergelangan ikut ditentukan, lengan depan menjadi 3 sendi di
-    // bidang 2 dimensi, dan pose bidang itu memang 3 angka: (x, y, sudut).
-    // Jadi ketiganya bisa dipenuhi PERSIS, tanpa sisa kebebasan -- tidak ada
-    // pilihan yang harus ditebak. Rumusnya: mundur HAND_LENGTH dari titik
-    // capit searah tapak untuk mendapat titik pergelangan, pecahkan 2 link ke
-    // situ, lalu pergelangan = tapak - (bahu + siku).
-    //
-    // Sudut tapak MELEBARKAN amplop: menunduk membuat capit bisa turun lebih
-    // dekat ke badan daripada yang sanggup dicapai tapak mendatar. Lihat
-    // sapuannya di cek_korban.cpp sebelum memakainya -- yang melebar bukan
-    // jangkauan lengan, melainkan bagian jangkauan yang lolos batas servo.
-    bool moveArmGrip(uint8_t arm, float jangkauan, float tinggi, float tapakDeg = 0.0f);
-
     // KETIGA SENDI LANGSUNG, TANPA IK. Untuk membidik pose dengan tangan lalu
     // menuliskannya keras -- IK menjawab "sudut mana yang menaruh capit di
     // sini", perintah ini menjawab pertanyaan sebaliknya.
@@ -168,7 +137,7 @@ public:
     // Sudutnya GEOMETRIS, satuan yang sama dengan IK dan setPergelangan(),
     // BUKAN sudut servo 0..180. Jalurnya pun sama persis (baseline + offset +
     // invert + trim), jadi pose yang ditemukan lewat perintah ini berulang
-    // sama lewat moveArmGrip() -- itu gunanya di-hard-code.
+    // sama -- itu gunanya di-hard-code.
     //
     // Sudut TETAP DIKIRIM walau return false. angleToPulse() meng-clamp
     // diam-diam, dan menolak seluruh pose justru menyembunyikan batas yang

@@ -17,7 +17,7 @@ baru ketahuan di tengah arena:
   6. Baris AKS_AMBIL ditempatkan oleh sesuatu: HNT_DEPAN (ruas ini yang
      mendekat) atau HNT_LANGSUNG dengan ruas pendekat tepat sebelumnya.
      Sekuensnya memainkan sudut sendi tetap, jadi korban harus sudah berada
-     di dalam amplop jangkauan lengan (cek_korban.cpp).
+     di dalam jangkauan lengan.
 
 Firmware memeriksa 2-5 lagi saat 'm1' (tabelSiap) dan sebagiannya saat
 kompilasi (static_assert); yang di sini berjalan tanpa perlu mengunggah apa

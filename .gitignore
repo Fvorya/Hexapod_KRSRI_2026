@@ -62,3 +62,4 @@ __pycache__/
 # git DIAM-DIAM: berkasnya ada di disk, tidak pernah ikut commit, dan yang
 # terlihat cuma "kok perubahan saya tidak muncul di GitHub".
 # ====================================================================
+moses/build_log.txt

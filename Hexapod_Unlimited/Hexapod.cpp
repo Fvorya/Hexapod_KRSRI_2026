@@ -320,28 +320,6 @@ void Hexapod::walk(float forward, float strafe, float turn) {
 
 void Hexapod::stop() { _gait.setMoveVector(0, 0, 0); }
 
-// SAAT MENYAMBUNGKAN INI NANTI: jangan menulis _roll/_pitch langsung seperti
-// draf di bawah. Sekarang ada _rollT/_pitchT + slewBodyPose(), jadi cukup
-// panggil setBodyRotation() -- perataannya sudah ditangani ramp, dan low-pass
-// STAB_TAU di draf ini jadi peredam kedua yang tidak perlu. Yang masih relevan
-// dari draf ini hanya deadband dan clamp STAB_MAX_DEG.
-// void Hexapod::setStabilization(float rollDeg, float pitchDeg) {
-//     // deadband
-//     if (fabsf(rollDeg)  < STAB_DEADBAND_DEG) rollDeg  = 0;
-//     if (fabsf(pitchDeg) < STAB_DEADBAND_DEG) pitchDeg = 0;
-//     // clamp
-//     rollDeg  = clampf(rollDeg,  -STAB_MAX_DEG, STAB_MAX_DEG);
-//     pitchDeg = clampf(pitchDeg, -STAB_MAX_DEG, STAB_MAX_DEG);
-//     // low-pass berbasis dt (konstan tau -> kehalusan tak tergantung kecepatan loop)
-//     uint32_t now = millis();
-//     float dt = _lastStabT ? (now - _lastStabT) / 1000.0f : 0.02f;
-//     _lastStabT = now;
-//     dt = clampf(dt, 0.0f, 0.05f);
-//     float a = dt / (STAB_TAU + dt);
-//     _roll  = lerpf(_roll,  deg2rad(rollDeg),  a);
-//     _pitch = lerpf(_pitch, deg2rad(pitchDeg), a);
-// }
-
 // ---------------------------------------------------------------- pose badan
 // setBody*() hanya MENETAPKAN SASARAN. Yang menggerakkan adalah slewBodyPose()
 // di awal update(), dengan laju terbatas.
@@ -804,36 +782,6 @@ bool Hexapod::moveArmTarget(uint8_t arm, float jangkauan, float tinggi) {
     // Pasangannya yang benar adalah baseline 180 + invert slot 19 -- 180-siku
     // juga menempati 0..180 penuh, cuma berlawanan arah.
     a->setArmPulse(ARM_ID_SIKU, a->angleToPulse(ARM_ID_SIKU, sikuDeg, ARM_BASE_SIKU));
-    return true;
-}
-
-// Target di TITIK CAPIT dengan tapak dijaga MENDATAR. Lihat Hexapod.h.
-bool Hexapod::moveArmGrip(uint8_t arm, float jangkauan, float tinggi, float tapakDeg) {
-    if (arm != ARM_DEPAN) return false;   // belakang tidak punya sendi
-
-    // Titik PERGELANGAN = titik capit dikurangi satu tapak, searah tapak.
-    const float t   = deg2rad(tapakDeg);
-    const float pjk = jangkauan - HAND_LENGTH * cosf(t);
-    const float ptg = tinggi    - HAND_LENGTH * sinf(t);
-
-    float bahuDeg = 0.0f, sikuDeg = 0.0f;
-    if (!ArmInverse::solve(pjk - fabsf(ARM_ORIGINS[arm][1]),
-                           ptg - ARM_ORIGINS[arm][2], bahuDeg, sikuDeg)) return false;
-
-    // Sudut tapak = jumlah SEMUA putaran sendi dari badan. bahuDeg diukur dari
-    // mendatar-ke-depan dan sikuDeg adalah putaran lengan bawah terhadap
-    // lengan atas (0 = lurus), jadi sisanya milik pergelangan.
-    const float prgDeg = tapakDeg - (bahuDeg + sikuDeg);
-    if (fabsf(prgDeg) > 90.0f) return false;
-
-    // Sudut servo di luar 0..180 = ter-clamp diam-diam di angleToPulse().
-    const float bahuServo = ARM_BASE_BAHU + bahuDeg;
-    const float sikuServo = ARM_BASE_SIKU + sikuDeg;
-    if (bahuServo < 0.0f || bahuServo > 180.0f) return false;
-    if (sikuServo < 0.0f || sikuServo > 180.0f) return false;
-
-    moveArmTarget(arm, pjk, ptg);   // menghitung ulang IK yang sama; murah,
-    setPergelangan(arm, prgDeg);    // dan pulsa tetap lahir di satu tempat
     return true;
 }
 

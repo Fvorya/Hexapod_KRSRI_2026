@@ -80,7 +80,6 @@ extern CalibBlob gCalib;
 #define GAIT_SLEW_RATE    gParam[K_GAIT_SLEW_RATE]
 #define GAIT_PROFILE_TAU  gParam[K_GAIT_PROFILE_TAU]
 #define GAIT_SETTLE_TAU   gParam[K_GAIT_SETTLE_TAU]
-#define STAB_TAU          gParam[K_STAB_TAU]
 
 #define HEADING_KP        gParam[K_HEADING_KP]
 #define HEADING_KD        gParam[K_HEADING_KD]
@@ -91,10 +90,6 @@ extern CalibBlob gCalib;
 // beberapa cm -- setengah centimeter benar-benar terasa di situ.
 #define WALL_SETPOINT_CM  gParam[K_WALL_SETPOINT]
 #define WALL_MIN_CM       gParam[K_WALL_MIN]
-#define HEAD_UTARA        gParam[K_HEAD_UTARA]
-#define HEAD_TIMUR        gParam[K_HEAD_TIMUR]
-#define HEAD_SELATAN      gParam[K_HEAD_SELATAN]
-#define HEAD_BARAT        gParam[K_HEAD_BARAT]
 
 #define KORBAN_CONDONG_MM      gParam[K_CONDONG_MM]
 #define KORBAN_CONDONG_JEDA_MS ((uint32_t)gParam[K_CONDONG_JEDA])

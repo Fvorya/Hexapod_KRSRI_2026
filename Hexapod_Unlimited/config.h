@@ -187,27 +187,9 @@
 // balikkan ke 1 sesudah lendutan dan tinggi jepit diukur di robot.
 #define LENGAN_KORBAN_AKTIF 1
 
-#define LIDAR_DEPAN_MM       62.0f   // dudukan sensor depan, mm di depan pusat badan
-
 // Gerbang HNT_DEPAN di ruas AMBIL. BILANGAN BULAT: ia dipakai apa adanya di
 // kolom `nilai` tabel RUAS[], dan cek_tabel_misi.py membaca kolom itu.
 #define KORBAN_JARAK_CM      25
-
-#define KORBAN_TINGGI_MM     40.0f   // tinggi titik jepit DARI LANTAI
-#define KORBAN_DEKAT_MM      40.0f   // mendekat/menjauh sejauh ini DI ATAS titik jepit
-#define KORBAN_TARUH_MM      40.0f   // tinggi LEPAS dari lantai (SZ setinggi lantai)
-
-// Sudut TAPAK saat menjepit & melepas. 0 = mendatar ke depan, negatif =
-// menunduk. Bisa disetel karena pergelangan sekarang ikut IK (moveArmGrip).
-//
-// DIBIARKAN 0 karena bentuk capit dan boneka belum diukur -- yang menentukan
-// sudut cengkeraman terbaik itu keduanya, bukan kinematika. Tapi kinematika
-// punya pendapat yang jelas soal harganya, dan ini terukur: jendela gerbang
-// yang sah pada profil TANGGA melebar dari 3,0 cm (tapak 0) jadi 7,5 cm
-// (tapak -30). Menunduk memindahkan pergelangan menjauh dari lantai untuk
-// titik capit yang sama, dan itu melawan batas yang mengikat -- bahu tidak
-// boleh turun di bawah 0 der servo. Sapuannya dicetak cek_korban.cpp.
-#define KORBAN_TAPAK_DER      0.0f
 
 // Pose sekuens korban, SUDUT SENDI GEOMETRIS -- bukan IK, bukan titik capit.
 // Dibidik dengan tangan di robot lalu dituliskan keras, satuan yang sama
@@ -247,14 +229,6 @@
 #define KORBAN_LEPAS_BAHU    -50.0f
 #define KORBAN_LEPAS_SIKU     30.0f
 #define KORBAN_LEPAS_PRG     -20.0f
-
-// Pose menggendong, diukur DARI LANTAI dan ke CAPIT. 280 mm itu JAUH DI DEPAN
-// badan -- ujung kaki depan cuma 139 mm -- jadi korban menjulur ~14 cm di
-// depan robot dan bisa menyenggol dinding saat pivot di lorong sempit.
-// Inilah angka pertama yang harus disetel ulang dengan boneka di tangan;
-// cek_korban.cpp menjaga supaya penyetelannya tidak diam-diam ter-clamp.
-#define LENGAN_GENDONG_MM    280.0f
-#define LENGAN_GENDONG_TGI   140.0f
 
 // Waktu tiap langkah sekuens. BUTA: tidak ada umpan balik posisi dari servo
 // mana pun, jadi satu-satunya cara "menunggu sampai" adalah menunggu.
@@ -376,11 +350,6 @@
 #define KORBAN_ANGKAT_BAHU   -50.0f
 #define KORBAN_ANGKAT_SIKU    50.0f
 #define KORBAN_ANGKAT_PRG    -10.0f
-
-// Titik capit yang diminta, mm dari pusat badan. Diturunkan dari gerbangnya
-// sendiri supaya menggeser gerbang ikut menggeser lengan -- dua angka yang
-// harus cocok tidak boleh ditulis dua kali.
-#define KORBAN_CAPIT_MM  ((float)KORBAN_JARAK_CM * 10.0f + LIDAR_DEPAN_MM)
 
 // --- Dimensi Kaki Hexapod --- //
 // SUMBER KEBENARAN: legacy-2026/TES_GERAK/kinematics.h (program yang sudah
@@ -719,26 +688,6 @@
 // ketidaktahuan itu. Kalau robot ternyata terguling ke DEPAN di tangga,
 // balik tandanya jadi +20.
 #define KAIL_TENGAH_SUDUT   0.0f
-
-// LUTUT KAKI DEPAN DIKUNCI selama profil KAIL. 1 = kunci, 0 = IK biasa.
-//
-// Sebabnya dari tangga, bukan dari teori: kaki depan sering terpeleset.
-// IK tiga sendi memakai tibia untuk ikut mengejar titik telapak, jadi lutut
-// MENGAYUH sepanjang stance -- dan tiap derajat ayunan itu menggeser titik
-// sentuh di ujung kaki, yang di permukaan anak tangga berarti menggaruk.
-// Dengan lutut dikunci, yang bergerak tinggal coxa dan femur: telapak
-// berayun pada BUSUR berjari-jari tetap mengelilingi sendi femur.
-//
-// Harganya: telapak tidak lagi menuruti lintasan yang diminta gait. Yang
-// tersisa hanya komponen ARAHnya; komponen radial hilang. Seberapa besar
-// selisihnya dicetak cek_kail.cpp -- baca di sana sebelum menaikkan
-// KAIL_DEPAN_MAJU/NAIK, karena keduanya tidak lagi berpindah 1:1 ke telapak.
-//
-// Sudut kuncinya TIDAK ditulis di sini: ia diambil dari pose netral kaki
-// itu sendiri (sesudah offset KAIL), jadi bentuk berdirinya tetap persis
-// dan hanya ayunannya yang berubah.
-#define KAIL_LUTUT_KUNCI 0
-
 
 // NAIK 11 Sep 2026 sesudah uji T4 di tangga: maju 40->60, turun 35->42.
 // Operator melaporkan kaki depan sering terpeleset dan buritan masih bisa
@@ -1111,10 +1060,6 @@ const uint8_t LIDAR_MIN_CM[6] = {
 //
 // Nilai awal saja -- 'Y0' menimpanya kapan pun. Ada di sini supaya turunan
 // dari sudut sudah benar sejak menyala, tanpa perlu mengetik apa pun.
-// Ambang sensor DEPAN untuk ruas terakhir di bawah turunan, cm. 'm5 <cm>'
-// menimpanya saat jalan.
-#define MISI_DEPAN_CM_DEF   40
-
 #define WALL_BIAS_KIRI_CM   2.0f
 #define WALL_BIAS_KANAN_CM  2.0f
 
@@ -1468,10 +1413,6 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // --- Lain-Lain --- //
 // #define PIN_BUTTON_START  30   // Tombol mulai (INPUT_PULLUP)
 // #define PIN_LED_FOUND     13   // LED tanda korban ditemukan (cek aturan lomba)
-
-// Stabilisasi badan (IMU)
-#define STAB_MAX_DEG      15.0f   // Clamp koreksi roll/pitch (const)
-#define STAB_DEADBAND_DEG 1.0f    // Abaikan getaran kecil (const)
 
 // --- Body kinematics (pose badan manual & demo uji) --- //
 // Batas ini bukan batas mekanis kaki, melainkan pagar supaya perintah uji

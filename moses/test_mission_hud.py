@@ -2336,11 +2336,9 @@ _LAPTOP_SAJA = {
                       "butuh toolchain ekspor yang tidak ada di Pi",
     # Ditambahkan 17 Sep 2026, sesudah penjaga di bawah menahan tujuh berkas
     # sekaligus. Lima di antaranya memang harus ada di Pi dan sekarang ikut
-    # terkirim; dua ini TIDAK, dan sebabnya bukan ukuran:
+    # terkirim; yang ini TIDAK, dan sebabnya bukan ukuran:
     "quantize.py": "mengkuantisasi ONNX di laptop; Pi tidak punya toolchain-nya "
                    "dan tidak pernah membangun model",
-    "mission_hud_10September.py": "arsip versi lama, disimpan untuk membandingkan "
-                                  "perilaku; mengirimnya cuma menggandakan HUD",
 }
 
 # Berkas .py yang disebut sebagai NAMA BERKAS di dalam tes ini.
