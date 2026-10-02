@@ -4,72 +4,31 @@
 // ====================================================================
 // LAPISAN MISI KRSRI -- BERBASIS TABEL RUAS.
 //
-// Pengganti Mission.* yang lama. Yang lama menulis satu state per potongan
-// lintasan: 12 state untuk seperempat rute. Rute penuh guidebook 2026 punya
-// 20-an potongan, jadi pola itu berakhir di ~60 state yang masing-masing
-// MENYALIN logika penjaganya sendiri -- dan penjaga yang disalin adalah
-// penjaga yang suatu saat lupa disalin. (Cacatnya sudah terbukti sekali:
-// berjalan() di versi lama tidak menyebut lima state ruas berjarak, sehingga
-// 'm0' di tengah lantai pecah diam-diam tidak melakukan apa pun.)
+// Lintasan adalah DATA: satu baris RUAS[] per potongan. Menambah potongan =
+// menambah baris; menyetel arena = mengubah angka, bukan alur.
 //
-// Di sini lintasan adalah DATA, bukan kode: satu baris RUAS[] per potongan.
-// Mesin statusnya cuma lima: JALAN, PIVOT, SETEL, LENGAN, KONFIRM. Menambah
-// potongan lintasan = menambah satu baris tabel; menyetel arena = mengubah
-// angka, bukan mengubah alur.
-//
-// ATURAN POKOK YANG DIPERTAHANKAN dari versi lama (semuanya mahal dipelajari,
-// jangan dibuang):
+// ATURAN POKOK (mahal dipelajari, jangan dibuang):
 //   1. Misi TIDAK PERNAH memanggil robot.walk(). Vektor gerak milik
-//      Navigation seorang diri; misi menyetir lewat navMulai()/navBerhenti().
-//      Dua penulis pada vektor yang sama = robot yang "menolak berhenti".
-//   2. update() dipanggil SEBELUM nav.navUpdate(). Keduanya membaca sampel
-//      LiDAR yang sama; yang lebih dulu berhak memutuskan.
-//   3. Pemicu jarak dihitung HANYA saat ada sampel LiDAR BARU (stempelSampel),
-//      bukan tiap iterasi loop. Tanpa itu "3 sampel berturut-turut" cuma
-//      berarti tiga kali membaca angka yang sama.
-//   4. LIDAR_JAUH bukan "sangat dekat" dan bukan "sudah lewat". Sensor mati,
-//      sensor jauh, dan jarak sungguhan adalah TIGA keadaan berbeda.
-//   5. Ketentuan kontes: robot boleh diletakkan menghadap ke mana saja lalu
-//      harus berangkat ke arah ruas pertama. Karena mode arena mengunci ke
-//      mata angin TERDEKAT, misi WAJIB pivot lebih dulu -- start yang
-//      menyimpang > 45 der akan mengunci arah yang salah tanpa pesan error.
+//      Navigation; dua penulis = robot yang "menolak berhenti".
+//   2. update() dipanggil SEBELUM nav.navUpdate() -- keduanya membaca sampel
+//      LiDAR yang sama, yang lebih dulu berhak memutuskan.
+//   3. Pemicu jarak dihitung hanya saat ada sampel LiDAR BARU (stempelSampel).
+//   4. LIDAR_JAUH bukan "dekat" dan bukan "lewat". Mati, jauh, dan jarak
+//      sungguhan adalah tiga keadaan berbeda.
+//   5. Robot boleh diletakkan menghadap ke mana saja; misi WAJIB pivot lebih
+//      dulu, karena mode arena mengunci ke mata angin TERDEKAT.
 //
-// SUMBER ANGKA: Guidebook SAR UNLIMITED 2026 (halaman 21-30). Angka yang
-// benar-benar tertulis di sana sudah terisi di tabel. Angka yang TIDAK ada di
-// guidebook (panjang lorong, jarak antar-ruang) diisi -1 = BELUM DIUKUR, dan
-// misi MENOLAK berangkat selama masih ada yang -1. Menebak panjang ruas
-// berarti mengganti profil gait di tempat yang salah; di bibir turunan itu
-// jatuh.
+// `nilai` -1 = BELUM DIUKUR, dan misi menolak berangkat selama masih ada.
 // ====================================================================
 #include <Arduino.h>
 #include "config.h"
 #include "Navigation.h"   // Hexapod, LidarArray, ModeNav ikut lewat sini
 
-// --- BELOK MASUK RUAS, relatif terhadap ruas SEBELUMNYA ---
-//
-// Arah tiap ruas TIDAK ditulis sebagai mata angin mutlak, melainkan sebagai
-// seperempat putaran dari ruas sebelumnya, lalu ARAH MUTLAKNYA DIHITUNG
-// (hitungArah()), satu-satunya tempat di firmware yang menghitungnya:
-//
-//     arah[i] = (arah[i-1] + belok[i]) % 4,   arah[0] = MISI_ARAH_BERANGKAT
-//
-// Dua alasan, dan keduanya soal mapping:
-//
-// 1. YANG SALAH SAAT MAPPING SELALU SATU TIKUNGAN, BUKAN SATU RUAS. Kalau
-//    ternyata belokan di ujung lorong itu ke KIRI dan bukan ke KANAN, dengan
-//    mata angin mutlak SEMUA ruas sesudahnya ikut salah dan harus diketik
-//    ulang satu per satu. Dengan belok relatif, mengubah satu baris
-//    memperbaiki seluruh sisa lintasan sendiri.
-// 2. YANG BISA DILIHAT ORANG DI ARENA ADALAH TIKUNGAN, bukan mata angin.
-//    "di ujung R-4 belok kanan" bisa dicocokkan dengan arena sambil berdiri
-//    di sana; "ruas 8 menghadap TIMUR" tidak bisa, sampai dihitung dulu.
-//
-// Angka jangkarnya diambil dari misi adik tingkat (Mission.cpp Ver1_8) supaya
-// hasilnya identik untuk ruas yang sudah pernah dia jalankan:
-//     MISI_ARAH_AWAL    = 0 (UTARA)  -> ruas 0 BLK_LURUS  -> UTARA
-//     MISI_ARAH_KORBAN1 = 3 (BARAT)  -> ruas 1 BLK_KIRI   -> BARAT
-//     pivot balik ke lorong = UTARA  -> ruas 2 BLK_KANAN  -> UTARA
-// Ketiganya keluar sendiri dari tabel, bukan ditulis ulang.
+// BELOK MASUK RUAS, relatif terhadap ruas sebelumnya. Arah mutlak dihitung
+// hitungArah(): arah[i] = (arah[i-1] + belok[i]) % 4. Relatif karena yang
+// salah saat mapping selalu SATU tikungan -- membetulkannya memperbaiki
+// seluruh sisa lintasan sendiri, dan tikungan itulah yang bisa dicocokkan
+// sambil berdiri di arena.
 enum Belok : uint8_t {
     BLK_LURUS = 0,   // teruskan arah ruas sebelumnya
     BLK_KANAN = 1,   // seperempat searah jarum jam (U->T->S->B)
@@ -77,10 +36,8 @@ enum Belok : uint8_t {
     BLK_KIRI  = 3    // seperempat berlawanan jarum jam
 };
 
-// Arah ruas PERTAMA. Ketentuan kontes: robot boleh diletakkan menghadap ke
-// mana saja (arahnya ditentukan juri), lalu harus berangkat dari HOME -- jadi
-// yang tetap bukan hadap awalnya, melainkan arah berangkatnya. Sama dengan
-// MISI_ARAH_AWAL milik adik tingkat.
+// Arah ruas PERTAMA. Yang tetap bukan hadap awal robot (ditentukan juri),
+// melainkan arah berangkat dari HOME.
 #define MISI_ARAH_BERANGKAT 0
 
 // --- Bagaimana ruas ini dikemudikan menyamping ---
@@ -112,106 +69,42 @@ enum Henti : uint8_t {
     HNT_GESER        // GESER menyamping sejauh `nilai` cm, diukur ODOMETRI
 };
 
-// HNT_PUNCAK vs HNT_DEPAN -- keduanya membaca LiDAR DEPAN, dan yang satu
-// menambahkan syarat yang tidak dimiliki yang lain:
+// HNT_PUNCAK: berhenti kalau badan sudah MENDAKI lalu DATAR lagi (gyro), atau
+// depan <= `nilai`. Keduanya baru berlaku sesudah mendaki terlihat -- tanpa
+// gerbang itu ruas berakhir seketika di kaki tangga. `nilai` 0 = dinding depan
+// dimatikan, gyro sendirian (dipakai R-9: berkas depan sering mengenai muka
+// anak tangga). Ambang gyro di config.h (PUNCAK_*). IMU bisu + `nilai` 0 =
+// tidak ada yang mengakhiri ruas selain batas waktu; tabelSiap()
+// memperingatkannya.
 //
-//   HNT_DEPAN   berhenti begitu depan <= `nilai`. Titik.
-//   HNT_PUNCAK  berhenti kalau badan sudah MENDAKI lalu DATAR lagi, ATAU
-//               depan <= `nilai`. Keduanya baru berlaku sesudah mendaki
-//               terlihat.
-//
-// Ada karena odometri gait di tangga itu tebakan: ia menghitung siklus gait,
-// bukan jarak tempuh, dan tiap siklus di anak tangga memindahkan robot sejauh
-// yang tidak diketahui. Percobaan 6 Sep 2026 berhenti di 62 dari ~103 cm.
-//
-// GERBANG MENDAKI bukan hiasan. Tanpanya ruas berakhir SEKETIKA di kaki
-// tangga, karena di sana badan memang datar; dan berkas LiDAR depan yang
-// menyentuh muka anak tangga pertama akan mengakhirinya juga.
-//
-// `nilai` satuannya sama dengan HNT_DEPAN: cm ke dinding di depan. NOL berarti
-// dinding depan DIMATIKAN -- gyro sendirian.
-//
-// R-9 memakai 0 sejak 18 Sep 2026. Dicoba dengan 40 lebih dulu, dan di
-// tanjakan berkas depan sering mengenai MUKA ANAK TANGGA alih-alih dinding
-// seberang: ruasnya berakhir di tengah pendakian. Gerbang mendaki tidak
-// menolong -- begitu robot benar-benar mendaki, gerbang terbuka dan anak
-// tangga berikutnya langsung memicu.
-// Ambang gyro TIDAK di tabel melainkan di config.h (PUNCAK_*): ia milik robot
-// dan pemasangan IMU-nya, bukan milik satu ruas.
-//
-// IMU BISU -> gerbang mendaki dilewati dan hanya LiDAR depan yang berlaku.
-// Menunggu gyro yang tidak pernah datang berarti robot berjalan sampai batas
-// waktu ruas, di tangga.
-//
-// TAPI DENGAN `nilai` 0, JALAN KELUAR ITU IKUT TERTUTUP: IMU bisu dan dinding
-// dimatikan berarti TIDAK ADA yang mengakhiri ruas, dan yang tersisa cuma
-// batas waktu ruas -- di tanjakan. tabelSiap() memperingatkannya saat 'm1',
-// bukan membiarkannya ditemukan di arena.
-
-// HNT_MUNDUR vs HNT_BELAKANG -- keduanya membaca sensor yang SAMA dan
-// artinya berlawanan. Salah pilih berarti robot berjalan ke arah yang salah,
-// jadi bedanya ditulis di sini sekali dan untuk seterusnya:
-//
-//   HNT_BELAKANG  `nilai` = JARAK TEMPUH. Robot MAJU, dinding START dipakai
-//                 sebagai penggaris, berhenti pada bacaan `titik nol +
-//                 nilai`. Titik nolnya dicatat saat ruas masuk.
+// HNT_BELAKANG vs HNT_MUNDUR, sensor sama, arti berlawanan:
+//   HNT_BELAKANG  `nilai` = JARAK TEMPUH. Robot MAJU, dinding START jadi
+//                 penggaris dari titik nol yang dicatat saat ruas masuk.
 //   HNT_MUNDUR    `nilai` = JARAK MUTLAK ke dinding belakang. Robot MUNDUR
-//                 sampai bacaannya turun ke `nilai`. Tidak ada titik nol.
+//                 sampai bacaan turun ke `nilai`. Memakai mesin 'J<cm>' dan
+//                 seluruh penjaganya (lantai MUNDUR_MIN_CM, MUNDUR_BATAS_MS).
+//                 Bacaan belakang JAUH = tidak ada dinding, ruas dilewati.
 //
-// Ini memakai mesin 'J<cm>' (NAV_SETEL_BLK) apa adanya, jadi seluruh
-// penjaganya ikut: sasaran di bawah WALL_MIN_CM ditolak sebelum berangkat,
-// sensor belakang yang mati di tengah gerakan menghentikan misi, dan
-// MUNDUR_BATAS_MS membatasi lamanya. Tidak ada gerakan baru yang ditulis
-// untuk ini -- kalau mundurnya bermasalah, perbaikannya di Navigation.
-//
-// Gunanya standoff per korban: "sejauh mungkin dari tembok yang dihadapi,
-// mepet ke tembok seberang". Sebelum ini standoff itu hanya bisa diatur dari
-// Raspi lewat 'J', jadi ia hidup di HUD dan bukan di tabel misi.
+// HNT_SISI vs HNT_GESER, keduanya menyamping; `kemudi` memilih sisinya:
+//   HNT_SISI   berhenti pada BACAAN DINDING sisi `kemudi`. Lebih teliti, tapi
+//              gagal tertutup kalau penggarisnya bisu. KMD_TENGAH ditolak.
+//   HNT_GESER  berhenti pada ODOMETRI geser; `kemudi` = arah yang DITUJU.
+//              Tidak butuh dinding, tapi skala slipnya dikalibrasi untuk maju.
 
-// HNT_GESER vs HNT_SISI -- keduanya menggeser badan menyamping, dan kolom
-// `kemudi` sama-sama memilih arahnya. Yang berbeda apa yang menghentikannya:
-//
-//   HNT_SISI  berhenti pada BACAAN DINDING. `nilai` = jarak ke dinding sisi
-//             itu dalam cm. Lebih teliti, dan robot berakhir di tempat yang
-//             diketahui relatif terhadap arena -- tapi ia GAGAL TERTUTUP
-//             kalau penggarisnya bisu, dan ruasnya tidak jalan sama sekali.
-//
-//   HNT_GESER berhenti pada ODOMETRI. `nilai` = jarak geser dalam cm, dan
-//             arah `kemudi` adalah arah yang DITUJU, bukan yang diukur.
-//             Tidak butuh dinding di sisi mana pun.
-//
-// Pakai HNT_GESER hanya di tempat yang dindingnya tidak bisa diandalkan --
-// di R-11 sisi yang dituju jurang dan sisi seberangnya belum tentu terbaca.
-// Harganya nyata: odometri geser memakai skala slip yang dikalibrasi untuk
-// MAJU, jadi jaraknya kurang teliti daripada bacaan dinding.
-
-// HNT_SISI: ruas ini tidak MAJU sama sekali, ia bergeser menyamping sampai
-// sensor sisinya membaca `nilai` cm. SISI MANA dibaca dari kolom `kemudi`
-// (KMD_KANAN / KMD_KIRI) -- kolom itu memang menganggur di ruas yang tidak
-// menyusuri dinding, dan menaruhnya di sana lebih baik daripada memakai tanda
-// `nilai`, yang di seluruh tabel ini sudah punya arti lain: negatif = BELUM
-// DIUKUR. KMD_TENGAH ditolak tabelSiap().
-//
-// Ini ada karena sumbu geser tidak bisa diminta dari luar: perpindahannya
-// terkuantisasi satu langkah gait penuh, jadi "geser 10 cm" mustahil. Yang
-// bisa dilakukan adalah menutup lupnya di dalam firmware -- lihat
-// Navigation::ratakanMulai().
-
-// --- Apa yang dikerjakan di UJUNG ruas, sesudah berhenti ---
-//
-// Pivot TIDAK ada di daftar ini dengan sengaja. Tiap ruas menyatakan `arah`
-// yang dituju, dan mesinnya memutar badan sendiri saat masuk ruas yang
-// arahnya berbeda dari arah sekarang. Versi lama menulis pivot sebagai state
-// tersendiri di antara tiap pasang potongan, dan itulah separuh isi FSM-nya.
+// --- Apa yang dikerjakan di UJUNG ruas ---
+// Pivot tidak ada di sini: tiap ruas menyatakan arahnya, dan mesinnya memutar
+// badan sendiri saat masuk ruas yang arahnya berbeda.
 enum Aksi : uint8_t {
     AKS_TIDAK_ADA = 0,  // langsung sambung ke ruas berikutnya (tanpa berhenti)
     AKS_AMBIL,          // angkat korban dengan lengan di kolom `lengan`
-                        //   henti WAJIB HNT_DEPAN: gerbang jaraknyalah yang
-                        //   menaruh korban di dalam amplop jangkauan lengan
+                        //   henti HNT_DEPAN (ruas ini mendekat), atau
+                        //   HNT_LANGSUNG sesudah ruas pendekat
     AKS_TARUH,          // taruh korban di safe zone
     AKS_KONFIRM         // berhenti, tunggu keputusan operator ('m2'/'m3')
 };
 
+// Kolom sesudah `lengan` boleh tidak ditulis: inisialisasi agregat C++
+// memberi nilai bakunya.
 struct Ruas {
     const char* nama;
     Belok       belok;         // belok masuk, RELATIF terhadap ruas sebelumnya
@@ -223,137 +116,58 @@ struct Ruas {
     Aksi        aksi;
     uint8_t     lengan;        // ARM_DEPAN / ARM_BELAKANG
 
-    // BELOK PECAHAN, derajat, DI ATAS `belok` yang seperempat-seperempat.
-    // Sama dengan yang dilakukan 'O<derajat>' dari serial, tapi ia MUTLAK,
-    // bukan relatif terhadap hadap robot saat itu: acuannya mata angin arena
-    // hasil `belok`, ditambah sudut ini. Pivot yang relatif terhadap yaw
-    // sekarang menumpuk galatnya sepanjang 33 ruas; yang ini tidak.
-    //
-    // MENUMPUK antar ruas. Sekali satu ruas menyerong 45 der, ruas BLK_LURUS
-    // sesudahnya tetap 45 der -- "lurus" berarti meneruskan arah ruas tadi,
-    // dan itu tetap benar saat arahnya bukan mata angin. Untuk kembali ke
-    // mata angin murni, tulis lawannya secara tegas (-45).
-    //
-    // Kolom TERAKHIR dan bernilai 0 kalau tidak ditulis: inisialisasi agregat
-    // C++ menolkan anggota yang tidak disebut, jadi 33 baris lama tidak perlu
-    // disentuh sama sekali.
+    // Belok pecahan, der, di atas `belok`. MUTLAK terhadap mata angin hasil
+    // `belok`, bukan terhadap hadap robot -- jadi galat tidak menumpuk. Tapi
+    // nilainya MENUMPUK antar ruas: sesudah satu ruas menyerong 45, ruas
+    // BLK_LURUS berikutnya tetap 45. Untuk kembali, tulis lawannya (-45).
     float       putar = 0.0f;
 
-    // CONDONG. true = tambahkan DUA fase sesudah badan digeser maju: jeda
-    // konfirmasi mata selebar KORBAN_CONDONG_JEDA_MS, lalu pelurusan badan ke
-    // heading ruas ini. Dipakai K-3 dan K-4, tempat korbannya tertutup
-    // reruntuhan dan operator perlu melihat sendiri sebelum lengan turun.
-    //
-    // BUKAN saklar translasi maju. Sejak 16 Sep 2026 badan digeser maju di
-    // SETIAP ruas AMBIL, sebesar Ruas::condongMm atau KORBAN_CONDONG_MM --
-    // keluhan "kurang maju saat capit turun" sama di tiap korban, bukan cuma
-    // di ruas yang korbannya tertutup. Kolom ini cuma membayar dua fase
-    // tambahan, jadi ruas AMBIL biasa tidak ikut menanggungnya.
-    //
-    // Kolom TERAKHIR dan bernilai false kalau tidak ditulis, sama seperti
-    // `putar`: inisialisasi agregat C++ menolkan anggota yang tidak disebut.
+    // true = dua fase tambahan sesudah badan condong maju: jeda konfirmasi
+    // mata (KORBAN_CONDONG_JEDA_MS) lalu pelurusan ke heading ruas. Untuk
+    // korban yang tertutup reruntuhan. BUKAN saklar translasi maju -- badan
+    // condong di SETIAP ruas AMBIL.
     bool        condong = false;
 
-    // JAGA JARAK BELAKANG selama ruas GESER (HNT_SISI). true = selama menggeser,
-    // robot ditarik mundur setiap LiDAR belakang membaca di atas
-    // RATA_BLK_SASARAN_CM; false = perataan murni menyamping.
-    //
-    // Baku true, karena hanyut maju saat menggeser itu gejala umum, bukan
-    // kekhususan satu ruas. Ditulis false pada ruas yang memang tidak punya
-    // acuan di belakang: di sana bacaan belakang mengukur benda lain, dan
-    // menariknya mundur memindahkan robot menjauhi sasaran ruas berikutnya.
-    //
-    // Tidak berarti apa-apa pada ruas selain HNT_SISI -- hanya rataUpdate()
-    // yang membacanya.
-    //
-    // Kolom TERAKHIR, sama seperti `putar` dan `condong`. Nilai bakunya di
-    // sini, jadi baris yang tidak menyebutnya tidak perlu disentuh.
+    // Ruas geser (HNT_SISI/HNT_GESER): tarik mundur setiap LiDAR belakang
+    // membaca di atas RATA_BLK_SASARAN_CM, menahan hanyut maju. false untuk
+    // ruas yang tidak punya dinding belakang yang tetap -- di sana bacaannya
+    // mengukur benda lain dan malah mengemudi.
     bool        jagaBelakang = true;
 
-    // MUNDUR SEBELUM LENGAN TURUN, mm. Badan ditarik ke BELAKANG sebanyak ini
-    // pada fase SIAP, lalu fase BADAN MAJU mendorongnya balik ke
-    // KORBAN_CONDONG_MM sebelum capit menutup.
-    //
-    // Gunanya membebaskan busur turun. SIAP ke JEPIT itu ayunan siku 110 der
-    // dengan jari-jari FOREARM_LENGTH, dan di tengah ayunan capit menjulur
-    // LEBIH JAUH ke depan daripada di kedua ujungnya. Korban yang berdiri
-    // lebih dekat dari nominal berada di dalam busur itu dan dipukul dari
-    // atas. Menarik badan mundur memindahkan seluruh busur menjauh; dorongan
-    // maju sesudahnya yang mempertemukan capit dengan korban, mendatar.
-    //
-    // PER KORBAN, karena jarak berdiri korban berbeda tiap kantong: K-3/K-4
-    // punya ruang, K-5 ada tangga di belakangnya. 0 = tidak mundur sama
-    // sekali, dan itu nilai bakunya -- baris lama tidak perlu disentuh.
-    //
-    // BATASNYA DIPERIKSA tabelSiap(): mundurMm sendiri tidak boleh melewati
-    // BODY_MAX_TRANS_MM, dan mundurMm + KORBAN_CONDONG_MM harus muat dalam
-    // SATU jatah LENGAN_JEDA_MS pada KORBAN_CONDONG_LAJU_MM_S. Fase yang
-    // kehabisan jatah ditimpa fase berikutnya di tengah gerak, dan capit
-    // menutup sebelum badan sampai.
+    // AMBIL: badan ditarik mundur sejauh ini pada fase SIAP, supaya busur
+    // turun capit (ayunan siku 110 der, paling menjulur di tengah) tidak
+    // memukul korban yang berdiri dekat. Fase BADAN MAJU lalu mendorongnya ke
+    // condongMm. Per korban, karena ruang tiap kantong berbeda. tabelSiap()
+    // memeriksa batas BODY_MAX_TRANS_MM dan jatah LENGAN_JEDA_MS.
     float       mundurMm = 0.0f;
 
-    // MAJU SEBELUM CAPIT MENUTUP, mm. Pasangan maju dari `mundurMm`: fase
-    // BADAN MAJU mendorong badan ke sini, lalu capit menutup.
-    //
-    // 0 = pakai KORBAN_CONDONG_MM (param Calib global). Itu nilai bakunya,
-    // jadi 31 baris lama berjalan persis seperti sebelumnya. Isi kolom ini
-    // pada korban yang butuh angka sendiri; kalau SEMUA korban sudah punya,
-    // 'Qcondong.mm 0' lalu 'W' mematikan yang global tanpa flash ulang.
-    //
-    // Nol tidak bisa berarti "tidak maju sama sekali" -- untuk itu kosongkan
-    // kolom ini DAN setel condong.mm ke 0. Ini harga dari nilai baku yang
-    // harus 0 supaya baris lama tidak perlu disentuh, dan lebih murah
-    // daripada menambah kolom bendera kedua.
+    // AMBIL: maju sejauh ini sebelum capit menutup. 0 = pakai KORBAN_CONDONG_MM
+    // (Calib global). "Tidak maju sama sekali" = kosongkan ini DAN setel
+    // condong.mm ke 0.
     float       condongMm = 0.0f;
 };
 
-// Tabel lintasan. Definisinya di Misi.cpp; jumlahnya dibuka supaya .ino bisa
-// memvalidasi indeks perintah 'm7 <idx> <cm>' tanpa menebak.
-//
-// DUA TABEL, dan bedanya yang membuat penyetelan lintasan tidak lagi menuntut
-// compile + flash tiap percobaan:
-//
-//   RUAS_BAKU[]  const, di FLASH. Acuan yang tidak pernah berubah -- lintasan
-//                seperti yang di-flash terakhir kali. 'm5r' memulangkan RAM
-//                ke sini, jadi percobaan yang kacau selalu punya jalan balik.
-//   RUAS[]       di RAM, dan INILAH yang dijalankan misi. Isinya disalin dari
-//                RUAS_BAKU[] saat menyala, lalu boleh diubah lewat 'm5s' dari
-//                HUD: satu baris penuh per perintah.
-//
-// Nama simbol RUAS DIPERTAHANKAN dengan sengaja walau isinya pindah ke RAM:
-// seluruh pemakaian RUAS[i] di Misi.cpp dan di luarnya (Skor, Tampilan, .ino)
-// tidak perlu disentuh.
-//
-// JUMLAH BARIS BISA BERUBAH lewat 'm5+' / 'm5-', jadi RUAS_N TIDAK const.
-//
-// SKOR_RUAS[] di Skor.cpp adalah tabel KEDUA yang diindeks dengan nomor ruas
-// yang sama. Menyisipkan baris di sini tanpa menggeser peta poin berarti poin
-// jatuh ke ruas yang salah, diam-diam -- persis bug yang ditemukan 18 Sep
-// 2026. Karena itu sisipBaris()/hapusBaris() menggeser KEDUANYA lewat
-// skorSisip()/skorHapus() di Skor.h, dan peta poin punya salinan RAM sendiri.
+// DUA TABEL:
+//   RUAS_BAKU[]  const di FLASH -- lintasan seperti di-flash. 'm5r' memulangkan
+//                RAM ke sini.
+//   RUAS[]       di RAM, dan INILAH yang dijalankan. Disalin dari RUAS_BAKU[]
+//                saat menyala, boleh diubah dari HUD ('m5s'), jumlah barisnya
+//                bisa berubah ('m5+'/'m5-').
+// SKOR_RUAS[] di Skor.cpp diindeks dengan nomor ruas yang sama; sisipBaris()/
+// hapusBaris() menggeser keduanya, kalau tidak poin jatuh ke ruas yang salah.
 extern const Ruas RUAS_BAKU[];
 extern Ruas RUAS[];
 extern uint8_t RUAS_N;
 extern const uint8_t RUAS_BAKU_N;
 
-// Panjang kolam nama per baris, termasuk NUL. Nama di RUAS_BAKU[] menunjuk ke
-// flash; begitu operator mengubahnya, ia harus menunjuk ke RAM, dan RAM itu
-// harus punya batas yang sama di kedua ujung serial -- HUD memotong nama di
-// RUAS_NAMA_MAKS-1 sebelum menghitung CRC, dan firmware melakukan hal yang
-// sama. Batas yang berbeda = CRC yang tidak pernah cocok pada nama panjang.
+// Panjang kolam nama per baris, termasuk NUL. HUD memotong nama di
+// RUAS_NAMA_MAKS-1 sebelum menghitung CRC -- batas yang berbeda di kedua
+// ujung = CRC yang tidak pernah cocok pada nama panjang.
 #define RUAS_NAMA_MAKS 40
 
-// Kapasitas salinan panjang ruas yang bisa disetel operator (_cm[]). Tabelnya
-// ada di flash dan array ini di RAM, jadi keduanya tidak bisa saling
-// menyesuaikan sendiri -- penjaganya static_assert di Misi.cpp. Tanpa itu,
-// menambah baris ke-25 ke tabel akan menulis melewati ujung array tanpa satu
-// pun keluhan, dan yang tertimpa adalah anggota kelas di sebelahnya.
-// Cuma ukuran dua array RAM (_arah[] uint8 + _cm[] float) -- TIDAK menyentuh
-// EEPROM, jadi menaikkannya tidak membuang kalibrasi apa pun. 28 -> 36 pada
-// 8 Sep 2026 saat tabel tumbuh ke 34 baris; sisanya ruang tumbuh.
-//
-// 34 -> 40 pada 18 Sep 2026: tabel sudah PERSIS 34 baris, jadi 'm5+' tidak
-// punya satu slot pun untuk menyisipkan dan selalu menjawab 'tabel penuh'.
+// Kapasitas tabel RAM. Cuma ukuran array RAM, tidak menyentuh EEPROM. Harus
+// lebih besar dari jumlah baris supaya 'm5+' punya slot; dijaga static_assert
+// di Misi.cpp.
 #define RUAS_MAKS 40
 
 enum StatMisi : uint8_t {
@@ -363,10 +177,8 @@ enum StatMisi : uint8_t {
     MISI_SETEL,        // profil gait baru dipasang -- menunggu badan tenang
     MISI_LENGAN,       // aksi ujung: sekuens lengan (pose tetap, buta)
     MISI_KONFIRM,      // aksi ujung: menunggu 'm2'/'m3'
-    // Capit sudah selesai, tapi Raspi mungkin MASIH memegang kaki untuk
-    // menahan posisi. State sendiri, bukan MISI_KONFIRM yang dipakai ulang:
-    // KONFIRM sudah punya dua ujung (ruas AKS_KONFIRM dan parkir vision), dan
-    // ujung ketiga di satu state adalah tempat paling mudah untuk salah.
+    // Capit selesai, tapi Raspi mungkin masih memegang kaki. State sendiri:
+    // KONFIRM sudah punya dua ujung (ruas AKS_KONFIRM dan parkir vision).
     MISI_LEPAS,        // aksi ujung: menunggu 'm9' -- Raspi melepas kaki
     MISI_UKUR,         // MODE UKUR: jalan tanpa syarat henti, operator yang menyetop
     MISI_SELESAI,
@@ -378,24 +190,15 @@ public:
     Misi(Hexapod& robot, Navigation& nav, LidarArray& lidar);
 
     void mulai();                     // 'm1'  -- selalu dari ruas 0
-    // 'm4 <idx> [sampai]' -- jalankan SEBAGIAN lintasan.
-    //
-    // Batas akhir ada karena tabel yang belum lengkap di UJUNG lintasan dulu
-    // memblokir pengujian bagian yang datanya sudah kuat: tabelSiap() menyapu
-    // seluruh tabel, jadi satu ruas -1 di ruas 18 membuat robot menolak
-    // melangkah dari HOME. Sekarang yang diperiksa hanya ruas yang benar-benar
-    // akan dijalani, dan itu memang semantik yang lebih tepat.
+    // 'm4 <idx> [sampai]' -- jalankan sebagian lintasan. tabelSiap() hanya
+    // memeriksa ruas yang akan dijalani, jadi ruas -1 di ujung tidak memblokir
+    // pengujian bagian awal.
     void mulaiDari(uint8_t idx, uint8_t sampai = 255);
 
-    // 'm6 <idx>' -- MODE UKUR. Menjalankan satu ruas dengan profil, kemudi, dan
-    // arah miliknya sendiri, TANPA syarat henti: operator yang menghentikan di
-    // ujung ruas ('s'/Enter/'m0'), lalu robot mencetak sendiri berapa cm yang
-    // ditempuhnya. Itu angka yang dicari saat mapping.
-    //
-    // Sengaja TIDAK lewat tabelSiap(): ruas yang mau diukur justru yang
-    // panjangnya masih -1, jadi menuntut tabel lengkap lebih dulu membuat mode
-    // ini mustahil dipakai untuk tujuannya sendiri. Yang tetap diperiksa cuma
-    // syarat yang bikin robot celaka: kompas, kalibrasi pivot, servo.
+    // 'm6 <idx>' -- MODE UKUR: satu ruas dengan profil, kemudi, dan arahnya,
+    // TANPA syarat henti. Operator menghentikan di ujung ruas, robot mencetak
+    // jarak tempuhnya. Tidak lewat tabelSiap() -- ruas yang diukur justru yang
+    // masih -1. Kompas, pivot, dan servo tetap diperiksa.
     void ukur(uint8_t idx);
     void batal(const char* alasan);   // 'm0', juga 'x' / 's' / Enter
     void update();                    // tiap loop, SEBELUM nav.navUpdate()
@@ -404,18 +207,10 @@ public:
     void jawab(bool korban);          // 'm2' / 'm3'
     void setRuasCm(uint8_t idx, float cm);   // 'm7 <idx> <cm>'
 
-    // --- EDITOR TABEL DARI HUD ('m5') -----------------------------------
+    // --- EDITOR TABEL DARI HUD ('m5'). Semuanya ditolak selama berjalan(). ---
     //
-    // Semuanya DITOLAK selama berjalan(): misi yang membaca dua tabel berbeda
-    // dalam satu lintasan adalah bug yang tidak bisa direproduksi, dan
-    // penolakannya lebih murah daripada mencarinya.
-    //
-    // 'm5s <idx> <13 kolom> | <nama>'. Satu baris penuh per perintah, bukan
-    // satu kolom: mengubah satu angka di editor tetap satu perintah, dan
-    // mengirim seluruh tabel tetap satu perintah per baris.
-    //
-    // Urutan `v` sama dengan urutan anggota struct Ruas, sama dengan urutan
-    // kolom yang dicetak tabelDump(), dan sama dengan urutan byte CRC:
+    // 'm5s <idx> <13 kolom> | <nama>': satu baris penuh per perintah. Urutan
+    // `v` = urutan anggota struct Ruas = kolom tabelDump() = urutan byte CRC:
     // belok, kemudi, profil, abaikanDepan, henti, nilai, aksi, lengan, putar,
     // condong, jagaBelakang, mundurMm, condongMm.
     bool setBaris(uint8_t idx, const float* v, const char* nama);
@@ -423,69 +218,45 @@ public:
     bool hapusBaris(uint8_t idx);     // 'm5- <idx>'
     void tabelBaku();                 // 'm5r' -- RAM kembali ke tabel flash
 
-    // Tabel RAM masih sama persis dengan tabel flash? Dipakai setup() untuk
-    // menangkap kesalahan urutan inisialisasi global, yang menolkan anggota
-    // bernilai baku tanpa satu pun pesan.
+    // Tabel RAM sama persis dengan flash? Dipakai setup() untuk menangkap
+    // urutan inisialisasi global yang menolkan nilai baku diam-diam.
     bool tabelSamaBaku() const;
 
-    // 'm5d' -- satu baris '#TABR <idx> <13 kolom> | <nama>' per ruas, dalam
-    // bentuk yang sama persis dengan yang diterima 'm5s'. Tanpa ini HUD harus
-    // menyimpan salinan tabelnya sendiri, dan salinan itu jadi sumber
-    // kebenaran kedua yang diam-diam menyimpang dari flash.
+    // 'm5d' -- '#TABR <idx> <13 kolom> | <nama>' per ruas, bentuk yang sama
+    // dengan 'm5s'. NILAI SUMBER, tidak tercermin -- yang diedit tabelnya.
     void tabelDump();
 
-    // 'm5' -- cetak '#TABV <crc16> <n>'. HUD menghitung CRC yang sama dari
-    // draft-nya; cocok berarti tabel RAM identik dengan draft, bukan
-    // kira-kira sama. Ia juga yang membuat reset Teensy terdeteksi sendiri:
-    // sesudah reset CRC kembali ke nilai tabel flash, dan HUD mengirim ulang
-    // tanpa diminta.
+    // 'm5' -- '#TABV <crc16> <n>'. HUD menghitung CRC yang sama dari draft-nya;
+    // sesudah Teensy reset CRC kembali ke tabel flash dan HUD mengirim ulang.
     void tabelVersi();
     uint16_t tabelCrc() const;
 
-    // 'aa' / 'at' -- jalankan SEKUENS LENGAN saja, tanpa ruas di belakangnya.
-    // Dipakai untuk menyetel pose korban di meja: sekuens yang sama persis
-    // yang akan dijalankan misi, dengan jeda antar pose yang sama.
-    //
-    // Lewat Misi dan bukan lewat loop sendiri di .ino karena sekuens ini
-    // BUTA dan berjeda: ia butuh state, penjaga servo, dan rem 'm0'/'s' yang
-    // semuanya sudah ada di sini. Saklar LENGAN_KORBAN_AKTIF sengaja TIDAK
-    // berlaku -- yang mengetik perintahnya memang sedang menyetel lengan.
+    // 'aa' / 'at' -- jalankan sekuens lengan saja, untuk menyetel pose di meja.
+    // LENGAN_KORBAN_AKTIF sengaja tidak berlaku di sini.
     void ujiLengan(bool ambil);
 
-    // SERAH-TERIMA KENDALI DENGAN RASPI. Dua perintah, satu di tiap ujung.
-    //
-    // Masalah yang ditutupnya: ruasSehat() menggagalkan misi begitu navMode()
-    // berubah, dan itu termasuk perubahan yang datang dari serial ('o', 'O',
-    // ...). Jadi selama MISI_JALAN, Raspi TIDAK BISA menengahkan badan tanpa
-    // mematikan misi. Satu-satunya tempat yang aman adalah state yang tidak
-    // memanggil ruasSehat() dan yang navigasinya sudah diam -- dan itu
-    // persis MISI_KONFIRM / MISI_LEPAS.
-    //
-    // Alurnya, satu penguasa pada satu waktu:
+    // SERAH-TERIMA KENDALI DENGAN RASPI, satu penguasa pada satu waktu:
     //   Teensy  #KORBAN AMBIL <ruas>  -> parkir, kendali kaki MILIK RASPI
-    //   Raspi   menengahkan, tahan, badan TIDAK dinetralkan
+    //   Raspi   menengahkan dan menahan badan
     //   Raspi   'm2'                  -> kendali kaki KEMBALI ke Teensy
     //   Teensy  sekuens capit
     //   Teensy  #LEPAS <ruas>         -> tanya: masih memegang kaki?
     //   Raspi   'm9'                  -> tidak lagi; misi boleh lanjut
+    // Aman karena MISI_KONFIRM/MISI_LEPAS tidak memanggil ruasSehat().
     void setTungguVision(int mode);   // 'm8' / 'm8 1' / 'm8 0'
     bool tungguVision() const { return _tungguVision; }
     void lepasKendali();              // 'm9' -- Raspi melepas kaki
 
     StatMisi stat() const { return _stat; }
 
-    // Dibuka untuk OLED: layar di badan robot harus bisa menyebut ruas dan
-    // jam kontes tanpa laptop. Keduanya baca-saja.
+    // Untuk OLED: ruas dan jam kontes tanpa laptop.
     uint8_t  ruasKini() const { return _i; }
     uint32_t waktuMisiDetik() const {
         return _tMisi ? ((millis() - _tMisi) / 1000UL) : 0UL;
     }
 
-    // AKTIF = ada sesuatu yang harus dihentikan kalau operator menekan rem.
-    // SATU definisi untuk seluruh kelas: tiap state selain DIAM/SELESAI/GAGAL.
-    // Versi lama menuliskan daftarnya satu per satu dan lupa lima state, jadi
-    // 'm0' di tengah lantai pecah tidak menghentikan apa pun. Ditulis begini
-    // supaya state baru ikut terhitung TANPA ada yang perlu ingat.
+    // AKTIF = ada yang harus dihentikan saat rem ditekan. Ditulis sebagai
+    // "bukan DIAM/SELESAI/GAGAL" supaya state baru ikut terhitung sendiri.
     bool berjalan() const {
         return _stat != MISI_DIAM && _stat != MISI_SELESAI && _stat != MISI_GAGAL;
     }
@@ -503,8 +274,7 @@ private:
     uint32_t _t0   = 0;          // saat masuk state (batas waktu ruas)
     uint32_t _tMisi = 0;         // saat 'm1' ditekan (jam kontes 5 menit)
 
-    // Panjang ruas yang bisa disetel operator. Disalin dari RUAS[].nilai saat
-    // menyala supaya tabel di flash tetap jadi acuan yang tidak berubah.
+    // Cache RUAS[].nilai yang bisa disetel operator ('m7').
     float    _cm[RUAS_MAKS];
 
     float    _ruasAwal = 0.0f;   // odometer saat ruas dimulai, cm
@@ -513,63 +283,43 @@ private:
     uint32_t _stempel  = 0;      // stempel sampel yang terakhir dihitung
     uint32_t _serongT0 = 0;      // sejak kapan heading keluar toleransi (0 = tidak)
 
-    // HNT_PUNCAK. Ketiganya dinolkan tiap ruas mulai, di ruasJalan().
-    //
-    // _pitchAwal ACUAN ruas ini, bukan nol: pitchDeg() mentah dan badan sudah
-    // dimiringkan profil TANJAK. NAN = ruas ini tidak memakainya, atau IMU
-    // bisu waktu ruas mulai.
+    // HNT_PUNCAK, dinolkan tiap ruas mulai. _pitchAwal = acuan ruas ini
+    // (pitch mentah, sudah termasuk kemiringan profil); NAN = tidak dipakai.
     float    _pitchAwal    = NAN;
     bool     _naikTerlihat = false;   // sudah pernah melewati PUNCAK_NAIK_DEG
     uint32_t _datarT0      = 0;       // sejak kapan datar lagi (0 = belum)
     uint32_t _tenangT0 = 0;      // sejak kapan ramp profil selesai (0 = belum)
     uint8_t  _pivotUlang = 0;    // berapa kali pivot masuk ruas ini diulang
-    // Pivot masuk ruas ini BARU SAJA selesai, dan LiDAR belum dibaca sejak
-    // itu. Dipakai sekali lalu dinolkan -- lihat pasangProfil().
+    // Pivot masuk ruas BARU SAJA selesai dan LiDAR belum dibaca sejak itu.
+    // Dipakai sekali lalu dinolkan -- lihat pasangProfil().
     bool     _pivotBaru = false;
-    // Yaw saat ruas berhenti, untuk mengukur serong yang muncul sesudahnya.
-    // NAN = belum ada ruas yang berhenti sejak menyala.
+    // Yaw saat ruas berhenti, untuk mengukur serong sesudahnya. NAN = belum ada.
     float    _yawUjung = NAN;
     uint8_t  _langkah  = 0;      // sub-langkah sekuens lengan
-    // Sekuens lengan sedang dijalankan lepas dari tabel ('aa'/'at'), jadi
-    // MISI_LENGAN tidak boleh membaca RUAS[_i] maupun lanjut ke ruas berikut.
+    // Sekuens lengan dijalankan lepas dari tabel ('aa'/'at').
     bool     _uji      = false;
     bool     _ujiAmbil = false;
-    // MISI_UKUR selama 'm6' berjalan, MISI_DIAM selebihnya. Dipakai ruasMasuk()
-    // untuk memilih state akhir: jalur masuk ruasnya sama persis, yang berbeda
-    // cuma apakah ruasnya boleh berhenti sendiri.
+    // MISI_UKUR selama 'm6', MISI_DIAM selebihnya -- state akhir ruasMasuk().
     StatMisi _ukurMulai = MISI_DIAM;
-    // SATU PER LENGAN. Dulu ini satu bool untuk seluruh robot, padahal
-    // ARM_DEPAN dan ARM_BELAKANG memang dua capit yang berdiri sendiri --
-    // modelnya tidak sanggup menyatakan "depan penuh, belakang kosong", dan
-    // tabel yang mengambil dua korban berturut-turut terlihat sah olehnya.
+    // Satu per lengan: depan dan belakang dua capit yang berdiri sendiri.
     bool     _korban[2] = { false, false };
 
-    // BAWAANNYA NYALA. Parkirnya berbatas waktu (MISI_VISI_BATAS_MS) dan
-    // habisnya waktu tidak menggagalkan apa pun -- sekuens tetap jalan
-    // memakai sudut tetap, persis perilaku tanpa vision. Jadi NYALA berarti
-    // "coba pakai kamera; kalau tidak ada jawaban, kerjakan cara lama".
+    // Baku NYALA: parkir berbatas waktu, dan habis waktu tidak menggagalkan
+    // apa pun -- sekuens tetap jalan dengan sudut tetap. 'm8 0' tanpa Raspi.
     bool     _tungguVision = true;
     uint8_t  _lidarUlang   = 0;   // jatah pindai ulang, dinolkan tiap misi
 
-    // Ruas berikutnya DILANJUTKAN, bukan diulang dari nol. Dipasang
-    // pulihkanLidar() tepat sebelum ruasMasuk(), dibersihkan ruasJalan()
-    // sesudah dipakai sekali. Tidak ada perhitungan tambahan: yang
-    // dikerjakannya cuma MELEWATI penulisan ulang titik nol.
+    // Ruas berikutnya DILANJUTKAN, bukan diulang: titik nol tidak ditulis
+    // ulang. Dipasang pulihkanLidar(), dihabiskan sekali di kepala ruasJalan().
     bool     _lanjutRuas   = false;
 
-    // Keadaan saklar cermin saat _arah[]/_serong[] terakhir dihitung. Dipakai
-    // segarkanArah() untuk tahu kapan cache itu basi.
+    // Keadaan saklar cermin saat _arah[]/_serong[] terakhir dihitung.
     bool     _arahCermin   = false;
-    // MISI_KONFIRM dipakai DUA hal dengan ujung berbeda: ruas AKS_KONFIRM
-    // (-> ruasBerikut) dan parkir vision (-> MISI_LENGAN). Ini yang
-    // membedakannya. Tanpa pembeda ini 'm2' akan MELOMPATI pengambilannya dan
-    // robot berjalan ke ruas berikutnya dengan capit kosong.
-    // DETEKSI DI RASPI SEDANG JALAN? Dibuka '#KORBAN', ditutup '#LEPAS'.
-    // Bukan salinan _parkirVision: jendela vision dibuka SEBELUM parkir dan
-    // masih terbuka sesudah parkir dilepas, jadi satu bendera tidak bisa
-    // menjawab dua pertanyaan. Yang ini dipakai batal() dan gagal() untuk
-    // tahu apakah Raspi masih perlu diberi tahu supaya berhenti mendeteksi.
+    // Jendela deteksi Raspi terbuka? Dibuka '#KORBAN', ditutup '#LEPAS'. Lebih
+    // panjang daripada parkir, jadi bukan salinan _parkirVision.
     bool     _visiJalan   = false;
+    // Membedakan dua ujung MISI_KONFIRM: ruas AKS_KONFIRM (-> ruasBerikut)
+    // dan parkir vision (-> MISI_LENGAN). Tanpa ini 'm2' melompati capit.
     bool     _parkirVision = false;
 
     const char* _sebab = nullptr;
@@ -578,12 +328,8 @@ private:
     float       cmKini() const { return _cm[_i]; }
     uint32_t    lewat() const { return millis() - _t0; }
 
-    // Tabel RAM baru berubah.
-    //
-    // WAJIB dipanggil sesudah tiap perubahan tabel. _cm[] dan _arah[] dulu
-    // hanya dihitung di konstruktor, jadi tanpa ini mengubah tabel RAM sesudah
-    // menyala tidak berpengaruh apa pun: misi tetap memakai angka lama, dan
-    // percobaan yang lulus sebelum flash akan gagal sesudahnya.
+    // WAJIB dipanggil sesudah tiap perubahan tabel RAM: menyegarkan _cm[] dan
+    // _arah[], kalau tidak misi tetap memakai angka lama.
     void tabelBerubah();
     // Tabel boleh diubah sekarang? false + pesan kalau misi sedang berjalan.
     bool bolehUbahTabel();
@@ -592,32 +338,20 @@ private:
     void hitungArah();
 
     // Hitung ulang _arah[]/_serong[] BILA saklar cermin berubah sejak
-    // perhitungan terakhir. Murah saat tidak berubah: satu perbandingan bool.
+    // perhitungan terakhir. Satu perbandingan bool saat tidak berubah.
     void segarkanArah();
     float headingRuas(uint8_t i) const;
 
 public:
-    // --- ARENA CERMIN -------------------------------------------------------
-    //
-    // Lapangan bisa dipasang sebagai cerminnya: yang di kiri jadi di kanan.
-    // Saklarnya 'arena.mirror' (K_ARENA_MIRROR), dibalik tombol D3 atau
-    // 'Qarena.mirror 1'.
-    //
-    // SATU PINTU, bukan tabel kedua. Menyalin RUAS[] jadi versi cermin berarti
-    // 30 baris yang harus disunting dua kali seumur hidup proyek, dan yang
-    // kedua pasti tertinggal. Ketiga pengakses ini yang dipakai SELURUH kode
-    // yang membaca kolom berarah, jadi mencerminkan misi cuma membalik saklar.
-    //
-    // Yang dicerminkan hanya TIGA kolom, dan itu cukup:
-    //   belok   BLK_KIRI <-> BLK_KANAN. LURUS dan BALIK tidak berubah, dan
-    //           karena hitungArah() menumpuk kolom ini, seluruh mata angin
-    //           misi ikut tercermin sendiri (TIMUR <-> BARAT, UTARA dan
-    //           SELATAN tetap).
-    //   kemudi  KMD_KIRI <-> KMD_KANAN. KMD_TENGAH tidak berarah.
-    //   putar   dinegasikan; serong 45 der ke kiri jadi 45 der ke kanan.
-    //
-    // Yang TIDAK dicerminkan: jarak, profil, aksi, lengan. Lengan cuma satu di
-    // depan, dan jarak tidak punya sisi.
+    // --- ARENA CERMIN ---
+    // Saklar 'arena.mirror' (K_ARENA_MIRROR), dibalik tombol D3 atau
+    // 'Qarena.mirror 1'. Satu tabel, tiga pengakses -- SELURUH kode yang
+    // membaca kolom berarah wajib lewat sini:
+    //   belok   KIRI <-> KANAN (LURUS/BALIK tetap). Mata angin ikut tercermin
+    //           lewat hitungArah(): TIMUR <-> BARAT, UTARA/SELATAN tetap.
+    //   kemudi  KIRI <-> KANAN. TENGAH tetap.
+    //   putar   dinegasikan.
+    // Jarak, profil, aksi, dan lengan tidak dicerminkan.
     static bool arenaCermin();
     Belok  belokRuas(uint8_t i)  const;
     Kemudi kemudiRuas(uint8_t i) const;
@@ -639,27 +373,19 @@ private:
     bool ruasJalan();             // profil + kemudi + navMulai untuk RUAS[_i]
     bool ruasSehat();             // penjaga: nav masih milik kita & arah benar
     bool ruasSelesai();           // syarat henti RUAS[_i] terpenuhi?
-    // berpoin=false: ruas DILEWATI, bukan diselesaikan. Poin hanya dicatat
-    // untuk ruas yang benar-benar dikerjakan.
+    // berpoin=false: ruas DILEWATI -- poin hanya untuk ruas yang dikerjakan.
     void ruasBerikut(bool berpoin = true);
 
-    // LEWATI ruas ini dan teruskan misi. Diminta R2C 18 Sep 2026: di lomba,
-    // ruas yang gagal lebih baik ditinggalkan daripada menghentikan seluruh
-    // lari. Sebab 'lunak' -- pivot meleset, ruas kehabisan waktu, heading
-    // hilang, perataan ditolak -- semuanya lewat sini sekarang.
-    //
-    // Yang TETAP membatalkan misi cuma tiga: servo lemas, LiDAR mati, dan
-    // waktu kontes habis. Ketiganya berarti robot tidak bisa lagi dipercaya
-    // bergerak, bukan sekadar satu ruas yang meleset.
+    // LEWATI ruas ini dan teruskan misi. Sebab lunak (pivot meleset, batas
+    // waktu, heading hilang, perataan ditolak) lewat sini. Yang tetap
+    // membatalkan: servo lemas, LiDAR mati, waktu kontes habis.
     void lewati(const char* sebab);
 
-    // Ada LiDAR yang BENAR-BENAR tidak merespons? Bukan 'jauh', bukan bacaan
-    // buruk -- tidak menjawab sama sekali.
+    // Ada LiDAR yang TIDAK menjawab sama sekali? (Bukan 'jauh'.)
     bool lidarMati();
 
-    // Coba hidupkan ulang LiDAR yang putus, seperti mengetik 'I'. Mengembalikan
-    // true kalau sesudahnya semua sensor menjawab lagi. Jatah LIDAR_ULANG_MAKS
-    // per misi.
+    // Coba hidupkan ulang LiDAR yang putus, seperti 'I'. true = semua menjawab
+    // lagi. Jatah LIDAR_ULANG_MAKS per misi.
     bool pulihkanLidar();
     void cetakRuas(uint8_t idx);
 };
