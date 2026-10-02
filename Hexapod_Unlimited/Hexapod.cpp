@@ -431,7 +431,7 @@ void Hexapod::profileStairs() {
     //
     // Kalau ternyata terlalu cepat sehingga kaki menyangkut bibir ubin,
     // setel dasarnya: 'Qgait.cycle_time 1300' lalu 'T1' -> 1500 ms.
-    pasangProfil({ GAIT_STEP_HEIGHT + 35.0f, GAIT_STEP_LENGTH + 10.0f,
+    pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH + 10.0f,
                        GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT + 15.0f, STAND_RADIUS }, 1);
 }
 
@@ -455,7 +455,7 @@ void Hexapod::profileCrouch() {
     // bawahnya bertambah -- itu yang dibutuhkan di PUNCAK turunan, saat kaki
     // depan melangkah ke tanah yang jatuh sementara kaki belakang masih di
     // lantai datar.
-    pasangProfil({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH - 15.0f, 
+    pasangProfil({ GAIT_STEP_HEIGHT + 10.0f, GAIT_STEP_LENGTH - 15.0f, 
                        GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT - 20.0f, STAND_RADIUS }, 2);
 }
 
@@ -566,7 +566,7 @@ void Hexapod::profileTanjak() {
 // ke luar. Lorong R-11 selebar 30 cm, dan itu belum diukur terhadap bentuk
 // ini. Ukur sebelum percaya: lihat WALL_KAKI_CM di config.h.
 void Hexapod::profileNarrow() {
-    bentukTanjak(3, SEMPIT_PITCH_DEG, SEMPIT_RADIUS_KAKI, SEMPIT_TINGGI_BADAN);
+    pasangProfil({ GAIT_STEP_HEIGHT + 20.0f, GAIT_STEP_LENGTH, GAIT_CYCLE_TIME - 200.0f, STAND_HEIGHT, STAND_RADIUS }, 3);
 }
 
 void Hexapod::bentukTanjak(uint8_t slot, float pitchDeg, float radius, float tinggi) {
