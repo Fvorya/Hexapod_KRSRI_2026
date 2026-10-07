@@ -26,10 +26,10 @@ set PI=bima@terra-core
 set TUJUAN=~/teensy
 
 REM AKAR versi firmware. Relatif terhadap letak .bat ini, jadi ikut ke mana
-REM pun folder moses disalin: moses\moses -> ..\.. = folder Hexapod, yaitu
+REM pun folder moses disalin: moses -> .. = folder Hexapod, yaitu
 REM C:\Users\R2C\Desktop\Vincent\Hexapod di laptop ini. Tempat yang sama
 REM yang dipakai SRC di upload_teensy.bat.
-if "%AKAR%"=="" set "AKAR=%~dp0..\.."
+if "%AKAR%"=="" set "AKAR=%~dp0.."
 
 REM Sketch BAKU di bawah akar itu. Versi lain: set SUMBER=<jalur> lalu ulangi.
 if "%SUMBER%"=="" set "SUMBER=%AKAR%\Hexapod_Unlimited"

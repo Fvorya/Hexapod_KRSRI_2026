@@ -23,9 +23,9 @@ REM tidak pernah punya itu, jadi aman di sini.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 REM SRC = folder induk yang berisi versi-versi sketch Vincent.
-REM Di laptop ini: ...\Desktop\Vincent\Hexapod\  (dua tingkat di atas moses\moses).
+REM Di laptop ini: ...\Desktop\Vincent\Hexapod\  (satu tingkat di atas moses\).
 REM Laptop lain tinggal:  set SRC=D:\jalur\ke\vincent  lalu jalankan lagi.
-if "%SRC%"=="" set "SRC=%~dp0..\.."
+if "%SRC%"=="" set "SRC=%~dp0.."
 
 REM VERSI BAKU -- yang dipakai kalau kamu cuma menekan Enter di menu.
 REM Di laptop ini SRC menunjuk ke C:\Users\R2C\Desktop\Vincent\Hexapod, jadi
