@@ -59,7 +59,7 @@
 // perintah manual 'g5' tetap bisa dikerjakan walau sekuens memakai angka lain.
 // Menutup tepat di pagar servo membuat rahang menekan mentok dan menarik arus
 // penuh sepanjang korban digendong.
-#define KORBAN_GRIP_TUTUP  5.0f
+#define KORBAN_GRIP_TUTUP  11.0f
 
 // Condong badan saat capit turun: angkanya di tabel kalibrasi (condong.mm,
 // condong.jeda, condong.yaw), disetel dengan 'Q' lalu 'W'. Kalau kurang maju,
@@ -104,20 +104,42 @@
 #define KORBAN_LEPAS_SIKU     30.0f
 #define KORBAN_LEPAS_PRG     -20.0f
 
-// Jatah waktu tiap fase sekuens. BUTA: servo tidak memberi umpan balik
-// posisi, jadi fase berganti murni dari jam. Sendi bergerak BERURUTAN (bahu,
-// lalu siku+pergelangan), jadi lamanya jumlah, bukan maksimum. Langkah
-// terberat (rehat -> siap, 180 der) = 1,70 detik dengan ARM_SLEW_DEG_S 150 dan
-// ARM_ACCEL_DEG_S2 600 -- sisa 400 ms (19%). Jatah yang sama juga memayungi
-// translasi condong (60 mm pada 40 mm/detik = 1,5 detik). Jangan dipotong
-// tanpa menaikkan slew; cek_lengan_laju.py menjaga keduanya.
-#define LENGAN_JEDA_MS      2100
+// Jatah waktu tiap fase sekuens, ms. BUTA: servo tidak memberi umpan balik
+// posisi, jadi fase berganti murni dari jam. Sendi bergerak BERURUTAN (bahu
+// + capit, lalu siku+pergelangan), jadi lamanya jumlah, bukan maksimum.
+//
+// PER FASE, bukan satu angka. Dulu semua fase 2100 ms, termasuk capit yang
+// cuma butuh 0,5 detik -- AMBIL 14,7 dan TARUH 12,6 detik, sebagian besar
+// menunggu servo yang sudah diam. Tiap jatah di bawah = waktu gerak model
+// cek_lengan_laju.py (slew + percepatan, angka di kolom kanan) ditambah
+// cadangan untuk servo sungguhan yang tertinggal di belakang pulse-nya.
+// cek_lengan_laju.py menolak cadangan di bawah 20%. Kalau pose tidak
+// sempat tercapai di robot, naikkan jatah fase ITU saja.
+//
+// AMBIL                              model gerak
+#define AMBIL_MS_SIAP      2300   // rehat -> siap @150, capit buka   1300 ms
+                                  //   + badan mundur mundurMm (tabelSiap)
+#define AMBIL_MS_JEPIT     1200   // siap -> jepit @150                 920 ms
+#define AMBIL_MS_MAJU      2100   // BADAN maju, lengan diam (tabelSiap)
+#define AMBIL_MS_YAW        700   // pelurusan yaw ruas condong: 20 der @60 der/detik
+#define AMBIL_MS_TUTUP      900   // capit 30 -> 5% @150                520 ms
+                                  //   + MG90S menekan boneka (BELUM DIUKUR)
+#define AMBIL_MS_ANGKAT    2100   // jepit -> angkat @90 520 ms, BADAN mundur (tabelSiap)
+#define AMBIL_MS_LIPAT     2100   // angkat -> rehat @60               2540 ms,
+#define AMBIL_MS_PULANG    1100   //   dibagi dua: badan pulang 30 mm (750 ms) di fase
+                                  //   kedua, sesudah bahu (1620 ms) melewati dinding
+// TARUH
+#define TARUH_MS_SIAP      3000   // rehat -> siap @60, menggendong    2380 ms
+#define TARUH_MS_LEPAS     1500   // siap -> lepas @90                 1120 ms
+#define TARUH_MS_BUKA      1000   // capit 5 -> 30% @90                 620 ms
+#define TARUH_MS_NAIK       600   // lepas -> angkat @150, kosong       340 ms
+#define TARUH_MS_LIPAT     1800   // angkat -> rehat @150              1380 ms
 
 // Laju maksimum sendi lengan, der/detik. Tanpa batas ini servo menyentak pada
 // laju penuh DS3225 (~460 der/detik): melempar korban yang digenggam dan
-// menggoyang badan di tangga. Menaikkannya TIDAK mempercepat misi -- fase
-// tetap menunggu LENGAN_JEDA_MS. Di atas ~232 justru lebih lambat, karena
-// waktu melecut (v/a) mendominasi.
+// menggoyang badan di tangga. Menaikkannya TIDAK mempercepat misi kecuali
+// jatah AMBIL_MS_* / TARUH_MS_* ikut diturunkan. Di atas ~232 justru lebih
+// lambat, karena waktu melecut (v/a) mendominasi.
 #define ARM_SLEW_DEG_S      150.0f
 
 // Batas percepatan lengan, der/detik^2. Membuat profil gerak trapesium
@@ -482,7 +504,7 @@ const uint8_t LIDAR_MIN_CM[6] = {
 // tanda accelZ lagi lewat 'd'.
 //
 // Roll 45, bukan 30: TANJAK bekerja normal di 27,7 der.
-#define TERGULING_AKTIF      1        // 0 = MATI. Baku HIDUP.
+#define TERGULING_AKTIF      0        // 0 = MATI. Baku HIDUP.
 #define TERGULING_AZ_TEGAK  -1.0f     // DIUKUR: tanda accelZ saat berdiri
 #define TERGULING_AZ_G       0.5f     // BELUM DIUKUR: accelZ tegak di bawah ini
 #define TERGULING_ROLL_DEG  45.0f     // BELUM DIUKUR: simpangan roll di atas ini
@@ -584,7 +606,21 @@ const uint8_t LIDAR_MIN_CM[6] = {
 #define NAV_TENGAH_PITA_CM 3.0f
 
 // Gain pivot ada di Calib (heading.kp/kd), satu knob dengan mode arena.
-#define PIVOT_MIN_CMD   0.25f    // Minimal gaya agar tidak cuma "menggeliat"
+//
+// GAIN ITU DISETEL PADA GAIT ACUAN di bawah. Perintah putar 1,0 berarti
+// langkah kaki 1,0 x stepLength per siklus, jadi laju putar badan per satuan
+// perintah sebanding stepLength / cycleTime. Profil yang lebih cepat dari acuan
+// (step_length dinaikkan, cycle_time diturunkan) membuat gain yang sama memutar
+// lebih keras -- pivot melewati target. kemudiHeading() membagi perintahnya
+// dengan S = (stepLength/ACUAN) x (ACUAN/cycleTime) dari profil yang SEDANG
+// berlaku, jadi derajat/detik per derajat error tetap. Ubah dua angka ini hanya
+// kalau heading.kp/kd disetel ulang pada gait lain.
+#define HEADING_ACUAN_STEP_MM   60.0f    // gait.step_length saat heading.kp/kd disetel
+#define HEADING_ACUAN_CYCLE_MS 900.0f    // gait.cycle_time  saat heading.kp/kd disetel
+// Dorongan minimal dalam MM LANGKAH, bukan pecahan perintah: yang membuat badan
+// cuma "menggeliat" adalah langkah yang terlalu pendek, berapa pun stepLength-
+// nya. 15 mm = 0,25 x 60 mm, angka lama di gait acuan.
+#define PIVOT_MIN_MM    15.0f
 #define PIVOT_DIAM_MS   500      // Harus di dalam toleransi selama ms ini
 #define PIVOT_SETTLE_MS 800      // Sesudah sampai: perintah putar 0, tunggu kaki diam
 #define PIVOT_BATAS_MS  20000    // Batas waktu timeout (20 detik)
@@ -619,7 +655,7 @@ const uint8_t LIDAR_MIN_CM[6] = {
 #define BODY_SLEW_MM_S    120.0f  // laju maks geser badan, mm/detik
 
 // Laju condong, mm/detik. Lambat supaya badan tidak goyang tepat di atas
-// korban. condong.mm maks 79 / 40 = 1975 ms, muat di satu LENGAN_JEDA_MS.
+// korban. condong.mm maks 79 / 40 = 1975 ms, muat di AMBIL_MS_MAJU.
 #define KORBAN_CONDONG_LAJU_MM_S  40.0f
 
 // Badan ditarik mundur sejauh ini sebelum lengan melipat korban ke REHAT,
@@ -635,7 +671,7 @@ const uint8_t LIDAR_MIN_CM[6] = {
 #define DEMO_BOOT_TUNDA    3000   // ms, jeda sebelum servo dihidupkan
 #define DEMO_BOOT_BERDIRI  1500   // ms, tunggu kaki menetap sesudah berdiri
 #define DEMO_BOOT_LAMA    20000   // ms, lama goyang berjalan
-#define DEMO_BOOT_PERINTAH "B"    // dijalankan apa adanya lewat handleCmd()
+#define DEMO_BOOT_PERINTAH "z10 3"    // dijalankan apa adanya lewat handleCmd()
 #define BODY_DEMO_TRANS_MM 25.0f  // amplitudo translasi saat demo 'B'
 #define BODY_DEMO_PHASE_S   3.0f  // detik per sumbu (6 sumbu = 18 detik)
 

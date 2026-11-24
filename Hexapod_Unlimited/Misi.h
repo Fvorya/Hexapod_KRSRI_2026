@@ -138,12 +138,18 @@ struct Ruas {
     // turun capit (ayunan siku 110 der, paling menjulur di tengah) tidak
     // memukul korban yang berdiri dekat. Fase BADAN MAJU lalu mendorongnya ke
     // condongMm. Per korban, karena ruang tiap kantong berbeda. tabelSiap()
-    // memeriksa batas BODY_MAX_TRANS_MM dan jatah LENGAN_JEDA_MS.
+    // memeriksa batas BODY_MAX_TRANS_MM dan jatah AMBIL_MS_SIAP/MAJU.
     float       mundurMm = 0.0f;
 
     // AMBIL: maju sejauh ini sebelum capit menutup. 0 = pakai KORBAN_CONDONG_MM
     // (Calib global). "Tidak maju sama sekali" = kosongkan ini DAN setel
     // condong.mm ke 0.
+    //
+    // RUAS LAIN: badan digeser sejauh ini ke DEPAN (+) atau belakang (-)
+    // selama ruas berjalan, kaki tetap menapak -- berat pindah ke kaki depan.
+    // Dibuat untuk puncak R-9: perut belakang tersangkut di bibir anak tangga
+    // terakhir. Dipasang di kepala ruasJalan(), dipulangkan ke 0 oleh ruas
+    // berikutnya. 0 = tidak condong.
     float       condongMm = 0.0f;
 };
 
@@ -312,6 +318,11 @@ private:
     // Ruas berikutnya DILANJUTKAN, bukan diulang: titik nol tidak ditulis
     // ulang. Dipasang pulihkanLidar(), dihabiskan sekali di kepala ruasJalan().
     bool     _lanjutRuas   = false;
+
+    // Ruas HNT_DEPAN yang berangkat SUDAH lebih dekat dari sasarannya: ia
+    // MUNDUR lewat Navigation::setelJarakMulai(LIDAR_FRONT), bukan berjalan
+    // dengan mode arena. Dinolkan di kepala ruasJalan().
+    bool     _setelDepan   = false;
 
     // Keadaan saklar cermin saat _arah[]/_serong[] terakhir dihitung.
     bool     _arahCermin   = false;

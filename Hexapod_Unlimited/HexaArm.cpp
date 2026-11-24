@@ -16,10 +16,9 @@
 //
 // Harganya waktu: total = jumlah waktu tiap TAHAP, bukan yang terlama. Pada
 // ARM_SLEW_DEG_S 150 der/detik, pose 90 der di ketiga sendi makan 2 x 0,6 =
-// 1,2 detik, bukan 0,6. Sekuens korban di Misi.cpp memakai jeda TETAP, dan
-// arah perubahan ini AMAN terhadapnya: dulu 3 tahap = 1,8 detik, jadi margin
-// di dalam LENGAN_JEDA_MS 2100 naik dari 300 ms ke 900 ms. Menggabungkan
-// tahap tidak pernah memperlambat.
+// 1,2 detik, bukan 0,6. Sekuens korban di Misi.cpp memakai jatah TETAP per
+// fase (AMBIL_MS_* / TARUH_MS_*) yang dihitung dari urutan dua tahap ini --
+// memisah tahap lagi memperpanjang gerak, jadi jalankan cek_lengan_laju.py.
 //
 // Harga yang kedua: pergelangan tidak lagi menahan sudutnya selagi siku
 // mengayun, jadi sudut hadap capit BERUBAH sepanjang jalan. Titik akhirnya

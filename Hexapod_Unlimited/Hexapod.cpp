@@ -410,7 +410,7 @@ void Hexapod::profileStairs() {
     // Kalau ternyata terlalu cepat sehingga kaki menyangkut bibir ubin,
     // setel dasarnya: 'Qgait.cycle_time 1300' lalu 'T1' -> 1500 ms.
     pasangProfil({ GAIT_STEP_HEIGHT + 40.0f, GAIT_STEP_LENGTH + 10.0f,
-                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT + 15.0f, STAND_RADIUS }, 1);
+                       GAIT_CYCLE_TIME + 200.0f, STAND_HEIGHT + 10.0f, STAND_RADIUS }, 1);
 }
 
 void Hexapod::profileCrouch() {

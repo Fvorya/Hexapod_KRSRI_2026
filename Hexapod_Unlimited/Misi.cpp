@@ -46,32 +46,37 @@ extern Skor gSkor;
 // diubah dari HUD lewat 'm5s'. 'm5r' memulangkan RAM ke tabel ini.
 const Ruas RUAS_BAKU[] = {
 //         nama                             belok      kemudi      profil        buta   henti          nilai            aksi           lengan    pivot
-/*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  33,              AKS_TIDAK_ADA, 0 },
-/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,     9,              AKS_TIDAK_ADA, 0 },
+/*0*/    { "HOME -> samping K-1",           BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_BELAKANG,  35,              AKS_TIDAK_ADA, 0 },
+/*1*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    14,              AKS_TIDAK_ADA, 0 },
 /*2*/    { "K-1 angkat korban",             BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,  0.0f, false, false, 35.0f, 30.0f },
-/*3*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       96,              AKS_TIDAK_ADA, 0 },
-/*4*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       64,              AKS_TIDAK_ADA, 0 },
+/*3*/    { "R-1 jalan pecah",               BLK_KANAN, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       86,              AKS_TIDAK_ADA, 0 },
+/*4*/    { "M1 turunan + R-2/R-3",          BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       68,              AKS_TIDAK_ADA, 0 },
 /*5*/    { "Depan sampai 30 cm",            BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     30,              AKS_TIDAK_ADA, 0 },
-/*6*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
-/*7*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     15,              AKS_TIDAK_ADA, 0,         +20.0f },
-/*8*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       38,              AKS_TIDAK_ADA, 0 },
-/*9*/    { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_TANGGA,   false, HNT_MUNDUR,    12,              AKS_TIDAK_ADA, 0 },
-/*10*/   { "K-2 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 30.0f }, 
-/*11*/   { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       18,              AKS_TIDAK_ADA, 0 },
-/*12*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
-/*13*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       26,              AKS_TIDAK_ADA, 0,         +20.0f },
-/*14*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*15*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       32,              AKS_TIDAK_ADA, 0 },
-/*16*/   { "lalu maju mentok",              BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_GESER,     30,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
-/*17*/   { "jalan sampai bebatuan",         BLK_LURUS, KMD_KIRI,   PRF_TANGGA,   true,  HNT_ODO,       86,              AKS_TIDAK_ADA, 0 },
-/*18*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       24,              AKS_TIDAK_ADA, 0 },
-/*19*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*20*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
-/*21*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       10,              AKS_TIDAK_ADA, 0 },
-/*22*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   true,  HNT_ODO,       15,              AKS_TIDAK_ADA, 0 },
-/*23*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
-/*24*/   { "hadap kiri maju buta",          BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,    true, HNT_ODO,       40,              AKS_TIDAK_ADA, 0 },
-/*25*/   { "baca lidar depan [fin]",        BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+/*6*/    { "SZ-1 taruh korban (dalam R-4)", BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -10.0f },
+/*7*/    { "Geser ke kiri sedikit",         BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      15,              AKS_TIDAK_ADA, 0,         +10.0f },
+/*8*/    { "pivot kiri ratakan dinding",    BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+/*9*/    { "hadap kiri maju",               BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       30,              AKS_TIDAK_ADA, 0 },
+/*10*/   { "mundur jika bisa",              BLK_KIRI,  KMD_TENGAH, PRF_DATAR,    false, HNT_MUNDUR,    17,              AKS_TIDAK_ADA, 0 },
+/*11*/   { "K-2 angkat korban",             BLK_LURUS, KMD_TENGAH, PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN,   0.0f, false, false, 35.0f, 30.0f }, 
+/*12*/   { "R-5 lumpur: BARAT sampai ujung",BLK_KANAN, KMD_KANAN,  PRF_DATAR,    false, HNT_ODO,       16,              AKS_TIDAK_ADA, 0 },
+/*13*/   { "SZ-2 taruh korban (kanan 20)",  BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN, -20.0f },
+/*14*/   { "SELATAN keluar R-5 (kiri 20)",  BLK_KIRI,  KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       18,              AKS_TIDAK_ADA, 0,         +20.0f },
+/*15*/   { "ratakan ke dinding KANAN",      BLK_LURUS, KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*16*/   { "SELATAN sampai tembok K-3",     BLK_LURUS, KMD_KANAN,  PRF_TANGGA,   false, HNT_ODO,       34,              AKS_TIDAK_ADA, 0 },
+/*17*/   { "lalu kiri mentok",              BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_GESER,     30,              AKS_TIDAK_ADA, 0,           0.0f, false, false },
+/*18*/   { "jalan sampai bebatuan",         BLK_LURUS, KMD_KIRI,   PRF_TANGGA,    true, HNT_ODO,       90,              AKS_TIDAK_ADA, 0 },
+/*19*/   { "kanan maju",                    BLK_KANAN, KMD_KIRI,   PRF_DATAR,    true,  HNT_ODO,       24,              AKS_TIDAK_ADA, 0 },
+/*20*/   { "ratakan 13 cm dinding KANAN",   BLK_KIRI,  KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+/*21*/   { "R-9 TANGGA (miring 103)",       BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_PUNCAK,     0,              AKS_TIDAK_ADA, 0 },
+/*22*/   { "Maju sedikit naik tangga",      BLK_LURUS, KMD_KANAN,  PRF_TANJAK,   true,  HNT_ODO,       18,              AKS_TIDAK_ADA, 0,           0.0f, false, true,  0.0f, 40.0f },
+/*23*/   { "R-10 puing+lumpur miring",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    true,  HNT_ODO,       19,              AKS_TIDAK_ADA, 0 },
+/*24*/   { "jalan ke kanan depan K-5",      BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_SISI,      13,              AKS_TIDAK_ADA, 0 },
+// /*25*/   { "Ambil K-5",                     BLK_LURUS, KMD_KANAN,  PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_AMBIL,     ARM_DEPAN },
+// /*26*/   { "Mundur dari K-5",               BLK_KIRI,  KMD_KANAN,  PRF_MERUNDUK, false, HNT_SISI,      15,              AKS_TIDAK_ADA, 0 },
+/*27*/   { "hadap kiri maju buta",          BLK_KIRI,  KMD_TENGAH, PRF_SEMPIT,   true,  HNT_ODO,       46,              AKS_TIDAK_ADA, 0 },
+/*28*/   { "baca lidar depan",              BLK_LURUS, KMD_TENGAH, PRF_SEMPIT,   false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+// /*29*/   { "Maju sedikit",                  BLK_KANAN, KMD_KIRI,   PRF_DATAR,    false, HNT_DEPAN,     13,              AKS_TIDAK_ADA, 0 },
+// /*29*/   { "Taruh K-5",                     BLK_LURUS, KMD_KIRI,   PRF_DATAR,    false, HNT_LANGSUNG,   0,              AKS_TARUH,     ARM_DEPAN },
 };
 
 // <<< TABEL LINTASAN BAKU selesai
@@ -105,6 +110,12 @@ static_assert(sizeof(RUAS_BAKU) / sizeof(RUAS_BAKU[0]) <= 254,
 // Kecil dengan sengaja: LidarArray sudah menyaring hantu lewat median-3 dan
 // LIDAR_MIN_CM, jadi ini cuma lapis terakhir terhadap satu pantulan nyasar.
 static const uint8_t MISI_SAMPEL_N = 3;
+
+// Ruas HNT_DEPAN yang berangkat dengan depan LEBIH DEKAT dari sasarannya
+// mundur dulu sampai sasaran. Di bawah selisih ini dianggap sudah sampai:
+// geser maju-mundur terkuantisasi satu langkah gait (~30 mm pada laju 0,25),
+// jadi mundur 1 cm berakhir 3 cm terlalu jauh, dan derau LiDAR sendiri 1-2 cm.
+static const int MISI_DEPAN_MUNDUR_TOL_CM = 2;
 
 // Jeda sesudah ganti profil, sebelum LiDAR ruas itu dipercaya. Badan yang
 // naik-turun mengayunkan seluruh berkas sensor tanpa robot berpindah, dan
@@ -152,7 +163,7 @@ static const uint32_t MISI_SERONG_MIN_MS = 3000;
 // ====================================================================
 // SEKUENS LENGAN: pose sendi TETAP dari config.h (KORBAN_SIAP_*, JEPIT_*,
 // LEPAS_*, ANGKAT_*), tanpa IK dan tanpa umpan balik posisi -- tiap fase
-// diberi waktu tetap LENGAN_JEDA_MS.
+// diberi jatah waktunya sendiri (AMBIL_MS_* / TARUH_MS_*).
 //
 // Harganya: memindahkan tempat robot berhenti menuntut sudut disetel ulang
 // dengan tangan. Seluruh baris AMBIL memakai HNT_LANGSUNG, jadi jarak ke
@@ -163,11 +174,15 @@ static const uint32_t MISI_SERONG_MIN_MS = 3000;
 // Fase dari waktu. Sekuens ini buta, jadi "sudah sampai?" tidak bisa ditanya
 // ke siapa pun -- yang bisa dilakukan cuma memberi tiap langkah jatahnya.
 // langkah = jumlah fase yang SUDAH dikerjakan, jadi fase 0 jalan seketika dan
-// fase yang terlewat (loop tersendat) tetap dikerjakan, tidak dilompati.
-static bool faseBaru(uint8_t& langkah, uint32_t sejak, uint8_t& fase) {
-    fase = (uint8_t)((millis() - sejak) / LENGAN_JEDA_MS);
-    if (fase < langkah) return false;
-    langkah = fase + 1;
+// fase yang terlewat (loop tersendat) tetap dikerjakan satu per panggilan,
+// tidak dilompati. Fase k mulai pada sejak + jumlah jatah[0..k-1]; fase n
+// (sesudah jatah terakhir) adalah "selesai" -- cabang default pemanggil.
+static bool faseBaru(uint8_t& langkah, uint32_t sejak,
+                     const uint16_t* jatah, uint8_t n, uint8_t& fase) {
+    uint32_t mulai = 0;
+    for (uint8_t i = 0; i < langkah && i < n; i++) mulai += jatah[i];
+    if (millis() - sejak < mulai) return false;
+    fase = langkah++;
     return true;
 }
 
@@ -199,8 +214,26 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
     // Kolom ruas menang atas param global. 0 di kolom berarti "belum diisi",
     // bukan "maju nol" -- lihat Ruas::condongMm.
     const float majuMm = (condongMm > 0.0f) ? condongMm : KORBAN_CONDONG_MM;
+
+    // Fase khusus ruas `condong`, disisipkan sesudah BADAN MAJU: jeda
+    // konfirmasi mata (satu fase sepanjang condong.jeda persis) lalu pelurusan
+    // yaw. Yang bernilai 0 tidak memakan fase sama sekali.
+    const uint8_t nJeda = (condong && KORBAN_CONDONG_JEDA_MS > 0) ? 1 : 0;
+    const uint8_t nYaw  = (condong && KORBAN_CONDONG_YAW) ? 1 : 0;
+    uint16_t jatah[9];
+    uint8_t  n = 0;
+    jatah[n++] = AMBIL_MS_SIAP;
+    jatah[n++] = AMBIL_MS_JEPIT;
+    jatah[n++] = AMBIL_MS_MAJU;
+    if (nJeda) jatah[n++] = (uint16_t)KORBAN_CONDONG_JEDA_MS;   // Calib: maks 8000
+    if (nYaw)  jatah[n++] = AMBIL_MS_YAW;
+    jatah[n++] = AMBIL_MS_TUTUP;
+    jatah[n++] = AMBIL_MS_ANGKAT;
+    jatah[n++] = AMBIL_MS_LIPAT;
+    jatah[n++] = AMBIL_MS_PULANG;
+
     uint8_t fase;
-    if (!faseBaru(langkah, sejak, fase)) return false;
+    if (!faseBaru(langkah, sejak, jatah, n, fase)) return false;
 
     // Fase 2 selalu menggeser badan maju; fase sesudahnya bergeser nomornya
     // (satu switch, bukan dua salinan). Lengan turun ke ketinggian jepit DULU,
@@ -228,20 +261,14 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
             return false;
         }
 
-        // SISANYA HANYA UNTUK RUAS `condong`: jeda konfirmasi mata lalu
-        // pelurusan yaw. Ruas AMBIL biasa cuma membayar satu fase, yaitu
-        // translasi di atas, lalu langsung lanjut ke pose lengan.
+        // SISANYA HANYA UNTUK RUAS `condong` (nJeda/nYaw nol di ruas lain):
+        // jeda konfirmasi mata lalu pelurusan yaw. Ruas AMBIL biasa cuma
+        // membayar satu fase, yaitu translasi di atas, lalu langsung lanjut
+        // ke pose lengan.
         uint8_t nGeser = 1;
         if (condong) {
-            // Tiga fase, yang tengah sengaja kosong: jeda konfirmasi mata antara
-            // translasi dan rotasi. Fase, bukan delay -- 'm0'/'s' harus tetap bisa
-            // menghentikannya. condong.jeda dibulatkan NAIK ke jatah LENGAN_JEDA_MS
-            // terdekat (jeda minimum untuk memeriksa).
-            const uint8_t nJeda = (uint8_t)((KORBAN_CONDONG_JEDA_MS + LENGAN_JEDA_MS - 1)
-                                            / LENGAN_JEDA_MS);
-            // Pelurusan yaw hanya memakai fase kalau benar-benar dikerjakan; dengan
-            // condong.yaw 0 ruas condong tidak boleh membayar 2100 ms kosong.
-            const uint8_t nYaw = KORBAN_CONDONG_YAW ? 1 : 0;
+            // Jeda konfirmasi mata antara translasi dan rotasi: fase kosong,
+            // bukan delay -- 'm0'/'s' harus tetap bisa menghentikannya.
             if (fase >= 3 && fase < (uint8_t)(3 + nJeda)) return false;
             if (nYaw && fase == (uint8_t)(3 + nJeda)) {
                 // Sisa simpangan dari mata angin ruas dihabiskan di atas kaki yang diam.
@@ -338,38 +365,39 @@ static bool sekuensAmbil(Hexapod& robot, uint8_t lengan, uint8_t& langkah,
 // atas boneka yang baru berdiri, bukan menyeretnya. Laju mengikuti beban:
 // pelan selama menggenggam (fase 0-1), penuh sesudah capit terbuka.
 static bool sekuensTaruh(Hexapod& robot, uint8_t lengan, uint8_t& langkah, uint32_t sejak) {
+    static const uint16_t JATAH[] = {
+        TARUH_MS_SIAP, TARUH_MS_LEPAS, TARUH_MS_BUKA, TARUH_MS_NAIK, TARUH_MS_LIPAT
+    };
     uint8_t fase;
-    if (!faseBaru(langkah, sejak, fase)) return false;
+    if (!faseBaru(langkah, sejak, JATAH, sizeof(JATAH) / sizeof(JATAH[0]), fase))
+        return false;
     switch (fase) {
         case 0:   // buka dari REHAT ke SIAP, capit MASIH menggenggam. Ayunan
             //    bahu inilah yang bisa melempar boneka, jadi laju lipat.
+            //    Dulu dua fase 2100 (satu kosong); sekarang satu jatah
+            //    TARUH_MS_SIAP yang memang memuat 2380 ms ayunannya.
             robot.armEnable(lengan, true);
             robot.setSlewLengan(lengan, LENGAN_SLEW_REHAT_DEG_S);
             poseSendi(robot, lengan, KORBAN_SIAP_BAHU, KORBAN_SIAP_SIKU,
                       KORBAN_SIAP_PRG, "siap (menggendong)");
             break;
-        case 1:   // KOSONG DENGAN SENGAJA -- jatah kedua untuk ayunan di atas.
-            //    REHAT ke SIAP itu bahu 90 der, dan pada laju lipat ia makan
-            //    2540 ms, lebih lama daripada satu LENGAN_JEDA_MS. Ketahuan
-            //    cek_lengan_laju.py sebelum pernah dijalankan di robot.
-            break;
-        case 2:   // TURUN ke titik lepas. Siku yang bekerja, jadi boleh laju
+        case 1:   // TURUN ke titik lepas. Siku yang bekerja, jadi boleh laju
             //    angkat -- sama seperti fase 4 AMBIL, arah terbalik.
             robot.setSlewLengan(lengan, LENGAN_SLEW_ANGKAT_DEG_S);
             poseSendi(robot, lengan, KORBAN_LEPAS_BAHU, KORBAN_LEPAS_SIKU,
                       KORBAN_LEPAS_PRG, "lepas");
             break;
-        case 3:   // LEPAS HANYA sesudah sampai; melepas di tengah jalan berarti
+        case 2:   // LEPAS HANYA sesudah sampai; melepas di tengah jalan berarti
             //    korban jatuh di luar safe zone dan nilainya hangus.
             robot.setGrip(lengan, KORBAN_GRIP_BUKA);
             break;
-        case 4:   // NAIK menjauh dari korban yang baru berdiri, capit KOSONG.
+        case 3:   // NAIK menjauh dari korban yang baru berdiri, capit KOSONG.
             //    Tidak ada lagi yang bisa terlempar, jadi laju penuh.
             robot.setSlewLengan(lengan, ARM_SLEW_DEG_S);
             poseSendi(robot, lengan, KORBAN_ANGKAT_BAHU, KORBAN_ANGKAT_SIKU,
                       KORBAN_ANGKAT_PRG, "angkat (kosong)");
             break;
-        case 5:   // melipat ke REHAT untuk ruas berikutnya
+        case 4:   // melipat ke REHAT untuk ruas berikutnya
             poseSendi(robot, lengan, REHAT_BAHU, REHAT_SIKU,
                       REHAT_PERGELANGAN, "rehat");
             break;
@@ -791,7 +819,7 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
 
         // 3c) Ruas MUNDUR: sasarannya harus DI ATAS pita "terlalu dekat",
         //    alasan yang sama persis dengan ruas GESER di atas.
-        //    setelBelakangMulai() menolak sasaran <= WALL_MIN_CM, dan tanpa
+        //    setelJarakMulai() menolak sasaran <= MUNDUR_MIN_CM, dan tanpa
         //    pemeriksaan ini penolakan itu datang di arena -- sesudah ruas
         //    sebelumnya selesai dan robot sudah berdiri di tempatnya.
         if (RUAS[i].henti == HNT_GESER && RUAS[i].nilai >= 0.0f &&
@@ -807,13 +835,24 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
             Serial.print("Gagal: ruas "); Serial.print(i);
             Serial.print(" sasaran mundur "); Serial.print(_cm[i], 0);
             Serial.print(" cm <= lantai mundur "); Serial.println(MUNDUR_MIN_CM, 0);
-            Serial.println("  setelBelakangMulai() akan menolaknya sebelum berangkat.");
+            Serial.println("  setelJarakMulai() akan menolaknya sebelum berangkat.");
+            ok = false;
+        }
+
+        // 3c') Condong ruas NON-AMBIL: setBodyTranslation() meng-clamp ke
+        //    BODY_MAX_TRANS_MM DIAM-DIAM, jadi angka yang lebih besar akan
+        //    tercetak tapi tidak pernah terjadi.
+        if (RUAS[i].aksi != AKS_AMBIL && fabsf(RUAS[i].condongMm) > BODY_MAX_TRANS_MM) {
+            Serial.print("Gagal: ruas "); Serial.print(i);
+            Serial.print(" condong "); Serial.print(RUAS[i].condongMm, 0);
+            Serial.print(" mm > BODY_MAX_TRANS_MM "); Serial.println(BODY_MAX_TRANS_MM, 0);
             ok = false;
         }
 
         // 3d) Ruas AMBIL: mundurMm tidak boleh lewat BODY_MAX_TRANS_MM (di-clamp
-        //    diam-diam), dan mundurMm + condong harus muat dalam SATU jatah
-        //    LENGAN_JEDA_MS -- kalau tidak, capit menutup sebelum badan sampai.
+        //    diam-diam), dan tiap perjalanan badan harus muat dalam jatah
+        //    fasenya -- kalau tidak, lengan turun/capit menutup sebelum badan
+        //    sampai.
         //    Semua baris AMBIL diperiksa: yang kolomnya kosong tetap menempuh
         //    KORBAN_CONDONG_MM.
         if (RUAS[i].aksi == AKS_AMBIL) {
@@ -830,27 +869,28 @@ bool Misi::tabelSiap(uint8_t dari, uint8_t sampai) {
                 Serial.print(" mm > BODY_MAX_TRANS_MM "); Serial.println(BODY_MAX_TRANS_MM, 0);
                 ok = false;
             }
-            // DUA perjalanan badan, masing-masing satu jatah fase, dan yang
-            // TERPANJANG yang menentukan:
-            //   BADAN MAJU   dari -mundurMm ke +maju
-            //   ANGKAT       dari +maju ke -KORBAN_ANGKAT_MUNDUR_MM
-            // Memeriksa yang pertama saja pernah cukup; sejak mundur-saat-
-            // mengangkat dipasang 17 Sep 2026, yang kedua bisa lebih panjang
-            // kalau mundurMm kecil sementara maju besar.
-            const float tempuhMaju   = RUAS[i].mundurMm + maju;
-            const float tempuhAngkat = maju + KORBAN_ANGKAT_MUNDUR_MM;
-            const float tempuh = (tempuhAngkat > tempuhMaju) ? tempuhAngkat
-                                                             : tempuhMaju;
-            const float muat   = KORBAN_CONDONG_LAJU_MM_S * (LENGAN_JEDA_MS / 1000.0f);
-            if (tempuh > muat) {
+            // TIGA perjalanan badan pada KORBAN_CONDONG_LAJU_MM_S, masing-masing
+            // di dalam jatah fasenya sendiri:
+            //   SIAP     dari 0 ke -mundurMm             (AMBIL_MS_SIAP)
+            //   MAJU     dari -mundurMm ke +maju         (AMBIL_MS_MAJU)
+            //   ANGKAT   dari +maju ke -ANGKAT_MUNDUR    (AMBIL_MS_ANGKAT)
+            // Yang ketiga ditambahkan 17 Sep 2026 (mundur-saat-mengangkat); yang
+            // pertama sejak jatah SIAP tidak lagi 2100 ms.
+            const struct { const char* nama; float mm; uint16_t ms; } trip[3] = {
+                { "siap (mundur)", RUAS[i].mundurMm,                  AMBIL_MS_SIAP   },
+                { "maju",          RUAS[i].mundurMm + maju,           AMBIL_MS_MAJU   },
+                { "angkat",        maju + KORBAN_ANGKAT_MUNDUR_MM,    AMBIL_MS_ANGKAT },
+            };
+            for (uint8_t k = 0; k < 3; k++) {
+                const float muat = KORBAN_CONDONG_LAJU_MM_S * (trip[k].ms / 1000.0f);
+                if (trip[k].mm <= muat) continue;
                 Serial.print("Gagal: ruas "); Serial.print(i);
-                Serial.print(" badan menempuh "); Serial.print(tempuh, 0);
+                Serial.print(" fase "); Serial.print(trip[k].nama);
+                Serial.print(": badan menempuh "); Serial.print(trip[k].mm, 0);
                 Serial.print(" mm, hanya muat "); Serial.print(muat, 0);
-                Serial.println(" mm dalam satu fase.");
-                Serial.print("  maju "); Serial.print(tempuhMaju, 0);
-                Serial.print(" mm, angkat "); Serial.print(tempuhAngkat, 0);
-                Serial.println(" mm.");
-                Serial.println("  Turunkan mundurMm/condong.mm, atau naikkan condong laju.");
+                Serial.print(" mm dalam "); Serial.print(trip[k].ms);
+                Serial.println(" ms.");
+                Serial.println("  Turunkan mundurMm/condong.mm, atau naikkan jatah fase itu di config.h.");
                 ok = false;
             }
         }
@@ -1146,9 +1186,7 @@ void Misi::ujiLengan(bool ambil) {
     Serial.print("\n=== SEKUENS LENGAN ");
     Serial.print(ambil ? "AMBIL" : "TARUH");
     Serial.println(" (uji, lepas dari tabel) ===");
-    Serial.print("  tiap pose ");
-    Serial.print(LENGAN_JEDA_MS);
-    Serial.println(" ms, servo merayap 120 der/detik. 'm0' atau 's' untuk berhenti.");
+    Serial.println("  jatah per fase: AMBIL_MS_* / TARUH_MS_* di config.h. 'm0' atau 's' untuk berhenti.");
 }
 
 // TUTUP JENDELA DETEKSI DI RASPI. '#LEPAS' adalah satu-satunya token yang
@@ -1323,6 +1361,23 @@ bool Misi::ruasJalan() {
     // jarak tempuhnya dari titik nol milik ruas sebelumnya.
     const bool lanjut = _lanjutRuas;
     _lanjutRuas = false;
+    _setelDepan = false;
+
+    // CONDONG BADAN, kolom condongMm di ruas NON-AMBIL -- lihat Ruas::condongMm.
+    // Dipasang di SETIAP ruas non-AMBIL, juga yang kolomnya 0: itulah yang
+    // memulangkan badan sesudah ruas yang condong, tanpa bendera tambahan.
+    // Hanya sumbu Y: X milik penengahan vision Raspi ('t<x> 0 0'). Ruas AMBIL
+    // mengurus translasinya sendiri di sekuensAmbil().
+    if (x.aksi != AKS_AMBIL) {
+        const Vec3 t0 = _robot.bodyTransTarget();
+        if (x.condongMm != 0.0f || t0.y != 0.0f) {
+            _robot.setBodyTranslation(t0.x, x.condongMm, t0.z);
+            if (x.condongMm != 0.0f) {
+                Serial.print("  badan condong "); Serial.print(x.condongMm, 0);
+                Serial.println(" mm selama ruas ini (kaki tetap).");
+            }
+        }
+    }
 
     _nav.setTengah(kemudiRuas(_i) == KMD_TENGAH);
     _nav.abaikanDepan(x.abaikanDepan);
@@ -1368,7 +1423,7 @@ bool Misi::ruasJalan() {
     }
 
     // Ruas MUNDUR: sama polanya dengan GESER di atas. Navigation menutup
-    // lupnya sendiri lewat setelBelakangUpdate(), jadi di sini cukup
+    // lupnya sendiri lewat setelJarakUpdate(), jadi di sini cukup
     // menyalakannya. Mode arena TIDAK dinyalakan -- robot berjalan mundur,
     // dan kemudi dinding yang menghadap ke depan tidak punya arti di sana.
     if (x.henti == HNT_MUNDUR) {
@@ -1387,13 +1442,36 @@ bool Misi::ruasJalan() {
             lewati("mundur dilewati -- tidak ada dinding di belakang.");
             return false;
         }
-        if (!_nav.setelBelakangMulai((int)_cm[_i])) {
+        if (!_nav.setelJarakMulai(LIDAR_BACK, (int)_cm[_i])) {
             lewati("mundur ditolak -- sebabnya tercetak di atas.");
             return false;
         }
         _ruasAwal = _robot.jarakCm();
         _serongT0 = 0;
         return true;
+    }
+
+    // Ruas DEPAN yang sudah TERLALU DEKAT: mundur sampai sasaran. Dulu ruas
+    // ini langsung dianggap selesai (depan <= nilai) dan robot tetap di
+    // tempatnya. Mode arena tidak dipakai -- ia cuma bisa maju. JAUH/MATI
+    // jatuh ke jalur biasa: yang pertama lorong terbuka, yang kedua
+    // ditangkap ruasSehat().
+    if (x.henti == HNT_DEPAN) {
+        const int dpn = _lidar.getDistance(LIDAR_FRONT);
+        if (dpn != LIDAR_MATI && dpn != LIDAR_JAUH &&
+            dpn < (int)_cm[_i] - MISI_DEPAN_MUNDUR_TOL_CM) {
+            Serial.print("  depan "); Serial.print(dpn);
+            Serial.print(" cm < sasaran "); Serial.print(_cm[_i], 0);
+            Serial.println(" cm -- MUNDUR sampai sasaran.");
+            if (!_nav.setelJarakMulai(LIDAR_FRONT, (int)_cm[_i])) {
+                lewati("mundur ke jarak depan ditolak -- sebabnya tercetak di atas.");
+                return false;
+            }
+            _setelDepan = true;
+            _ruasAwal = _robot.jarakCm();
+            _serongT0 = 0;
+            return true;
+        }
     }
 
     ModeNav m = (kemudiRuas(_i) == KMD_KIRI) ? NAV_ARENA_KIRI : NAV_ARENA_KANAN;
@@ -1483,13 +1561,13 @@ bool Misi::ruasSehat() {
     }
 
     // Ruas MUNDUR: alasannya sama persis dengan GESER di atas. Penjaganya ada
-    // di dalam NAV_SETEL_BLK (sensor belakang mati di tengah jalan, halangan,
+    // di dalam NAV_SETEL_JARAK (penggaris mati di tengah jalan, halangan,
     // MUNDUR_BATAS_MS), dan tidak satu pun penjaga mode arena di bawah
     // berlaku -- robot memang tidak menghadap arah jalannya saat mundur.
-    if (RUAS[_i].henti == HNT_MUNDUR) {
-        if (_nav.setelBelakangSedangJalan()) return true;
-        if (!_nav.setelBelakangTercapai()) {
-            lewati("mundur berhenti sebelum sasaran -- sebabnya tercetak di atas.");
+    if (RUAS[_i].henti == HNT_MUNDUR || _setelDepan) {
+        if (_nav.setelJarakSedangJalan()) return true;
+        if (!_nav.setelJarakTercapai()) {
+            lewati("setel jarak berhenti sebelum sasaran -- sebabnya tercetak di atas.");
             return false;
         }
         return true;
@@ -1573,7 +1651,7 @@ bool Misi::ruasSelesai() {
     // berhenti karena GAGAL, ruasSehat() sudah membatalkan misi lebih dulu.
     if (x.henti == HNT_SISI ||
         x.henti == HNT_GESER)    return !_nav.ratakanSedangJalan();
-    if (x.henti == HNT_MUNDUR)   return !_nav.setelBelakangSedangJalan();
+    if (x.henti == HNT_MUNDUR || _setelDepan) return !_nav.setelJarakSedangJalan();
 
     if (x.henti == HNT_PUNCAK) {
         // Dinding depan hanya berlaku kalau `nilai` > 0. Di R-9 dimatikan (berkas
@@ -2094,7 +2172,7 @@ void Misi::setRuasCm(uint8_t idx, float cm) {
     // GESER: jarak tempuh menyamping, bukan bacaan dinding. Batas atasnya
     // lebar arena, bukan jangkauan LiDAR.
     if (RUAS[idx].henti == HNT_GESER)    { lo = 1.0f; hi = 200.0f; }
-    // MUNDUR: batas bawahnya sama dengan yang dipakai setelBelakangMulai()
+    // MUNDUR: batas bawahnya sama dengan yang dipakai setelJarakMulai()
     // untuk menolak sasaran -- kalau berbeda, 'm7' akan menerima angka yang
     // nanti ditolak lagi di arena, sesudah robot terlanjur berangkat.
     if (RUAS[idx].henti == HNT_MUNDUR)   { lo = WALL_MIN_CM + 1.0f; hi = (float)LIDAR_MAX_CM; }

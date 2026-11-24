@@ -277,8 +277,11 @@ void Navigation::kompasTabel() {
 float Navigation::pivotLangkah(float targetYaw, float& err) const {
     err = wrap180(targetYaw - _imu.yawDeg());
     float turn = kemudiHeading(targetYaw);
-    if (fabsf(err) > HEADING_TOLERANCE_DEG && fabsf(turn) < PIVOT_MIN_CMD)
-        turn = (turn >= 0 ? PIVOT_MIN_CMD : -PIVOT_MIN_CMD);
+    // PIVOT_MIN_MM dijadikan pecahan perintah untuk stepLength profil kini.
+    const float stepMm = _robot.gaitProfile().stepLength;
+    const float minCmd = (stepMm > PIVOT_MIN_MM) ? PIVOT_MIN_MM / stepMm : 1.0f;
+    if (fabsf(err) > HEADING_TOLERANCE_DEG && fabsf(turn) < minCmd)
+        turn = (turn >= 0 ? minCmd : -minCmd);
     return turn;
 }
 
@@ -662,148 +665,188 @@ void Navigation::rataUpdate() {
 }
 
 // ====================================================================
-// SETEL JARAK BELAKANG, dua arah ('J<cm>')
+// SETEL JARAK, dua arah, penggaris DEPAN atau BELAKANG
+// ('J<cm>', ruas HNT_MUNDUR, dan HNT_DEPAN yang berangkat terlalu dekat)
 // ====================================================================
 
-bool Navigation::setelBelakangMulai(int cm) {
-    _setelBlkOk = false;
+// Bacaan penggaris NAIK selama gerak ke arah ini? Penggaris belakang naik
+// saat MAJU, penggaris depan naik saat MUNDUR. Satu-satunya tempat aturan ini
+// ditulis: arah dipilih dari bacaan awal, dan syarat selesai dibaca darinya.
+static bool bacaanNaik(uint8_t kanal, bool maju) {
+    return (kanal == LIDAR_BACK) == maju;
+}
+
+bool Navigation::setelJarakMulai(uint8_t kanal, int cm) {
+    _setelOk = false;
+    const char* nama = (kanal == LIDAR_FRONT) ? "depan" : "belakang";
 
     if (!_robot.isArmed()) {
-        Serial.println("Setel jarak belakang DITOLAK: servo masih LEMAS. "
-                       "Topang robot lalu ketik 'b'.");
+        Serial.print("Setel jarak "); Serial.print(nama);
+        Serial.println(" DITOLAK: servo masih LEMAS. Topang robot lalu ketik 'b'.");
         return false;
     }
     if (!_lidar.muxTerdeteksi()) {
-        Serial.println("Setel jarak belakang DITOLAK: LiDAR tidak terdeteksi.");
+        Serial.print("Setel jarak "); Serial.print(nama);
+        Serial.println(" DITOLAK: LiDAR tidak terdeteksi.");
         return false;
     }
     if (cm <= 0) {
-        Serial.println("Setel jarak belakang DITOLAK: sasaran harus lebih dari 0 cm.");
+        Serial.print("Setel jarak "); Serial.print(nama);
+        Serial.println(" DITOLAK: sasaran harus lebih dari 0 cm.");
         return false;
     }
 
     // Sama seperti ratakanMulai: hentikan navigasi LEBIH DULU, sebelum
     // pemeriksaan mana pun bisa keluar duluan dan meninggalkan mode arena
     // tetap berjalan maju.
-    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah setel jarak belakang.");
+    if (_mode != NAV_DIAM) navBerhenti("diambil alih perintah setel jarak.");
 
-    // GAGAL TERTUTUP. Tanpa penggaris belakang tidak ada yang bisa memberi
-    // tahu arah mana yang benar, apalagi kapan berhenti.
-    const int d0 = _lidar.getDistance(LIDAR_BACK);
+    // GAGAL TERTUTUP. Tanpa penggaris tidak ada yang bisa memberi tahu arah
+    // mana yang benar, apalagi kapan berhenti.
+    const int d0 = _lidar.getDistance(kanal);
     if (d0 == LIDAR_MATI || d0 == LIDAR_JAUH) {
-        Serial.println("Setel jarak belakang DITOLAK: LiDAR BELAKANG tidak "
-                       "memberi jarak -- tidak ada penggaris.");
+        Serial.print("Setel jarak "); Serial.print(nama);
+        Serial.println(" DITOLAK: LiDAR itu tidak memberi jarak -- tidak ada penggaris.");
         return false;
     }
     if (d0 == cm) {
         Serial.print("Sudah di sasaran: "); Serial.print(d0); Serial.println(" cm.");
-        _setelBlkOk = true;
+        _setelOk = true;
         return true;
     }
 
-    // ARAH DIPILIH DARI BACAAN, bukan dari tanda argumen. Bacaan di ATAS
-    // sasaran = terlalu jauh dari dinding belakang = MUNDUR. Di bawah =
-    // terlalu dekat = MAJU.
-    _setelBlkMaju = (d0 < cm);
+    // ARAH DIPILIH DARI BACAAN, bukan dari tanda argumen. Penggaris belakang:
+    // bacaan di ATAS sasaran = terlalu jauh dari dinding belakang = MUNDUR.
+    // Penggaris depan kebalikannya: di ATAS sasaran = terlalu jauh dari
+    // dinding depan = MAJU.
+    _setelMaju = (kanal == LIDAR_BACK) ? (d0 < cm) : (d0 > cm);
 
-    // Sasaran di bawah lantai mundur akan ditolak penjaga mundur tepat sebelum
-    // tercapai -- tolak sekarang, bukan di tengah gerakan. Hanya berlaku untuk
-    // arah mundur; yang MAJU justru menjauhi dinding itu.
-    //
-    // MUNDUR_MIN_CM, BUKAN wall.min. Lihat config.h: wall.min milik kemudi
-    // ikut-dinding di samping, dan memakainya di sini melarang robot mendekat
-    // ke tembok belakang yang memang sedang dituju.
-    if (!_setelBlkMaju && cm <= (int)MUNDUR_MIN_CM) {
-        Serial.print("Setel jarak belakang DITOLAK: sasaran "); Serial.print(cm);
-        Serial.print(" cm <= lantai mundur "); Serial.print(MUNDUR_MIN_CM, 0);
-        Serial.println(" cm -- penjaga akan menghentikannya sebelum sampai.");
-        return false;
-    }
-    // MAJU butuh penggaris DEPAN. Tanpa itu robot berjalan buta ke depan,
-    // dan di ruas K-3/K-4 yang ada di depan justru reruntuhan.
-    if (_setelBlkMaju) {
+    // PENJAGA PER ARAH, bukan per penggaris. Mundur diawasi LiDAR BELAKANG,
+    // maju diawasi LiDAR DEPAN -- satu sensor tidak bisa menjaga dua arah.
+    if (!_setelMaju) {
+        // Sasaran di bawah lantai mundur akan ditolak penjaga mundur tepat
+        // sebelum tercapai -- tolak sekarang, bukan di tengah gerakan.
+        // MUNDUR_MIN_CM, BUKAN wall.min: wall.min milik kemudi ikut-dinding di
+        // samping, dan memakainya di sini melarang robot mendekat ke tembok
+        // belakang yang memang sedang dituju.
+        if (kanal == LIDAR_BACK && cm <= (int)MUNDUR_MIN_CM) {
+            Serial.print("Setel jarak belakang DITOLAK: sasaran "); Serial.print(cm);
+            Serial.print(" cm <= lantai mundur "); Serial.print(MUNDUR_MIN_CM, 0);
+            Serial.println(" cm -- penjaga akan menghentikannya sebelum sampai.");
+            return false;
+        }
+        // Mundur dengan penggaris DEPAN butuh mata di BELAKANG. JAUH boleh --
+        // tidak ada dinding dalam jangkauan; yang ditolak sensor yang bisu
+        // dan dinding yang sudah terlalu dekat.
+        if (kanal == LIDAR_FRONT) {
+            const int b0 = _lidar.getDistance(LIDAR_BACK);
+            if (b0 == LIDAR_MATI) {
+                Serial.println("Setel jarak depan DITOLAK: perlu MUNDUR, tapi "
+                               "LiDAR BELAKANG tidak merespons.");
+                return false;
+            }
+            if (b0 != LIDAR_JAUH && b0 <= (int)MUNDUR_MIN_CM) {
+                Serial.print("Setel jarak depan DITOLAK: perlu MUNDUR, tapi belakang "
+                             "sudah "); Serial.print(b0);
+                Serial.print(" cm (lantai "); Serial.print(MUNDUR_MIN_CM, 0);
+                Serial.println(" cm).");
+                return false;
+            }
+        }
+    } else {
+        // MAJU butuh penggaris DEPAN. Tanpa itu robot berjalan buta ke depan,
+        // dan di ruas K-3/K-4 yang ada di depan justru reruntuhan.
         const int f0 = _lidar.getDistance(LIDAR_FRONT);
         if (f0 == LIDAR_MATI) {
-            Serial.println("Setel jarak belakang DITOLAK: perlu MAJU, tapi "
-                           "LiDAR DEPAN tidak merespons.");
+            Serial.print("Setel jarak "); Serial.print(nama);
+            Serial.println(" DITOLAK: perlu MAJU, tapi LiDAR DEPAN tidak merespons.");
             return false;
         }
         if (f0 != LIDAR_JAUH && f0 <= FRONT_STOP_CM) {
-            Serial.print("Setel jarak belakang DITOLAK: perlu MAJU, tapi depan "
-                         "sudah "); Serial.print(f0);
+            Serial.print("Setel jarak "); Serial.print(nama);
+            Serial.print(" DITOLAK: perlu MAJU, tapi depan sudah "); Serial.print(f0);
             Serial.print(" cm (batas "); Serial.print(FRONT_STOP_CM);
             Serial.println(" cm).");
             return false;
         }
     }
 
-    _setelBlkCm = cm;
-    _mode       = NAV_SETEL_BLK;
-    _tSetelBlk  = millis();
+    _setelKanal = kanal;
+    _setelCm    = cm;
+    _mode       = NAV_SETEL_JARAK;
+    _tSetel     = millis();
     _majuKini = _turnKini = 0.0f;
     {
         const float laju = lajuGeser((float)abs(d0 - cm));
-        _robot.walk(_setelBlkMaju ? laju : -laju, 0.0f, 0.0f);
+        _robot.walk(_setelMaju ? laju : -laju, 0.0f, 0.0f);
     }
 
-    Serial.print("Setel jarak belakang: "); Serial.print(d0);
-    Serial.print(" -> "); Serial.print(cm); Serial.print(" cm, ");
-    Serial.println(_setelBlkMaju ? "MAJU." : "MUNDUR.");
+    Serial.print("Setel jarak "); Serial.print(nama); Serial.print(": ");
+    Serial.print(d0); Serial.print(" -> "); Serial.print(cm); Serial.print(" cm, ");
+    Serial.println(_setelMaju ? "MAJU." : "MUNDUR.");
     return true;
 }
 
-// Satu langkah. Dipanggil navUpdate() saat _mode == NAV_SETEL_BLK.
-void Navigation::setelBelakangUpdate() {
-    const int d = _lidar.getDistance(LIDAR_BACK);
+// Satu langkah. Dipanggil navUpdate() saat _mode == NAV_SETEL_JARAK.
+void Navigation::setelJarakUpdate() {
+    const int d = _lidar.getDistance(_setelKanal);
+    const char* nama = (_setelKanal == LIDAR_FRONT) ? "depan" : "belakang";
 
-    // Penggaris bisu di TENGAH gerakan: berhenti. Tidak ada sensor lain yang
-    // menghadap ke belakang, jadi meneruskan berarti berjalan tanpa sasaran.
+    // Penggaris bisu di TENGAH gerakan: berhenti. Meneruskan berarti
+    // berjalan tanpa sasaran.
     if (d == LIDAR_MATI) {
-        navBerhenti("LiDAR BELAKANG berhenti merespons di tengah setel jarak.");
+        navBerhenti("LiDAR penggaris berhenti merespons di tengah setel jarak.");
         return;
     }
 
-    // SELESAI saat sasaran DILEWATI, dinilai menurut arah berangkatnya. Dua
-    // arah butuh dua perbandingan: yang mundur berhenti saat bacaan turun ke
-    // sasaran, yang maju saat bacaan naik ke sasaran. Satu perbandingan untuk
-    // keduanya akan membuat salah satunya berhenti seketika.
-    if (d != LIDAR_JAUH && (_setelBlkMaju ? (d >= _setelBlkCm) : (d <= _setelBlkCm))) {
-        _setelBlkOk = true;
-        _mode       = NAV_DIAM;
+    // SELESAI saat sasaran DILEWATI, dinilai menurut arah bacaannya. Dua
+    // arah butuh dua perbandingan; satu perbandingan untuk keduanya akan
+    // membuat salah satunya berhenti seketika.
+    const bool naik = bacaanNaik(_setelKanal, _setelMaju);
+    if (d != LIDAR_JAUH && (naik ? (d >= _setelCm) : (d <= _setelCm))) {
+        _setelOk = true;
+        _mode    = NAV_DIAM;
         _majuKini = _turnKini = 0.0f;
         _robot.stop();
-        Serial.print("Setel jarak belakang SELESAI: belakang "); Serial.print(d);
-        Serial.print(" cm (sasaran "); Serial.print(_setelBlkCm);
+        Serial.print("Setel jarak "); Serial.print(nama); Serial.print(" SELESAI: ");
+        Serial.print(d); Serial.print(" cm (sasaran "); Serial.print(_setelCm);
         Serial.println(" cm).");
         return;
     }
 
-    // Penjaga per arah. Yang mundur mengawasi dinding belakang; yang maju
+    // Penjaga per ARAH. Yang mundur mengawasi dinding belakang; yang maju
     // mengawasi halangan depan. Menukar keduanya berarti berjalan tanpa
     // penjaga sama sekali.
-    if (_setelBlkMaju) {
+    if (_setelMaju) {
         const int f = _lidar.getDistance(LIDAR_FRONT);
         if (f == LIDAR_MATI) {
             navBerhenti("LiDAR DEPAN berhenti merespons selagi maju.");
             return;
         }
         if (f != LIDAR_JAUH && f <= FRONT_STOP_CM) {
-            navBerhenti("halangan di depan -- setel jarak belakang dihentikan.");
+            navBerhenti("halangan di depan -- setel jarak dihentikan.");
             return;
         }
-    } else if (d != LIDAR_JAUH && d <= (int)MUNDUR_MIN_CM) {
-        navBerhenti("dinding belakang sudah terlalu dekat -- setel jarak dihentikan.");
+    } else {
+        const int b = _lidar.getDistance(LIDAR_BACK);
+        if (b == LIDAR_MATI) {
+            navBerhenti("LiDAR BELAKANG berhenti merespons selagi mundur.");
+            return;
+        }
+        if (b != LIDAR_JAUH && b <= (int)MUNDUR_MIN_CM) {
+            navBerhenti("dinding belakang sudah terlalu dekat -- setel jarak dihentikan.");
+            return;
+        }
+    }
+
+    if (millis() - _tSetel > MUNDUR_BATAS_MS) {
+        navBerhenti("setel jarak tidak mencapai sasaran (batas waktu).");
         return;
     }
 
-    if (millis() - _tSetelBlk > MUNDUR_BATAS_MS) {
-        navBerhenti("setel jarak belakang tidak mencapai sasaran (batas waktu).");
-        return;
-    }
-
-    const float sisa = (d == LIDAR_JAUH) ? -1.0f : (float)abs(d - _setelBlkCm);
+    const float sisa = (d == LIDAR_JAUH) ? -1.0f : (float)abs(d - _setelCm);
     const float laju = lajuGeser(sisa);
-    _robot.walk(_setelBlkMaju ? laju : -laju, 0.0f, 0.0f);
+    _robot.walk(_setelMaju ? laju : -laju, 0.0f, 0.0f);
 }
 
 void Navigation::pivotKompas(uint8_t arah) {
@@ -841,7 +884,10 @@ void Navigation::kalibrasiPivot(uint8_t siklus) {
     // keduanya menulis vektor gerak yang sama.
     if (_mode != NAV_DIAM) navBerhenti("diambil alih kalibrasi pivot.");
 
-    uint32_t lama = (uint32_t)(siklus * GAIT_CYCLE_TIME);
+    // Siklus profil yang SEDANG berlaku, bukan gait.cycle_time: DATAR bisa
+    // disimpan dengan siklus sendiri ('Tc' + 'TW'), dan der/siklus yang dibagi
+    // dengan siklus yang salah melenceng sebanyak rasionya.
+    uint32_t lama = (uint32_t)(siklus * _robot.gaitProfile().cycleTime);
     float hasil[2];
 
     for (uint8_t arah = 0; arah < 2; arah++) {
@@ -1360,7 +1406,7 @@ void Navigation::navBerhenti(const char* alasan) {
     if (_mode == NAV_DIAM) return;
 
     const char* label = (_mode == NAV_PIVOT) ? "Pivot BERHENTI"
-                      : (_mode == NAV_SETEL_BLK) ? "Setel jarak belakang BERHENTI"
+                      : (_mode == NAV_SETEL_JARAK) ? "Setel jarak BERHENTI"
                       : (_mode == NAV_RATA)  ? "Perataan BERHENTI"
                                              : "Navigasi BERHENTI";
     _mode = NAV_DIAM;
@@ -1375,8 +1421,19 @@ void Navigation::navBerhenti(const char* alasan) {
 // pembacaan yaw IMU -- itulah gunanya kalibrasi 'C'.
 float Navigation::kemudiHeading(float targetHeading) const {
     float err = wrap180(targetHeading - _imu.yawDeg());
-    float turn = HEADING_KP * err - HEADING_KD * _imu.gyroZ();
+    float turn = (HEADING_KP * err - HEADING_KD * _imu.gyroZ()) / skalaPutar();
     return clampf(_pivotSign * turn, -1.0f, 1.0f);
+}
+
+// S = laju putar profil kini per satuan perintah, relatif ke gait acuan tempat
+// heading.kp/kd disetel. Lihat HEADING_ACUAN_* di config.h. Lantai 0,1: profil
+// stepLength ~0 (badan tak bisa berputar) jangan sampai membagi dengan nol --
+// perintahnya toh dijepit +-1.
+float Navigation::skalaPutar() const {
+    const GaitProfile p = _robot.gaitProfile();
+    const float s = (p.stepLength / HEADING_ACUAN_STEP_MM) *
+                    (HEADING_ACUAN_CYCLE_MS / p.cycleTime);
+    return (s > 0.1f) ? s : 0.1f;
 }
 
 void Navigation::remJarakPasang(float cm) {
@@ -1459,7 +1516,7 @@ void Navigation::navUpdate() {
     // Perataan sisi tidak memakai kompas maupun kemudi dinding: penggarisnya
     // satu sensor sisi, dan syarat hentinya dinilai di rataUpdate().
     if (_mode == NAV_RATA)   { rataUpdate();   return; }
-    if (_mode == NAV_SETEL_BLK) { setelBelakangUpdate(); return; }
+    if (_mode == NAV_SETEL_JARAK) { setelJarakUpdate(); return; }
 
     // Waktu loop TIDAK dipakai untuk turunan PD -- itu sumber masalahnya dulu.
     // Turunan memakai stempel sampel LiDAR (lihat blok kemudi di bawah).
@@ -1800,7 +1857,8 @@ void Navigation::navStatus() {
         case NAV_ARENA_KANAN:   Serial.println("ikut dinding KANAN + kunci arena"); break;
         case NAV_PIVOT:         Serial.println("PIVOT di tempat"); break;
         case NAV_RATA:          Serial.println("RATAKAN ke dinding samping"); break;
-        case NAV_SETEL_BLK:     Serial.println("SETEL jarak ke dinding belakang"); break;
+        case NAV_SETEL_JARAK:   Serial.println(_setelKanal == LIDAR_FRONT ? "SETEL jarak ke dinding depan"
+                                                              : "SETEL jarak ke dinding belakang"); break;
     }
 
     if (_mode == NAV_PIVOT) {

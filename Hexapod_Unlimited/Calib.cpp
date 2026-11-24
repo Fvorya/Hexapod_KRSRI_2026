@@ -200,7 +200,7 @@ const ParamDef PARAM_DEFS[N_PARAMS] = {
     // Robot yang EEPROM-nya sudah berisi 25 TIDAK ikut berubah -- baku ini
     // hanya berlaku pada blob baru. Setel dengan 'Qcondong.mm 60' lalu 'W'.
     { "condong.mm",        60.0f,    0.0f,   79.0f, P_LANGSUNG },
-    // 2200 ms: dua jatah LENGAN_JEDA_MS, yaitu jeda yang dipakai sebelum
+    // 2200 ms: kira-kira dua fase lama (2 x 2100), yaitu jeda yang dipakai sebelum
     // parameter ini ada. Batas bawah 0 = tanpa jeda konfirmasi.
     { "condong.jeda",    2200.0f,    0.0f, 8000.0f, P_LANGSUNG },
     { "condong.yaw",        1.0f,    0.0f,    1.0f, P_LANGSUNG },

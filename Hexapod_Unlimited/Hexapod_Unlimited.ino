@@ -1472,10 +1472,13 @@ static void handleCmd(char* s) {
 
             if (hasNum) {
                 float h = clampf((float)v, 40.0f, 160.0f);
-                // Salin profil datar, hanya tinggi badan yang diganti.
+                // Profil DATAR, hanya tinggi badan yang diganti. Lewat
+                // profileFlat() supaya DATAR yang disimpan 'TW' (mis. siklus
+                // 700) ikut terpakai -- dulu kolomnya disalin dari gait.* dan
+                // 'b100' diam-diam memulangkan siklus ke 900.
                 // Perubahan profil di-ramp oleh HexaGait, jadi badan naik/turun mulus.
-                robot.setGaitProfile({ GAIT_STEP_HEIGHT, GAIT_STEP_LENGTH,
-                                       GAIT_CYCLE_TIME, h, STAND_RADIUS });
+                robot.profileFlat();
+                robot.setKolomProfil(HexaGait::KOL_TINGGI_BADAN, h);
                 Serial.print("Berdiri diam. Tinggi badan = ");
                 Serial.print(h, 0); Serial.println(" mm");
             } else {
@@ -1627,8 +1630,8 @@ static void handleCmd(char* s) {
             // perpindahannya terkuantisasi satu langkah gait -- tidak bisa
             // dipakai memperbaiki selisih beberapa sentimeter.
             //
-            // Seluruh penjaganya ada di Navigation::setelBelakangMulai dan
-            // setelBelakangUpdate, sama seperti 'V'. Penjaganya BERBEDA per
+            // Seluruh penjaganya ada di Navigation::setelJarakMulai dan
+            // setelJarakUpdate, sama seperti 'V'. Penjaganya BERBEDA per
             // arah: mundur diawasi LiDAR belakang, maju diawasi LiDAR depan.
             float p[1] = {0};
             if (argFloats(s, p, 1) < 1 || p[0] <= 0.0f) {
@@ -1638,7 +1641,7 @@ static void handleCmd(char* s) {
                 Serial.println("  sasaran -> MUNDUR, lebih kecil -> MAJU. 'l' untuk melihat.");
                 break;
             }
-            nav.setelBelakangMulai((int)p[0]);
+            nav.setelJarakMulai(LIDAR_BACK, (int)p[0]);
             break;
         }
 

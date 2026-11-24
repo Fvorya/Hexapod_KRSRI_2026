@@ -18,7 +18,7 @@ enum ModeNav : uint8_t {
     NAV_ARENA_KANAN,
     NAV_PIVOT,               // berputar di tempat menuju satu heading ('o'/'O')
     NAV_RATA,                // geser menyamping sampai dinding sisi mencapai jarak
-    NAV_SETEL_BLK            // maju/mundur sampai LiDAR belakang mencapai jarak
+    NAV_SETEL_JARAK          // maju/mundur sampai LiDAR depan/belakang mencapai jarak
 };
 
 // Fase internal. FASE_JALAN milik mode arena, FASE_PIVOT/FASE_SETTLE milik
@@ -287,13 +287,15 @@ public:
     // memang tidak bisa diandalkan.
     bool geserMulai(bool kiri, int cm, bool jagaBelakang = false);
 
-    // SETEL JARAK BELAKANG, berumpan-balik, DUA ARAH.
+    // SETEL JARAK, berumpan-balik, DUA ARAH, penggaris LIDAR_BACK atau
+    // LIDAR_FRONT.
     //
-    // Sasarannya bacaan LiDAR BELAKANG. Bacaan DI ATAS sasaran berarti robot
-    // terlalu jauh dari dinding belakang, jadi ia MUNDUR; bacaan di bawah
-    // sasaran berarti terlalu dekat, jadi ia MAJU. Arahnya dipilih sendiri
-    // dari bacaan, bukan dari tanda argumen -- operator cukup menyebut jarak
-    // yang diinginkan.
+    // Sasarannya bacaan penggaris. Penggaris BELAKANG: bacaan di atas sasaran
+    // = terlalu jauh dari dinding belakang = MUNDUR, di bawah = MAJU.
+    // Penggaris DEPAN kebalikannya: di atas = MAJU, di bawah = MUNDUR (ruas
+    // HNT_DEPAN yang berangkat sudah lebih dekat dari sasarannya). Arahnya
+    // dipilih sendiri dari bacaan, bukan dari tanda argumen -- operator cukup
+    // menyebut jarak yang diinginkan.
     //
     // Perintahnya ada karena firmware ini tidak punya gerak maju/mundur
     // berumpan-balik sama sekali. 'w' bisa keduanya, tapi buta terhadap
@@ -303,9 +305,9 @@ public:
     // Penjaganya berbeda per arah, dan itu disengaja: mundur diawasi LiDAR
     // BELAKANG, maju diawasi LiDAR DEPAN. Satu sensor tidak bisa menjaga dua
     // arah.
-    bool setelBelakangMulai(int cm);
-    bool setelBelakangSedangJalan() const { return _mode == NAV_SETEL_BLK; }
-    bool setelBelakangTercapai() const    { return _setelBlkOk; }
+    bool setelJarakMulai(uint8_t kanal, int cm);
+    bool setelJarakSedangJalan() const { return _mode == NAV_SETEL_JARAK; }
+    bool setelJarakTercapai() const    { return _setelOk; }
     // Sudah bergeser berapa jauh pada ruas HNT_GESER yang sedang atau BARU
     // SAJA berjalan. navBerhenti() tidak menghapus acuannya, jadi angka ini
     // masih sah sesaat sesudah geser dihentikan -- itulah yang dipakai
@@ -392,10 +394,11 @@ private:
 
     bool  arenaTerkunci() const { return _mode == NAV_ARENA_KIRI || _mode == NAV_ARENA_KANAN; }
     float  kemudiHeading(float targetHeading) const;
+    float  skalaPutar() const;  // S: laju putar profil kini / gait acuan heading
 
     // Satu langkah kendali menuju targetYaw: mengisi err (derajat, -180..180)
     // dan mengembalikan perintah putar -1..1 yang sudah diberi dorongan minimal
-    // PIVOT_MIN_CMD selama masih di luar toleransi. Dipakai BERSAMA oleh pivot
+    // PIVOT_MIN_MM selama masih di luar toleransi. Dipakai BERSAMA oleh pivot
     // berdiri sendiri dan fase belok arena -- dulu rumusnya ditulis dua kali
     // dengan gain yang berbeda (PIVOT_KP vs HEADING_KP).
     float  pivotLangkah(float targetYaw, float& err) const;
@@ -409,16 +412,17 @@ private:
     float    _rataGeser = 0.0f; // vektor geser yang sedang dipakai (+ = kanan)
     float    _rataOdoCm = 0.0f; // >0 = berhenti pada ODOMETRI sejauh ini, bukan sensor
     float    _rataOdoAwal = 0.0f;
-    void     setelBelakangUpdate();
+    void     setelJarakUpdate();
 
     uint32_t _tRata    = 0;
     bool     _rataBlkLapor = false;  // sudah mencetak sekali soal tarik mundur?
     bool     _rataJagaBlk  = true;   // jaga jarak belakang selama perataan ini?
 
-    int      _setelBlkCm = 0;     // sasaran bacaan LiDAR belakang
-    bool     _setelBlkOk = false; // hasil TERAKHIR: sasaran tercapai?
-    bool     _setelBlkMaju = false;  // arah yang dipilih saat mulai
-    uint32_t _tSetelBlk  = 0;
+    uint8_t  _setelKanal = LIDAR_BACK; // penggaris: LIDAR_BACK / LIDAR_FRONT
+    int      _setelCm = 0;        // sasaran bacaan penggaris
+    bool     _setelOk = false;    // hasil TERAKHIR: sasaran tercapai?
+    bool     _setelMaju = false;  // arah yang dipilih saat mulai
+    uint32_t _tSetel  = 0;
     float    _majuKini = 0.0f, _turnKini = 0.0f;
 
     float _headArah[4] = { -1, -1, -1, -1 };
